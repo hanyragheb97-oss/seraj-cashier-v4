@@ -1181,9 +1181,23 @@
                 let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
                 let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
                 
-                let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
-                let typeStr = typeLabels[m.type] || 'حركة خزينة';
-                let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+                let typeLabels = { 
+            'sales': '🛒 بيع', 
+            'return_sale': '↩️ مرتجع', 
+            'purchase': '📦 فاتورة شراء', 
+            'purchase_return': '↩️ مرتجع شراء',
+            'customers': '👤 عميل', 
+            'customer_receipt': '👤 تحصيل عميل', 
+            'customer_payment': '👤 صرف عميل', 
+            'suppliers': '🏢 مورد', 
+            'supplier_receipt': '🏢 قبض مورد', 
+            'supplier_payment': '🏢 صرف مورد', 
+            'expenses': '💸 مصروف', 
+            'direct': '💰 حركة مباشرة', 
+            'correction': '⚖️ تسوية' 
+        };
+        let typeStr = typeLabels[m.type] || 'حركة خزينة';
+        let invoiceNum = m.invoiceNo || m.purchaseId || m.billId || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
                 let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
 
                 tr.innerHTML = `
@@ -1478,14 +1492,16 @@
                 reportTitle = "تقرير المصروفات النثرية";
             } else {
                 if(currentMovementFilter !== 'all') {
-                    if(currentMovementFilter === 'customers') {
-                        list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
-                    } else if (currentMovementFilter === 'suppliers') {
-                        list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
-                    } else {
-                        list = list.filter(m => m.type === currentMovementFilter);
-                    }
-                }
+        if(currentMovementFilter === 'customers') {
+            list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+        } else if (currentMovementFilter === 'suppliers') {
+            list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+        } else if (currentMovementFilter === 'purchase') {
+            list = list.filter(m => m.type === 'purchase' || m.type === 'purchases' || m.type === 'purchase_return');
+        } else {
+            list = list.filter(m => m.type === currentMovementFilter);
+        }
+    }
                 if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
             }
 
