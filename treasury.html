@@ -46,14 +46,31 @@
         /* ========================================================= */
         /* التنسيقات المحلية للشاشة */
         /* ========================================================= */
-        :root {
-            --neon-border: #a855f7;
-            --neon-glow: rgba(168, 85, 247, 0.4);
-            --bg-dark-1: #070913;
-            --bg-dark-2: #120f29;
-            --card-bg: rgba(19, 17, 44, 0.88);
-            --text-main: #ffffff;
-        }
+:root {
+    /* اللون الافتراضي الجديد: الأزرق الفضائي */
+    --neon-border: #3bcaf6;
+    --neon-glow: rgba(59, 130, 246, 0.4);
+    --bg-dark-solid: #070913;      
+    --card-bg-solid: #0f172a;      /* درجة كحلي تتماشى مع الأزرق الفضائي */
+    --text-white: #ffffff;
+    --text-main: #ffffff;
+    --accent-red: #ff1a40;
+    --accent-green: #00ff66;
+}
+
+/* سمة اللون البنفسجي النيون (عند اختيارها من الإعدادات) */
+body.theme-purple {
+    --neon-border: #a855f7;
+    --neon-glow: rgba(168, 85, 247, 0.4);
+    --card-bg-solid: #120f29;
+}
+
+/* سمة الأزرق الفضائي (الافتراضية) */
+body.theme-space-blue {
+    --neon-border: #3bcaf6;
+    --neon-glow: rgba(59, 130, 246, 0.4);
+    --card-bg-solid: #0f172a;
+}
 
         body { 
             font-family: 'Segoe UI', Tahoma, sans-serif; 
