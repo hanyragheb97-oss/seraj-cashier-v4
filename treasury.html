@@ -1,0 +1,1583 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة الخزينة والمصروفات - سراج LED</title>
+
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#070913">
+    <script src="print_manager.js"></script>
+    <!-- ربط ملف التصميم الخارجي كما طلبت -->
+    <link rel="stylesheet" href="style.css">
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        /* ========================================================= */
+        /* 🚀 أكواد كسر التجميد وإصلاح تعارضات ملف style.css الخارجي */
+        /* ========================================================= */
+        html, body { 
+            overflow: auto !important; 
+            overflow-y: auto !important; 
+            height: auto !important; 
+            min-height: 100vh;
+            touch-action: auto !important;
+            overscroll-behavior-y: auto !important;
+            padding-bottom: 0 !important;
+        }
+
+        .view-section {
+            padding-bottom: 180px !important; /* ضمان عدم اختفاء أي محتوى تحت الشريط السفلي */
+        }
+
+        .filter-dropdown-box .dropdown-menu {
+            top: 100% !important; /* إجبار القوائم أن تفتح للأسفل */
+            bottom: auto !important;
+            margin-top: 8px !important;
+        }
+
+        .table-wrapper {
+            max-height: none !important; /* جعل التمرير لكامل الصفحة وليس داخل الجدول فقط لسهولة الاستخدام */
+            overflow: visible !important;
+        }
+
+        /* ========================================================= */
+        /* التنسيقات المحلية للشاشة */
+        /* ========================================================= */
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-main: #ffffff;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); 
+            color: var(--text-main); 
+            margin: 0; 
+            padding: 0; 
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .view-section { display: none; }
+        .active-view { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .header { 
+            background: var(--card-bg); 
+            color: var(--text-main); 
+            padding: 15px 20px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 22px; 
+            font-weight: bold; 
+            position: sticky; 
+            top: 0; 
+            z-index: 50; 
+            border-bottom: 2px solid var(--neon-border);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); 
+        }
+        .header-title-left { position: absolute; right: 20px; }
+
+        .header-action-btn {
+            background: linear-gradient(135deg, #9333ea, #db2777);
+            color: white;
+            border: 2px solid #ec4899;
+            border-radius: 10px;
+            padding: 8px 14px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(219, 39, 119, 0.6);
+            text-shadow: 0 0 6px rgba(255,255,255,0.8);
+            position: absolute;
+            left: 20px;
+        }
+
+        .treasury-container, .expense-form-container, .expenses-list-container, .movements-container { 
+            max-width: 800px; margin: auto; padding: 15px;
+        }
+
+        .vault-cards-row { display: flex; gap: 8px; margin-bottom: 15px; }
+        .vault-mini-card { background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 12px; padding: 12px 8px; flex: 1; text-align: center; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        .vault-mini-card.active-vault { border-color: var(--neon-border); background-color: var(--neon-glow); box-shadow: 0 0 10px var(--neon-glow); transform: translateY(-2px); }
+        .vault-mini-card .v-title { font-size: 13px; opacity: 0.85; font-weight: bold; }
+        .vault-mini-card .v-val { font-size: 16px; color: #00ff66; font-weight: bold; margin-top: 5px; text-shadow: 0 0 8px rgba(0,255,102,0.6); }
+
+        .treasury-card { background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 16px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); margin-bottom: 15px;}
+        .treasury-label { font-size: 13px; opacity: 0.85; margin-bottom: 10px; text-align: center; line-height: 1.4; }
+        
+        .balance-box { background-color: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 12px; text-align: center; padding: 15px; margin-bottom: 20px; box-shadow: 0 0 12px var(--neon-glow);}
+        .balance-title { font-size: 14px; opacity: 0.85; font-weight: bold; }
+        .balance-value { font-size: 28px; color: #00ff66; font-weight: bold; margin-top: 5px; text-shadow: 0 0 12px rgba(0,255,102,0.8); }
+
+        .radio-group { display: flex; flex-direction: row; justify-content: space-around; gap: 5px; margin-bottom: 15px; font-weight: bold; font-size: 15px; background: rgba(19, 17, 44, 0.6); border: 1px solid var(--neon-border); padding: 10px; border-radius: 12px;}
+        .radio-group label { display: flex; align-items: center; gap: 5px; cursor: pointer; color: var(--text-main);}
+
+        .form-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; width: 100%; box-sizing: border-box;}
+        .form-row label { flex: 0 0 28%; font-size: 13px; font-weight: bold; margin-bottom: 0; text-align: right; line-height: 1.2; word-wrap: break-word;}
+        .form-row input, .form-row select, .form-row textarea { flex: 1; max-width: 68%; padding: 8px; font-size: 15px; text-align: center; border: 2px solid var(--neon-border); border-radius: 10px; font-weight: bold; outline: none; box-sizing: border-box; background: var(--card-bg); color: var(--text-main); box-shadow: 0 0 10px var(--neon-glow);}
+
+        .main-action-btn { background: linear-gradient(135deg, #9333ea, #db2777); color: white; width: 100%; padding: 15px; border: 2px solid #ec4899; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px rgba(219, 39, 119, 0.6); margin-bottom: 10px;}
+        .main-action-btn:active { filter: brightness(1.2); }
+
+        .expense-trigger-btn { background: var(--card-bg); color: #ff1a40; border: 2px solid #ff1a40; width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px rgba(255, 26, 64, 0.5); margin-bottom: 10px;}
+        .program-settings-btn { background: var(--card-bg); color: #38bdf8; border: 2px solid #38bdf8; width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px rgba(56, 189, 248, 0.5); margin-bottom: 20px;}
+
+        .settings-link-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(168, 85, 247, 0.3); padding-top: 15px; flex-wrap: wrap; gap: 10px; }
+        .settings-link-row a { color: var(--neon-border); text-decoration: none; font-weight: bold; font-size: 14px; cursor: pointer; }
+        .settings-link-row a.danger { color: #ff1a40; }
+
+        .filter-top-bar { display: flex; gap: 10px; margin-bottom: 15px; position: relative; z-index: 200;}
+        .filter-dropdown-box { flex: 1; position: relative; background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 16px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-size: 15px; font-weight: bold; color: var(--text-main); box-sizing: border-box; box-shadow: 0 0 12px var(--neon-glow);}
+
+        .dropdown-menu { position: absolute; top: 100%; right: 0; background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.9); display: none; z-index: 9999; margin-top: 8px; overflow: hidden; width: 220px; text-align: right;}
+        .dropdown-item { padding: 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 15px; color: var(--text-main);}
+        .dropdown-item:active { background-color: var(--neon-glow); }
+
+        table { width: 100%; border-collapse: collapse; background: var(--card-bg); backdrop-filter: blur(10px); border-radius: 16px; overflow: hidden; box-shadow: 0 0 20px var(--neon-glow); border: 2px solid var(--neon-border); margin-bottom: 20px;}
+        table th { background-color: var(--neon-glow); color: var(--text-main); padding: 14px 10px; font-size: 17px; text-align: center; white-space: nowrap; border-bottom: 2px solid var(--neon-border);}
+        table td { padding: 14px 10px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; font-size: 16px; font-weight: bold; color: var(--text-main); cursor: pointer;}
+        table tr:active { background-color: var(--neon-glow); }
+        table td:first-child { text-align: right; }
+
+        .totals-summary-bar { background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 8px; align-items: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; box-shadow: 0 0 20px var(--neon-glow);}
+        .total-add { color: #00ff66 !important; }
+        .total-deduct { color: #ff1a40 !important; }
+
+        .unified-bottom-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background-color: var(--card-bg); 
+            border-top: 2px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 8px; z-index: 80; 
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.5);
+            align-items: center;
+        }
+
+        table tr, .expenses-list-container > div {
+            content-visibility: auto;
+            contain-intrinsic-size: 80px;
+        }
+
+        .header-back-btn {
+            background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;
+        }
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        .bottom-bar-dropdown { 
+            flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); 
+            border-radius: 12px; padding: 0 12px; height: 45px; display: flex; 
+            justify-content: space-between; align-items: center; font-size: 14px; 
+            font-weight: bold; color: var(--text-main); cursor: pointer; position: relative;
+            box-shadow: 0 0 10px var(--neon-glow);
+        }
+        
+        .bottom-bar-btn { 
+            flex: 1; background-color: var(--card-bg); color: var(--text-main); 
+            border: 1px solid #3b82f6; border-radius: 12px; height: 45px; 
+            font-size: 14px; font-weight: bold; display: flex; justify-content: center; 
+            align-items: center; gap: 5px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+        }
+
+        /* النوافذ والمدالات */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5, 7, 15, 0.85); display: none; justify-content: center; align-items: center; z-index: 300; backdrop-filter: blur(8px);}
+        .compact-modal { background: var(--card-bg); padding: 25px; border-radius: 24px; width: 92%; max-width: 440px; box-shadow: 0 0 45px rgba(168, 85, 247, 0.6); max-height: 90vh; overflow-y: auto; border: 2px solid var(--neon-border); color: var(--text-main);}
+        .compact-header { border-bottom: 2px solid rgba(168, 85, 247, 0.3); padding-bottom: 15px; margin-bottom: 20px; text-align: center;}
+        .compact-header h3 { margin: 0; font-size: 20px; color: var(--text-main); }
+
+        .btn-group { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 20px;}
+        .btn-group button { flex: 1; padding: 14px; border: none; border-radius: 16px; cursor: pointer; font-size: 18px; font-weight: bold; transition: all 0.2s;}
+        .confirm-btn { background: linear-gradient(135deg, #9333ea, #db2777) !important; border: 2px solid #ec4899 !important; color: white !important;}
+        .cancel-btn { background: var(--card-bg) !important; border: 2px solid var(--neon-border) !important; color: var(--text-main) !important;}
+        .danger-btn { background: linear-gradient(135deg, #dc2626, #991b1b) !important; border: 2px solid #ef4444 !important; color: white !important; }
+
+        .action-sheet-option { padding: 15px; text-align: center; font-size: 18px; font-weight: bold; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; color: var(--text-main); }
+        .action-sheet-option:hover { background-color: var(--neon-glow); }
+
+        @media print {
+            body * { visibility: hidden; }
+            #thermalPrintArea, #thermalPrintArea * { visibility: visible; }
+            #thermalPrintArea { position: absolute; left: 0; top: 0; width: 80mm; font-family: 'Tahoma', sans-serif; font-size: 12px; color: black; background: white; padding: 5px;}
+        }
+        .thermal-receipt { display: none; }
+/* ========================================================= */
+        /* 🚀 كود الحماية الصارم (Overrides) لفك تجميد الشاشة وإصلاح العيوب */
+        /* ========================================================= */
+        
+        /* 1. فك تجميد السكرول الإجباري للموبايل والكمبيوتر */
+        html, body {
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            height: auto !important;
+            min-height: 100vh !important;
+            touch-action: auto !important;
+            overscroll-behavior-y: auto !important;
+            padding-bottom: 0 !important;
+        }
+
+        /* 2. ضمان عدم اختفاء أي عناصر تحت الشريط السفلي الملون */
+        .view-section {
+            padding-bottom: 180px !important;
+            display: none;
+        }
+        .active-view {
+            display: block !important;
+            animation: fadeIn 0.3s ease;
+        }
+
+        /* 3. إجبار القوائم المنسدلة العلوية على الفتح لأسفل (بدلاً من الطيران لأعلى) */
+        .filter-dropdown-box .dropdown-menu {
+            top: 100% !important;
+            bottom: auto !important;
+            left: 0 !important;
+            right: 0 !important;
+            margin-top: 5px !important;
+            transform: none !important;
+            width: 100% !important;
+            z-index: 9999 !important;
+            max-height: 350px !important;
+            overflow-y: auto !important;
+        }
+
+        /* 4. إجبار القوائم السفلية (المدة والطباعة) على الفتح لأعلى */
+        .unified-bottom-bar .dropdown-menu,
+        #printMenuDropdown {
+            top: auto !important;
+            bottom: 100% !important;
+            margin-bottom: 12px !important;
+            margin-top: 0 !important;
+            max-height: 50vh !important;
+            overflow-y: auto !important;
+            z-index: 9999 !important;
+            transform: none !important;
+            left: 0 !important;
+        }
+        
+        /* 5. وضع الجداول في حاوية تسمح بالتمرير الداخلي بسلاسة */
+        .table-wrapper {
+            max-height: none !important;
+            overflow: visible !important;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- نافذة أمان الخزينة -->
+    <div class="modal-overlay" id="pinModal" style="display: none;">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>🔒 أمان الخزينة</h3></div>
+            <div class="form-row">
+                <label>أدخل الرقم السري:</label>
+                <input type="password" id="pinInput" placeholder="****" maxlength="6" style="text-align: center; letter-spacing: 5px;">
+            </div>
+            <div class="btn-group">
+                <button class="confirm-btn" onclick="verifyPin()">دخول</button>
+                <button class="cancel-btn" onclick="window.location.href='index.html'">رجوع</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- الشاشة 1: لوحة الخزينة الرئيسية -->
+    <div id="treasury-main-view" class="view-section">
+        <div class="header">
+            <span class="header-title-left">الخزينة</span>
+            <button class="header-action-btn" onclick="openMovementsWithVault(currentSelectedVault)">الحركة 📋</button>
+        </div>
+
+        <div class="treasury-container">
+            <div class="vault-cards-row">
+                <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main')">
+                    <div class="v-title">الرئيسية (كاش)</div>
+                    <div class="v-val" id="vaultMainBal">0.00</div>
+                </div>
+                <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta')">
+                    <div class="v-title">إنستا (InstaPay)</div>
+                    <div class="v-val" id="vaultInstaBal">0.00</div>
+                </div>
+                <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet')">
+                    <div class="v-title">المحفظة الإلكترونية</div>
+                    <div class="v-val" id="vaultWalletBal">0.00</div>
+                </div>
+            </div>
+
+            <div class="treasury-card">
+                <div class="treasury-label">* الخزينة أو الصندوق أو الدرج يشمل المبالغ النقدية السائلة والرقمية</div>
+
+                <div class="balance-box">
+                    <div class="balance-title">الرصيد الحالي للخزينة المحددة</div>
+                    <div class="balance-value" id="currentSelectedVaultBalance">0.00</div>
+                </div>
+
+                <div class="radio-group">
+                    <label style="color: #00ff66; text-shadow: 0 0 8px rgba(0,255,102,0.5);"><input type="radio" name="trType" value="add" checked> ➕ إضافة مبلغ</label>
+                    <label style="color: #ff1a40; text-shadow: 0 0 8px rgba(255,26,64,0.5);"><input type="radio" name="trType" value="deduct"> ➖ خصم مبلغ</label>
+                </div>
+
+                <div class="form-row">
+                    <label>المبلغ:</label>
+                    <input type="number" id="trAmount" value="0" onclick="this.select()" placeholder="ادخل المبلغ">
+                </div>
+
+                <div class="form-row">
+                    <label>ملاحظات:</label>
+                    <input type="text" id="trNotes" placeholder="اضف ملاحظاتك...">
+                </div>
+
+                <div class="form-row">
+                    <label>التاريخ:</label>
+                    <input type="date" id="trDate">
+                </div>
+
+                <button class="main-action-btn" onclick="saveTreasuryTransaction()">حفظ المبلغ</button>
+
+                <button class="expense-trigger-btn" onclick="switchView('treasury-expense-form-view')">💸 المصروفات</button>
+
+                <button class="program-settings-btn" onclick="openProgramSettingsModal()">⚙️ إعدادات البرنامج والثيمات</button>
+
+                <div class="settings-link-row">
+                    <a onclick="openSettingsModal()">⚙️ إعدادات الخزينة الأساسية</a>
+                    <a class="danger" onclick="openFactoryResetModal()">🔄 إعادة ضبط المصنع</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="window.location.href='index.html'">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Outside')">
+                <span id="currentDurationLabelOutside">اخر 30 يوم</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownOutside">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
+            <div class="dropdown-menu" id="printMenuDropdown" style="left:0; right:auto; width:210px;">
+                <div class="dropdown-item" onclick="printThermalStatement()">🖨️ طباعة حرارية (80mm)</div>
+                <div class="dropdown-item" onclick="handlePdfMenu()">📄 ملفات PDF</div>
+                <div class="dropdown-item" onclick="handleExcelMenu()">📊 ملفات Excel</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- الشاشة 2: حركة الخزينة الشاملة -->
+    <div id="treasury-movements-view" class="view-section">
+        <div class="header">
+            <span>حركة الخزينة</span>
+        </div>
+
+        <div class="movements-container">
+            <div class="filter-top-bar" onclick="event.stopPropagation()">
+                <div class="filter-dropdown-box" onclick="toggleMovementFilterMenu(event)">
+                    <span id="currentMovementFilterLabel">جميع الحركات</span>
+                    <span>▼</span>
+                    <div class="dropdown-menu" id="movementFilterDropdown">
+                        <div class="dropdown-item" onclick="setMovementFilter('all')">جميع الحركات</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('sales')">فواتير البيع</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('return_sale')">فواتير المرتجع</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('purchase')">فواتير الشراء</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('customers')">سندات العملاء</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('suppliers')">سندات الموردين</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('expenses')">المصروفات</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('direct')">الخزينة مباشرة</div>
+                    </div>
+                </div>
+
+                <div class="filter-dropdown-box" onclick="toggleVaultFilterMenu(event)">
+                    <span id="currentVaultFilterLabel">كل الخزائن</span>
+                    <span>▼</span>
+                    <div class="dropdown-menu" id="vaultFilterDropdown">
+                        <div class="dropdown-item" onclick="setVaultFilter('all')">كل الخزائن</div>
+                        <div class="dropdown-item" onclick="setVaultFilter('main')">الرئيسية (كاش)</div>
+                        <div class="dropdown-item" onclick="setVaultFilter('insta')">إنستا (InstaPay)</div>
+                        <div class="dropdown-item" onclick="setVaultFilter('wallet')">المحفظة الإلكترونية</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="totals-summary-bar">
+                <div style="display: flex; justify-content: space-around; width: 100%;">
+                    <div>إضافات: <span class="total-add" id="sumAddVal">0.00</span></div>
+                    <div>خصومات: <span class="total-deduct" id="sumDeductVal">0.00</span></div>
+                </div>
+                <div style="border-top: 1px dashed rgba(168,85,247,0.4); padding-top: 8px; width: 100%; text-align: center; font-size: 17px;">
+                    الصافي (الفرق): <span id="sumNetVal" style="font-weight: bold;">0.00</span>
+                </div>
+            </div>
+
+            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط مطولاً على أي سطر لفتح خيارات التعديل أو الحذف</div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="text-align: right;">البيان / الملاحظات</th>
+                            <th>إضافة (+)</th>
+                            <th>خصم (-)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="movementsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="switchView('treasury-main-view')">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Inside')">
+                <span id="currentDurationLabelInside">اخر 30 يوم</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownInside">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
+        </div>
+    </div>
+
+    <!-- الشاشة 3: صفحة إضافة المصروفات -->
+    <div id="treasury-expense-form-view" class="view-section">
+        <div class="header">
+            <span class="header-title-left">المصروفات</span>
+            <button class="header-action-btn" onclick="switchView('treasury-expense-list-view')">العرض 📋</button>
+        </div>
+
+        <div class="expense-form-container">
+            <div class="vault-cards-row">
+                <div class="vault-mini-card active-vault" id="expCardMain" onclick="selectExpVault('main')">
+                    <div class="v-title">الرئيسية (كاش)</div>
+                    <div class="v-val" id="expVaultMainBal">0.00</div>
+                </div>
+                <div class="vault-mini-card" id="expCardInsta" onclick="selectExpVault('insta')">
+                    <div class="v-title">إنستا (InstaPay)</div>
+                    <div class="v-val" id="expVaultInstaBal">0.00</div>
+                </div>
+                <div class="vault-mini-card" id="expCardWallet" onclick="selectExpVault('wallet')">
+                    <div class="v-title">المحفظة الإلكترونية</div>
+                    <div class="v-val" id="expVaultWalletBal">0.00</div>
+                </div>
+            </div>
+
+            <div class="treasury-card">
+                <div class="treasury-label" id="expActiveVaultLabel">الصرف من: الخزينة الرئيسية (كاش)</div>
+
+                <div class="balance-box">
+                    <div class="balance-title">الرصيد المتاح</div>
+                    <div class="balance-value" id="expSelectedVaultBalance">0.00</div>
+                </div>
+
+                <div class="form-row">
+                    <label>المبلغ:</label>
+                    <input type="number" id="fullExpAmount" value="0" onclick="this.select()" placeholder="ادخل المبلغ">
+                </div>
+
+                <div class="form-row">
+                    <label>جهة الصرف (إجباري):</label>
+                    <input type="text" id="fullExpDestination" placeholder="ادخل جهة الصرف...">
+                </div>
+
+                <div class="form-row">
+                    <label>التاريخ:</label>
+                    <input type="date" id="fullExpDate">
+                </div>
+
+                <button class="main-action-btn" onclick="saveFullExpense()">حفظ المصروف</button>
+            </div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="switchView('treasury-main-view')">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Form')">
+                <span id="currentDurationLabelForm">اخر 30 يوم</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownForm">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
+        </div>
+    </div>
+
+    <!-- الشاشة 4: عرض قائمة المصروفات -->
+    <div id="treasury-expense-list-view" class="view-section">
+        <div class="header">
+            <span>عرض المصروفات</span>
+        </div>
+
+        <div class="expenses-list-container">
+            <div class="treasury-card" style="margin-bottom: 15px; text-align: center;">
+
+                <div class="form-row" style="margin-bottom: 15px;">
+                    <select id="expVaultFilter" onchange="renderExpensesList()" style="width: 100%; max-width: 100%; padding: 10px; font-size: 15px; border: 2px solid var(--neon-border); border-radius: 12px; background: rgba(19, 17, 44, 0.6); color: var(--text-main); font-weight: bold; outline: none; box-shadow: 0 0 10px var(--neon-glow); text-align: center; cursor: pointer;">
+                        <option value="all">كل الخزائن (كاش، إنستا، محفظة)</option>
+                        <option value="main">الخزينة الرئيسية (كاش)</option>
+                        <option value="insta">إنستا (InstaPay)</option>
+                        <option value="wallet">المحفظة الإلكترونية</option>
+                    </select>
+                </div>
+
+                <div class="radio-group" style="margin-bottom: 12px; border: none; padding: 0;">
+                    <label><input type="radio" name="expSearchType" value="date" checked onclick="toggleExpSearchMode()"> تاريخ الصرف</label>
+                    <label><input type="radio" name="expSearchType" value="supplier" onclick="toggleExpSearchMode()"> جهة الصرف</label>
+                </div>
+                
+                <div class="form-row" style="display: flex; gap: 10px; margin-bottom: 0;">
+                    <input type="text" id="expenseSearchInput" placeholder="اختر التاريخ أو أدخل جهة الصرف..." oninput="handleExpRealtimeSearch()" style="flex:1;">
+                    <button class="confirm-btn" onclick="renderExpensesList()" style="padding: 0 20px; border-radius: 12px; cursor: pointer;">بحث</button>
+                </div>
+            </div> 
+
+            <div id="expensesListContainer"></div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="switchView('treasury-expense-form-view')">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'List')">
+                <span id="currentDurationLabelList">اخر 30 يوم</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownList">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
+        </div>
+    </div>
+
+    <!-- النوافذ المنبثقة (Modals) -->
+
+    <div class="modal-overlay" id="programSettingsModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>🎨 إعدادات البرنامج والثيمات</h3></div>
+            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 15px; text-align: center; font-weight: bold;">اختر الثيم المفضل لديك:</div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                <button onclick="setAppTheme('#a855f7', 'rgba(168, 85, 247, 0.4)', '#070913', '#120f29', 'rgba(19, 17, 44, 0.88)', '#ffffff')" style="background: #120f29; border: 2px solid #a855f7; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">💜 بنفسجي نيون</button>
+                <button onclick="setAppTheme('#06b6d4', 'rgba(6, 182, 212, 0.4)', '#020617', '#0f172a', 'rgba(15, 23, 42, 0.9)', '#ffffff')" style="background: #0f172a; border: 2px solid #06b6d4; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">💙 أزرق فضاء</button>
+                <button onclick="setAppTheme('#10b981', 'rgba(16, 185, 129, 0.4)', '#022c22', '#064e3b', 'rgba(6, 78, 59, 0.85)', '#ffffff')" style="background: #064e3b; border: 2px solid #10b981; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">💚 أخضر ليد</button>
+                <button onclick="setAppTheme('#ef4444', 'rgba(239, 68, 68, 0.4)', '#1b0404', '#3b0707', 'rgba(59, 7, 7, 0.85)', '#ffffff')" style="background: #3b0707; border: 2px solid #ef4444; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">❤️ أحمر هكر</button>
+                <button onclick="setAppTheme('#3b82f6', 'rgba(59, 130, 246, 0.4)', '#f8fafc', '#e2e8f0', 'rgba(255, 255, 255, 0.95)', '#0f172a')" style="background: #f8fafc; border: 2px solid #3b82f6; color: #0f172a; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">☀️ أبيض ناصع</button>
+                <button onclick="setAppTheme('#8b5cf6', 'rgba(139, 92, 246, 0.4)', '#f1f5f9', '#cbd5e1', 'rgba(255, 255, 255, 0.9)', '#1e293b')" style="background: #f1f5f9; border: 2px solid #8b5cf6; color: #1e293b; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">🥈 فضي أنيق</button>
+                <button onclick="setAppTheme('#d97706', 'rgba(217, 119, 6, 0.4)', '#fef3c7', '#fde68a', 'rgba(254, 243, 199, 0.95)', '#78350f')" style="background: #fef3c7; border: 2px solid #d97706; color: #78350f; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">📜 بيج لؤلؤي</button>
+                <button onclick="setAppTheme('#14b8a6', 'rgba(20, 184, 166, 0.4)', '#ecfdf5', '#ccfbf1', 'rgba(255, 255, 255, 0.95)', '#134e4a')" style="background: #ecfdf5; border: 2px solid #14b8a6; color: #134e4a; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">🩵 مينت فاتح</button>
+            </div>
+
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="cancel-btn" onclick="document.getElementById('programSettingsModal').style.display='none'">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="factoryResetModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>⚠️ تحذير: إعادة ضبط المصنع</h3></div>
+            <div style="font-size: 14px; color: #ff1a40; margin-bottom: 15px; text-align: center; font-weight: bold; line-height: 1.6;">
+                سيتم مسح وتصفير كافة بيانات الخزينة والحركات تماماً وإرجاع البرنامج لحالته الأصلية! أدخل الرقم السري للتأكيد:
+            </div>
+            <div class="form-row">
+                <input type="password" id="resetPinInput" placeholder="أدخل الرقم السري..." maxlength="6" style="text-align: center; letter-spacing: 5px;">
+            </div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('factoryResetModal').style.display='none'">إلغاء</button>
+                <button class="danger-btn" onclick="executeFactoryReset()">تصفير البرنامج</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="actionSheetModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>خيارات الحركة</h3></div>
+            <div class="action-sheet-option" onclick="openEditMovementModal()" style="color: #c084fc;">✏️ تعديل الحركة</div>
+            <div class="action-sheet-option" onclick="confirmDeleteMovement()" style="color: #ff1a40;">🗑️ حذف الحركة</div>
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="cancel-btn" onclick="document.getElementById('actionSheetModal').style.display='none'">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="editMovementModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>تعديل حركة الخزينة</h3></div>
+            <div class="radio-group">
+                <label style="color: #00ff66;"><input type="radio" name="editTrType" value="add" id="editTypeAdd"> ➕ إضافة</label>
+                <label style="color: #ff1a40;"><input type="radio" name="editTrType" value="deduct" id="editTypeDeduct"> ➖ خصم</label>
+            </div>
+            <div class="form-row">
+                <label>المبلغ:</label>
+                <input type="number" id="editTrAmount" value="0" onclick="this.select()">
+            </div>
+            <div class="form-row">
+                <label>الملاحظات / البيان:</label>
+                <input type="text" id="editTrNotes">
+            </div>
+            <div class="form-row">
+                <label>التاريخ:</label>
+                <input type="date" id="editTrDate">
+            </div>
+            <input type="hidden" id="editTrId">
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('editMovementModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="saveEditedMovement()">حفظ التعديل</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settingsModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>⚙️ إعدادات الخزينة</h3></div>
+            <div class="form-row"><label><input type="checkbox" id="setSalesAuto" checked> ربط فواتير البيع تلقائياً</label></div>
+            <div class="form-row"><label><input type="checkbox" id="setPurchAuto" checked> ربط فواتير الشراء تلقائياً</label></div>
+            <div class="form-row"><label><input type="checkbox" id="setCustAuto" checked> ربط سندات العملاء والموردين</label></div>
+            <div class="form-row"><label>تغيير الرقم السري (PIN):</label><input type="text" id="setNewPin" placeholder="أدخل رقم سري جديد..." maxlength="6"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('settingsModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="saveTreasurySettings()">حفظ الإعدادات</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="custom-date-modal modal-overlay" id="customDateModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>تحديد فترة مخصصة</h3></div>
+            <div class="form-row"><label>من تاريخ:</label><input type="date" id="startDateInput"></div>
+            <div class="form-row"><label>إلى تاريخ:</label><input type="date" id="endDateInput"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="applyCustomDateRange()">تطبيق البحث</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="ioModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3 id="ioModalTitle">خيارات الملفات</h3></div>
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button class="confirm-btn" id="ioExportBtn" style="padding: 15px; flex:1; font-size:18px;">📤 تصدير</button>
+            </div>
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="cancel-btn" onclick="document.getElementById('ioModal').style.display='none'">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- قالب الطباعة الحرارية المخفي -->
+    <div id="thermalPrintArea" class="thermal-receipt">
+        <div style="text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 5px;">سراج LED</div>
+        <div style="text-align: center; font-size: 13px; margin-bottom: 10px;">تقرير حركة الخزينة والمصروفات</div>
+        <div style="border-bottom: 1px dashed black; margin-bottom: 5px;"></div>
+        <div id="printDate" style="font-size: 11px; margin-bottom: 10px;"></div>
+        <div style="border-bottom: 1px dashed black; margin-bottom: 5px;"></div>
+        <div id="printItemsContainer" style="font-size: 12px; line-height: 1.6; text-align: right;"></div>
+        <div style="border-bottom: 1px dashed black; margin-top: 5px; margin-bottom: 5px;"></div>
+        <div id="printTotalBalance" style="font-weight: bold; text-align: left; font-size: 14px;"></div>
+        <div style="text-align: center; margin-top: 15px; font-size: 11px;">نظام الإدارة - سراج LED</div>
+    </div>
+
+    <!-- استدعاء ملف الربط السحابي -->
+    <script src="db.js"></script>
+
+    <!-- أكواد الجافا سكريبت الخاصة بالمنطق والحسابات والشاشة -->
+    <script>
+        // المتغيرات العامة الأساسية
+// المتغيرات العامة الأساسية
+let vaultsDB = {};
+        let treasuryMovements = [];
+        let treasurySettings = JSON.parse(localStorage.getItem('seraj_treasury_settings')) || { sales: true, purchase: true, cust: true, pin: '1234' };
+
+        let currentSelectedVault = 'main';
+        let currentExpVault = 'main';
+        let currentMovementFilter = 'all';
+        let currentVaultFilter = 'all';
+        let currentDurationFilter = '30days';
+        let customStartDate = '';
+        let customEndDate = '';
+        let selectedMovementId = null;
+
+        // متغيرات الأداء الجديدة (Optimization)
+        let renderLimitMovements = 50; 
+        let renderLimitExpenses = 50;
+        let searchDebounceTimeout;
+
+       // دالة الحماية للتواريخ
+function getSafeTime(dateString) {
+    if (!dateString) return 0;
+    let d = new Date(dateString).getTime();
+    if (!isNaN(d)) return d;
+    // لو التاريخ متسجل DD/MM/YYYY
+    if (dateString.includes('/')) {
+        let p = dateString.split('/');
+        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+    }
+    // لو متسجل DD-MM-YYYY
+    if (dateString.includes('-') && dateString.split('-')[0].length <= 2) {
+        let p = dateString.split('-');
+        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+    }
+    return 0;
+} 
+
+// إغلاق أي قائمة مفتوحة وتحديث البيانات لحظياً
+document.addEventListener('click', function(e) {
+            closeAllMenus();
+        });
+
+        function closeAllMenus() {
+            let menus = [
+                'durationDropdownOutside', 'durationDropdownInside', 'durationDropdownList', 
+                'durationDropdownForm', 'printMenuDropdown', 'movementFilterDropdown', 'vaultFilterDropdown'
+            ];
+            menus.forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.style.display = 'none';
+            });
+        }
+
+        // الاستماع للتحديثات المركزية من السحابة أو الصفحات الأخرى
+        window.addEventListener('seraj:updated', (e) => {
+            updateTreasuryUI();
+            let activeView = document.querySelector('.active-view');
+            if(activeView) {
+                if(activeView.id === 'treasury-movements-view') renderMovementsTable();
+                if(activeView.id === 'treasury-expense-list-view') renderExpensesList();
+            }
+        });
+
+        // ==========================================
+        // الدوال الحساسة للتحكم في القوائم المنسدلة
+        // ==========================================
+        function toggleMovementFilterMenu(e) {
+            e.stopPropagation(); // منع انتقال الضغطة للخلفية
+            let m = document.getElementById('movementFilterDropdown');
+            let isBlock = (m.style.display === 'block');
+            closeAllMenus();
+            if (!isBlock) m.style.display = 'block';
+        }
+
+        function toggleVaultFilterMenu(e) {
+            e.stopPropagation();
+            let m = document.getElementById('vaultFilterDropdown');
+            let isBlock = (m.style.display === 'block');
+            closeAllMenus();
+            if (!isBlock) m.style.display = 'block';
+        }
+
+        function toggleDurationMenu(e, pos) {
+            e.stopPropagation();
+            let menuId = (pos === 'Inside') ? 'durationDropdownInside' : ((pos === 'List') ? 'durationDropdownList' : (pos === 'Form' ? 'durationDropdownForm' : 'durationDropdownOutside'));
+            let m = document.getElementById(menuId);
+            let isBlock = m && (m.style.display === 'block');
+            closeAllMenus();
+            if (m && !isBlock) m.style.display = 'block';
+        }
+
+        function togglePrintMenu(e) {
+            e.stopPropagation();
+            let m = document.getElementById('printMenuDropdown');
+            let isBlock = (m.style.display === 'block');
+            closeAllMenus();
+            if (!isBlock) m.style.display = 'block';
+        }
+
+        // ==========================================
+        // التنقل بين الشاشات
+        // ==========================================
+        function switchView(viewId) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
+            
+            let targetView = document.getElementById(viewId);
+            if (targetView) targetView.classList.add('active-view');
+            
+            if(viewId === 'treasury-main-view') {
+                updateTreasuryUI();
+            } else if(viewId === 'treasury-movements-view') {
+                renderMovementsTable();
+            } else if(viewId === 'treasury-expense-form-view') {
+                let t = new Date();
+                document.getElementById('fullExpDate').value = t.toISOString().split('T')[0];
+                document.getElementById('fullExpAmount').value = '';
+                document.getElementById('fullExpDestination').value = '';
+                updateExpenseVaultUI();
+            } else if(viewId === 'treasury-expense-list-view') {
+                renderExpensesList();
+            }
+        }
+
+        // ==========================================
+        // الحسابات الدقيقة (المحرك القديم المطابق تماماً)
+        // ==========================================
+        function recalculateVaultBalances() {
+            if (typeof DB !== 'undefined' && typeof DB.recalculateVaultBalances === 'function') {
+                vaultsDB = DB.recalculateVaultBalances() || { main: 0, insta: 0, wallet: 0 };
+            } else if (typeof DB !== 'undefined') {
+                vaultsDB = DB.getVaults() || { main: 0, insta: 0, wallet: 0 };
+            }
+        }
+
+function updateTreasuryUI() {
+            recalculateVaultBalances(); 
+            document.getElementById('vaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
+            document.getElementById('vaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
+            document.getElementById('vaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            selectVault(currentSelectedVault);
+            let t = new Date();
+            document.getElementById('trDate').value = t.toISOString().split('T')[0];
+        }
+
+        function updateExpenseVaultUI() {
+            recalculateVaultBalances(); 
+            document.getElementById('expVaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
+            document.getElementById('expVaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
+            document.getElementById('expVaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            selectExpVault(currentExpVault);
+        }
+
+        function saveTreasuryTransaction() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let amount = parseFloat(document.getElementById('trAmount').value) || 0;
+                let notes = document.getElementById('trNotes').value.trim() || 'حركة خزينة مباشرة';
+                let date = document.getElementById('trDate').value;
+                let isAdd = document.querySelector('input[name="trType"]:checked').value === 'add';
+
+                if(amount <= 0) return await SerajAlert("برجاء إدخال مبلغ صحيح!");
+
+                let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+
+                let moveObj = {
+                    id: window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now(),
+                    type: 'direct',
+                    vault: currentSelectedVault,
+                    amountAdd: isAdd ? amount : 0,
+                    amountDeduct: isAdd ? 0 : amount,
+                    notes: notes,
+                    date: date,
+                    _device: dName
+                };
+
+                if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
+                    DB.recordTreasuryTransaction(moveObj);
+                } else {
+                    // طريقة احتياطية قديمة لو الـ DB مش جاهز
+                    treasuryMovements = DB.getTreasuryMoves() || [];
+                    treasuryMovements.push(moveObj);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                    if(isAdd) vaultsDB[currentSelectedVault] = (vaultsDB[currentSelectedVault] || 0) + amount;
+                    else vaultsDB[currentSelectedVault] = (vaultsDB[currentSelectedVault] || 0) - amount;
+                    DB.saveVaults(vaultsDB);
+                }
+
+                await SerajAlert("تم حفظ الحركة بنجاح!");
+                document.getElementById('trAmount').value = '';
+                document.getElementById('trNotes').value = '';
+                updateTreasuryUI();
+            });
+        }
+
+        function saveFullExpense() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
+                let destination = document.getElementById('fullExpDestination').value.trim();
+                let date = document.getElementById('fullExpDate').value;
+
+                if(!destination) return await SerajAlert("برجاء إدخال جهة الصرف (خانة إجبارية)!");
+                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
+
+                let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+
+                let moveObj = {
+                    id: window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now(),
+                    type: 'expenses',
+                    vault: currentExpVault,
+                    amountAdd: 0,
+                    amountDeduct: amount,
+                    notes: destination,
+                    date: date,
+                    _device: dName
+                };
+
+                if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
+                    DB.recordTreasuryTransaction(moveObj);
+                } else {
+                    treasuryMovements = DB.getTreasuryMoves() || [];
+                    treasuryMovements.push(moveObj);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                    vaultsDB[currentExpVault] = (vaultsDB[currentExpVault] || 0) - amount;
+                    DB.saveVaults(vaultsDB);
+                }
+
+                await SerajAlert("تم حفظ المصروف بنجاح!");
+                switchView('treasury-expense-list-view');
+            });
+        }
+
+        // ==========================================
+        // دوال الاختيار وتغيير الخزائن
+        // ==========================================
+        function selectVault(vaultKey) {
+            currentSelectedVault = vaultKey;
+            document.querySelectorAll('#treasury-main-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
+            if(vaultKey === 'main') document.getElementById('cardVaultMain').classList.add('active-vault');
+            else if(vaultKey === 'insta') document.getElementById('cardVaultInsta').classList.add('active-vault');
+            else if(vaultKey === 'wallet') document.getElementById('cardVaultWallet').classList.add('active-vault');
+            document.getElementById('currentSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
+        }
+
+        function selectExpVault(vaultKey) {
+            currentExpVault = vaultKey;
+            document.querySelectorAll('#treasury-expense-form-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
+            let labelName = "الرئيسية (كاش)";
+            if(vaultKey === 'main') { document.getElementById('expCardMain').classList.add('active-vault'); labelName = "الخزينة الرئيسية (كاش)"; }
+            else if(vaultKey === 'insta') { document.getElementById('expCardInsta').classList.add('active-vault'); labelName = "خزينة أنستا (InstaPay)"; }
+            else if(vaultKey === 'wallet') { document.getElementById('expCardWallet').classList.add('active-vault'); labelName = "خزينة المحفظة الإلكترونية"; }
+            document.getElementById('expActiveVaultLabel').innerText = `الصرف من: ${labelName}`;
+            document.getElementById('expSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
+        }
+
+        function openMovementsWithVault(vaultKey) {
+            currentVaultFilter = vaultKey;
+            let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
+            document.getElementById('currentVaultFilterLabel').innerText = labels[vaultKey] || 'كل الخزائن';
+            switchView('treasury-movements-view');
+        }
+
+        // ==========================================
+        // دوال الفلاتر الشاملة
+        // ==========================================
+        function setMovementFilter(mode) {
+            currentMovementFilter = mode;
+            let labels = {
+                'all': 'جميع الحركات', 'sales': 'فواتير البيع', 'return_sale': 'فواتير المرتجع',
+                'purchase': 'فواتير الشراء', 'customers': 'سندات العملاء', 'suppliers': 'سندات الموردين',
+                'expenses': 'المصروفات', 'direct': 'الخزينة مباشرة'
+            };
+            document.getElementById('currentMovementFilterLabel').innerText = labels[mode];
+            renderMovementsTable();
+        }
+
+        function setVaultFilter(vault) {
+            currentVaultFilter = vault;
+            let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
+            document.getElementById('currentVaultFilterLabel').innerText = labels[vault];
+            renderMovementsTable();
+        }
+
+        function setDurationFilter(duration) {
+            if(duration === 'custom') {
+                document.getElementById('customDateModal').style.display = 'flex';
+                return;
+            }
+            currentDurationFilter = duration;
+            let labels = { 'today': 'اليوم', 'yesterday': 'أمس', '7days': 'آخر 7 أيام', 'thisMonth': 'هذا الشهر', '30days': 'آخر 30 يوم', 'lastMonth': 'الشهر الماضي', 'allTime': 'مدى العمل' };
+            let txt = labels[duration];
+            ['currentDurationLabelOutside', 'currentDurationLabelInside', 'currentDurationLabelList', 'currentDurationLabelForm'].forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.innerText = txt;
+            });
+            renderMovementsTable();
+            renderExpensesList();
+        }
+
+        function applyCustomDateRange() {
+            customStartDate = document.getElementById('startDateInput').value;
+            customEndDate = document.getElementById('endDateInput').value;
+            if(!customStartDate || !customEndDate) return alert("اختر التاريخين!");
+            currentDurationFilter = 'custom';
+            let txt = `${customStartDate} إلى ${customEndDate}`;
+            ['currentDurationLabelOutside', 'currentDurationLabelInside', 'currentDurationLabelList', 'currentDurationLabelForm'].forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.innerText = txt;
+            });
+            document.getElementById('customDateModal').style.display = 'none';
+            renderMovementsTable();
+            renderExpensesList();
+        }
+
+        function toggleExpSearchMode() {
+            let mode = document.querySelector('input[name="expSearchType"]:checked').value;
+            let input = document.getElementById('expenseSearchInput');
+            if(mode === 'date') { input.type = 'date'; input.value = ''; input.placeholder = ''; } 
+            else { input.type = 'text'; input.value = ''; input.placeholder = 'ادخل جهة الصرف...'; }
+        }
+
+        // بحث سريع وآمن باستخدام Debounce
+        function handleExpRealtimeSearch() {
+            clearTimeout(searchDebounceTimeout);
+            searchDebounceTimeout = setTimeout(() => {
+                renderLimitExpenses = 50; // إعادة ضبط العداد عند البحث الجديد
+                renderExpensesList();
+            }, 150);
+        }
+
+// ==========================================
+// دالة الحماية للتواريخ
+// ==========================================
+function getSafeTime(dateString) {
+    if (!dateString) return 0;
+    let d = new Date(dateString).getTime();
+    if (!isNaN(d)) return d;
+    if (dateString.includes('/')) {
+        let p = dateString.split('/');
+        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+    }
+    if (dateString.includes('-') && dateString.split('-')[0].length <= 2) {
+        let p = dateString.split('-');
+        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+    }
+    return 0;
+}
+
+// ==========================================
+// 1. دالة عرض حركات الخزينة الشاملة
+// ==========================================
+function renderMovementsTable() {
+    // قراءة البيانات من الرام مباشرة إذا كانت متوفرة لتقليل الضغط
+    if (typeof DB !== 'undefined' && treasuryMovements.length === 0) {
+        treasuryMovements = DB.getTreasuryMoves() || [];
+        vaultsDB = DB.getVaults() || {};
+    }
+
+    const tbody = document.getElementById('movementsTableBody');
+    if(!tbody) return;
+
+    let list = [...treasuryMovements];
+
+    if(currentMovementFilter !== 'all') {
+        if(currentMovementFilter === 'customers') {
+            list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+        } else if (currentMovementFilter === 'suppliers') {
+            list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+        } else {
+            list = list.filter(m => m.type === currentMovementFilter);
+        }
+    }
+
+    if(currentVaultFilter !== 'all') {
+        list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+    }
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const todayTime = today.getTime();
+
+    list = list.filter(m => {
+        let itemTime = m.date ? getSafeTime(m.date) : todayTime;
+        if(currentDurationFilter === 'today') return itemTime === todayTime;
+        if(currentDurationFilter === 'yesterday') { let y = new Date(todayTime); y.setDate(y.getDate()-1); return itemTime === y.getTime(); }
+        if(currentDurationFilter === '7days') { let d = new Date(todayTime); d.setDate(d.getDate()-7); return itemTime >= d.getTime(); }
+        if(currentDurationFilter === 'thisMonth') { let itemDate = new Date(itemTime); return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear(); }
+        if(currentDurationFilter === '30days') { let d = new Date(todayTime); d.setDate(d.getDate()-30); return itemTime >= d.getTime(); }
+        if(currentDurationFilter === 'lastMonth') {
+            let itemDate = new Date(itemTime);
+            let lastM = new Date(todayTime);
+            lastM.setMonth(lastM.getMonth() - 1);
+            return itemDate.getMonth() === lastM.getMonth() && itemDate.getFullYear() === lastM.getFullYear();
+        }
+        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+            let sTime = getSafeTime(customStartDate);
+            let eTime = getSafeTime(customEndDate);
+            return itemTime >= sTime && itemTime <= eTime;
+        }
+        return true;
+    });
+
+    // 1. حساب الإجماليات على 100% من البيانات (بدون لوب إضافي معقد)
+    let totalAdd = list.reduce((sum, m) => sum + (m.amountAdd || 0), 0);
+    let totalDeduct = list.reduce((sum, m) => sum + (m.amountDeduct || 0), 0);
+
+    document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+    document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+    let net = totalAdd - totalDeduct;
+    let netEl = document.getElementById('sumNetVal');
+    netEl.innerText = net.toFixed(2);
+    netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+
+    tbody.innerHTML = '';
+    if(list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
+        return;
+    }
+
+    list.sort((a, b) => {
+        let timeA = getSafeTime(a.date);
+        let timeB = getSafeTime(b.date);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.id || 0) - (a.id || 0);
+    });
+
+    // 2. تطبيق الحد الأقصى (Render Limit 50) والحقن المجمع (DocumentFragment)
+    const fragment = document.createDocumentFragment();
+    let paginatedList = list.slice(0, renderLimitMovements);
+
+    paginatedList.forEach(m => {
+        const tr = document.createElement('tr');
+        let pressTimer;
+        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = m.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
+        const cancelPress = () => { clearTimeout(pressTimer); };
+        const endPress = (e) => { if (e && e.preventDefault) { e.preventDefault(); } clearTimeout(pressTimer); };
+
+        tr.onmousedown = startPress; tr.onmouseup = endPress; tr.onmouseleave = cancelPress;
+        tr.ontouchstart = startPress; tr.ontouchend = endPress;
+
+        let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
+        let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
+        
+        let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
+        let typeStr = typeLabels[m.type] || 'حركة خزينة';
+        let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+        let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
+
+        tr.innerHTML = `
+            <td style="text-align: right;">
+                <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}</div>
+                <div style="font-size:15px; color:#ffffff;">${m.notes}</div>
+                <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
+                <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
+            </td>
+            <td class="total-add">${(m.amountAdd || 0).toFixed(2)}</td>
+            <td class="total-deduct">${(m.amountDeduct || 0).toFixed(2)}</td>
+        `;
+        fragment.appendChild(tr);
+    });
+
+    // إضافة زر "عرض المزيد" إذا كانت القائمة أكبر من الحد الأقصى
+    if (list.length > renderLimitMovements) {
+        const moreTr = document.createElement('tr');
+        moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
+        moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
+        fragment.appendChild(moreTr);
+    }
+
+    tbody.appendChild(fragment); // حقن مرة واحدة فقط (Single DOM Injection)
+}
+
+// ==========================================
+// 2. دالة عرض المصروفات
+// ==========================================
+function renderExpensesList() {
+    if (typeof DB !== 'undefined' && treasuryMovements.length === 0) {
+        treasuryMovements = DB.getTreasuryMoves() || [];
+    }
+
+    const container = document.getElementById('expensesListContainer');
+    if(!container) return;
+
+    let expenses = treasuryMovements.filter(m => m.type === 'expenses');
+
+    let selectedVault = document.getElementById('expVaultFilter');
+    if(selectedVault && selectedVault.value !== 'all') {
+        expenses = expenses.filter(e => (e.vault || 'main') === selectedVault.value);
+    }
+
+    let searchMode = document.querySelector('input[name="expSearchType"]:checked').value;
+    let query = document.getElementById('expenseSearchInput').value.trim().toLowerCase();
+
+    if(query) {
+        expenses = expenses.filter(e => {
+            if(searchMode === 'date') return e.date === query;
+            else return e.notes.toLowerCase().includes(query);
+        });
+    }
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const todayTime = today.getTime();
+
+    expenses = expenses.filter(m => {
+        let itemTime = m.date ? getSafeTime(m.date) : todayTime;
+        if(currentDurationFilter === 'today') return itemTime === todayTime;
+        if(currentDurationFilter === 'yesterday') { let y = new Date(todayTime); y.setDate(y.getDate()-1); return itemTime === y.getTime(); }
+        if(currentDurationFilter === '7days') { let d = new Date(todayTime); d.setDate(d.getDate()-7); return itemTime >= d.getTime(); }
+        if(currentDurationFilter === 'thisMonth') { let itemDate = new Date(itemTime); return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear(); }
+        if(currentDurationFilter === '30days') { let d = new Date(todayTime); d.setDate(d.getDate()-30); return itemTime >= d.getTime(); }
+        if(currentDurationFilter === 'lastMonth') {
+            let itemDate = new Date(itemTime); let lastM = new Date(todayTime); lastM.setMonth(lastM.getMonth() - 1);
+            return itemDate.getMonth() === lastM.getMonth() && itemDate.getFullYear() === lastM.getFullYear();
+        }
+        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+            let sTime = getSafeTime(customStartDate); let eTime = getSafeTime(customEndDate);
+            return itemTime >= sTime && itemTime <= eTime;
+        }
+        return true;
+    });
+
+    container.innerHTML = '';
+    if(expenses.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:30px; background:var(--card-bg); border-radius:16px; border:2px solid var(--neon-border);">لا توجد مصروفات مطابقة للبحث</div>`;
+        return;
+    }
+
+    expenses.sort((a, b) => {
+        let timeA = getSafeTime(a.date);
+        let timeB = getSafeTime(b.date);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.id || 0) - (a.id || 0);
+    });
+
+    const fragment = document.createDocumentFragment();
+    let paginatedExpenses = expenses.slice(0, renderLimitExpenses);
+
+    paginatedExpenses.forEach(exp => {
+        const card = document.createElement('div');
+        card.style.cssText = "background:var(--card-bg); border:2px solid var(--neon-border); border-radius:16px; padding:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2);";
+        
+        let deviceName = exp._device || exp.device || exp.addedBy || exp.cashier || exp.userName || exp.user_name || 'غير مسجل';
+        let editTag = (exp._lastModifiedBy && exp._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:5px;">✏️ ${exp._lastModifiedBy}</span>` : '';
+
+        card.innerHTML = `
+            <div>
+                <div style="font-size:17px; font-weight:bold;">${exp.notes}</div>
+                <div style="font-size:13px; opacity:0.85; margin-top:4px;">⌚ ${exp.date} - (${exp.vault || 'main'})</div>
+                <div style="font-size:12px; color:#38bdf8; margin-top:6px;">📱 ${deviceName} ${editTag}</div>
+            </div>
+            <div style="font-size:20px; font-weight:bold; color:#ff1a40;">${(exp.amountDeduct || 0).toFixed(2)} جنيه</div>
+        `;
+        
+        let pressTimer;
+        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = exp.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
+        const cancelPress = () => { clearTimeout(pressTimer); };
+        card.onmousedown = startPress; card.onmouseup = cancelPress; card.onmouseleave = cancelPress;
+        card.ontouchstart = startPress; card.ontouchend = cancelPress;
+
+        fragment.appendChild(card);
+    });
+
+    if (expenses.length > renderLimitExpenses) {
+        const moreBtn = document.createElement('div');
+        moreBtn.style.cssText = "text-align:center; padding:15px; margin-top:10px; color:#a855f7; font-weight:bold; background:rgba(168, 85, 247, 0.1); border-radius:12px; cursor:pointer;";
+        moreBtn.innerHTML = `⏬ عرض 50 مصروف أقدم... (${expenses.length - renderLimitExpenses} متبقي)`;
+        moreBtn.onclick = () => { renderLimitExpenses += 50; renderExpensesList(); };
+        fragment.appendChild(moreBtn);
+    }
+
+    container.appendChild(fragment); // حقن مرة واحدة فقط
+}
+
+
+        function openEditMovementModal() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            let m = treasuryMovements.find(x => x.id === selectedMovementId);
+            if(!m) return;
+
+            document.getElementById('editTrId').value = m.id;
+            document.getElementById('editTrAmount').value = m.amountAdd > 0 ? m.amountAdd : m.amountDeduct;
+            document.getElementById('editTrNotes').value = m.notes;
+            document.getElementById('editTrDate').value = m.date || new Date().toISOString().split('T')[0];
+
+            if(m.amountAdd > 0) document.getElementById('editTypeAdd').checked = true;
+            else document.getElementById('editTypeDeduct').checked = true;
+
+            document.getElementById('editMovementModal').style.display = 'flex';
+        }
+
+        function saveEditedMovement() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let id = parseInt(document.getElementById('editTrId').value);
+                let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
+                let notes = document.getElementById('editTrNotes').value.trim() || 'بدون بيان';
+                let date = document.getElementById('editTrDate').value;
+                let isAdd = document.querySelector('input[name="editTrType"]:checked').value === 'add';
+
+                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
+
+                let index = treasuryMovements.findIndex(x => x.id === id);
+                if(index === -1) return;
+
+                let oldM = treasuryMovements[index];
+                let vaultKey = oldM.vault || 'main';
+
+                if(oldM.amountAdd > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - oldM.amountAdd;
+                else if(oldM.amountDeduct > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + oldM.amountDeduct;
+
+                if(isAdd) {
+                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + amount;
+                    oldM.amountAdd = amount; oldM.amountDeduct = 0;
+                } else {
+                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - amount;
+                    oldM.amountAdd = 0; oldM.amountDeduct = amount;
+                }
+
+                oldM.notes = notes; oldM.date = date;
+                oldM._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'غير معروف';
+
+                if (typeof DB !== 'undefined') {
+                    if (typeof DB.updateItem === 'function') {
+                        DB.updateItem('treasury_moves', id, oldM);
+                        if(typeof DB.recalculateVaultBalances === 'function') DB.recalculateVaultBalances();
+                    } else {
+                        DB.saveVaults(vaultsDB);
+                        DB.saveTreasuryMoves(treasuryMovements);
+                    }
+                }
+
+                document.getElementById('editMovementModal').style.display = 'none';
+                renderMovementsTable();
+                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                    renderExpensesList();
+                }
+                updateTreasuryUI();
+                await SerajAlert("تم تحديث وحفظ الحركة بنجاح!");
+            });
+        }
+
+        async function confirmDeleteMovement() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            
+            let isConfirmed = await SerajConfirm("هل أنت متأكد من حذف هذه الحركة؟ سيتم مسحها نهائياً من النظام والسحابة وتعديل رصيد الخزينة.");
+            if(!isConfirmed) return;
+
+            let index = treasuryMovements.findIndex(x => x.id === selectedMovementId);
+            if(index !== -1) {
+                let m = treasuryMovements[index];
+                
+                // استخدام دالة الحذف المركزي السحابي (Hard Delete)
+                if (typeof DB !== 'undefined' && typeof DB.deleteItem === 'function') {
+                    DB.deleteItem('treasury_moves', m.id, 'hard');
+                } else {
+                    // طريقة احتياطية قديمة لو الدالة غير متوفرة
+                    let vaultKey = m.vault || 'main';
+                    if(vaultsDB[vaultKey] !== undefined) {
+                        vaultsDB[vaultKey] -= (m.amountAdd || 0);
+                        vaultsDB[vaultKey] += (m.amountDeduct || 0);
+                    }
+                    treasuryMovements.splice(index, 1);
+                    DB.saveVaults(vaultsDB);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                }
+
+                renderMovementsTable();
+                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                    renderExpensesList();
+                }
+                updateTreasuryUI();
+                await SerajAlert("تم حذف الحركة بنجاح من النظام والسحابة!");
+            }
+        }
+
+        // ==========================================
+        // الإعدادات والمصنع والتلوين والطباعة
+        // ==========================================
+        function checkAdminPin() {
+            let settings = JSON.parse(localStorage.getItem('seraj_treasury_settings')) || { pin: '1234' };
+            let entered = prompt("🔒 هذه الصلاحية للمدير فقط. برجاء إدخال الرقم السري:");
+            if (entered === settings.pin) return true;
+            if (entered !== null) alert("الرقم السري غير صحيح ❌");
+            return false;
+        }
+
+        function verifyPin() {
+            let entered = document.getElementById('pinInput').value.trim();
+            let currentPin = treasurySettings.pin || '1234';
+            if(entered === currentPin) {
+                document.getElementById('pinModal').style.display = 'none';
+                switchView('treasury-main-view');
+            } else {
+                alert("الرقم السري غير صحيح!");
+                document.getElementById('pinInput').value = '';
+            }
+        }
+
+        function openProgramSettingsModal() { closeAllMenus(); document.getElementById('programSettingsModal').style.display = 'flex'; }
+        function openFactoryResetModal() { closeAllMenus(); document.getElementById('resetPinInput').value = ''; document.getElementById('factoryResetModal').style.display = 'flex'; }
+        function openSettingsModal() {
+            document.getElementById('setSalesAuto').checked = treasurySettings.sales;
+            document.getElementById('setPurchAuto').checked = treasurySettings.purchase;
+            document.getElementById('setCustAuto').checked = treasurySettings.cust;
+            document.getElementById('setNewPin').value = treasurySettings.pin || '1234';
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+
+        function saveTreasurySettings() {
+            treasurySettings.sales = document.getElementById('setSalesAuto').checked;
+            treasurySettings.purchase = document.getElementById('setPurchAuto').checked;
+            treasurySettings.cust = document.getElementById('setCustAuto').checked;
+            let newPin = document.getElementById('setNewPin').value.trim();
+            if(newPin) treasurySettings.pin = newPin;
+            localStorage.setItem('seraj_treasury_settings', JSON.stringify(treasurySettings));
+            document.getElementById('settingsModal').style.display = 'none';
+            alert("تم حفظ الإعدادات بنجاح!");
+        }
+
+        function executeFactoryReset() {
+            let enteredPin = document.getElementById('resetPinInput').value.trim();
+            if(enteredPin !== (treasurySettings.pin || '1234')) { alert("الرقم السري غير صحيح!"); return; }
+            if(confirm("تحذير أخير: سيتم مسح بيانات الخزينة بالكامل؟")) {
+                localStorage.removeItem('seraj_vaults_v2'); localStorage.removeItem('seraj_treasury_moves'); 
+                localStorage.removeItem('seraj_customers'); localStorage.removeItem('seraj_suppliers');
+                localStorage.removeItem('seraj_products'); localStorage.removeItem('seraj_sales_invoices');
+                localStorage.removeItem('seraj_purchase_invoices');
+                alert("تم التصفير!"); location.reload();
+            }
+        }
+
+        function setAppTheme(border, glow, bg1, bg2, cardBg, textColor) {
+            document.documentElement.style.setProperty('--neon-border', border);
+            document.documentElement.style.setProperty('--neon-glow', glow);
+            document.documentElement.style.setProperty('--bg-dark-1', bg1);
+            document.documentElement.style.setProperty('--bg-dark-2', bg2);
+            document.documentElement.style.setProperty('--card-bg', cardBg);
+            document.documentElement.style.setProperty('--text-main', textColor);
+            localStorage.setItem('seraj_theme_border', border); localStorage.setItem('seraj_theme_glow', glow);
+            localStorage.setItem('seraj_theme_bg1', bg1); localStorage.setItem('seraj_theme_bg2', bg2);
+            localStorage.setItem('seraj_theme_card', cardBg); localStorage.setItem('seraj_theme_text', textColor);
+            document.getElementById('programSettingsModal').style.display = 'none';
+        }
+
+        function applySavedTheme() {
+            let b = localStorage.getItem('seraj_theme_border'), g = localStorage.getItem('seraj_theme_glow');
+            if(b && g) {
+                document.documentElement.style.setProperty('--neon-border', b); document.documentElement.style.setProperty('--neon-glow', g);
+                if(localStorage.getItem('seraj_theme_bg1')) document.documentElement.style.setProperty('--bg-dark-1', localStorage.getItem('seraj_theme_bg1'));
+                if(localStorage.getItem('seraj_theme_bg2')) document.documentElement.style.setProperty('--bg-dark-2', localStorage.getItem('seraj_theme_bg2'));
+                if(localStorage.getItem('seraj_theme_card')) document.documentElement.style.setProperty('--card-bg', localStorage.getItem('seraj_theme_card'));
+                if(localStorage.getItem('seraj_theme_text')) document.documentElement.style.setProperty('--text-main', localStorage.getItem('seraj_theme_text'));
+            }
+        }
+
+        function printThermalStatement() { 
+            closeAllMenus(); 
+            let list = [...treasuryMovements], activeView = document.querySelector('.active-view').id, reportTitle = "تقرير الخزينة والمصروفات";
+            
+            if(activeView === 'treasury-expense-list-view' || activeView === 'treasury-expense-form-view') {
+                list = list.filter(m => m.type === 'expenses'); reportTitle = "تقرير المصروفات النثرية";
+                const todayStr = new Date().toISOString().split('T')[0];
+list = list.filter(m => {
+    let mDate = m.date || todayStr;
+    if(currentDurationFilter === 'today') return mDate === todayStr;
+    if(currentDurationFilter === 'yesterday') { let y = new Date(); y.setDate(y.getDate()-1); return mDate === y.toISOString().split('T')[0]; }
+    if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); return mDate >= d.toISOString().split('T')[0]; }
+    if(currentDurationFilter === 'thisMonth') { return mDate.slice(0,7) === todayStr.slice(0,7); }
+    if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); return mDate >= d.toISOString().split('T')[0]; }
+    if(currentDurationFilter === 'lastMonth') {
+        let y = new Date().getFullYear(); let m = new Date().getMonth();
+        if(m === 0) { m = 12; y = y - 1; }
+        let lastMStr = y + '-' + String(m).padStart(2,'0'); return mDate.slice(0,7) === lastMStr;
+    }
+    if(currentDurationFilter === 'custom' && customStartDate && customEndDate) return mDate >= customStartDate && mDate <= customEndDate;
+    return true;
+});
+            } else {
+                if(currentMovementFilter !== 'all') list = list.filter(m => m.type === currentMovementFilter);
+                if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+                const todayStr = new Date().toISOString().split('T')[0];
+list = list.filter(m => {
+    let mDate = m.date || todayStr;
+    if(currentDurationFilter === 'today') return mDate === todayStr;
+    if(currentDurationFilter === 'yesterday') { let y = new Date(); y.setDate(y.getDate()-1); return mDate === y.toISOString().split('T')[0]; }
+    if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); return mDate >= d.toISOString().split('T')[0]; }
+    if(currentDurationFilter === 'thisMonth') { return mDate.slice(0,7) === todayStr.slice(0,7); }
+    if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); return mDate >= d.toISOString().split('T')[0]; }
+    if(currentDurationFilter === 'lastMonth') {
+        let y = new Date().getFullYear(); let m = new Date().getMonth();
+        if(m === 0) { m = 12; y = y - 1; }
+        let lastMStr = y + '-' + String(m).padStart(2,'0'); return mDate.slice(0,7) === lastMStr;
+    }
+    if(currentDurationFilter === 'custom' && customStartDate && customEndDate) return mDate >= customStartDate && mDate <= customEndDate;
+    return true;
+});
+}
+
+            document.getElementById('printDate').innerText = `التاريخ: ${new Date().toISOString().slice(0,10)}`;
+            document.querySelector('#thermalPrintArea div:nth-child(2)').innerText = reportTitle;
+
+            let itemsHtml = '', tAdd = 0, tDed = 0;
+            list.forEach(m => {
+                tAdd += (m.amountAdd || 0); tDed += (m.amountDeduct || 0);
+                itemsHtml += `<div style="margin-bottom:8px; border-bottom:1px dotted #ccc; padding-bottom:4px;">
+                    <div>${m.notes}</div>
+                    <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span>إضافة: ${(m.amountAdd||0).toFixed(2)}</span>
+                        <span>خصم: ${(m.amountDeduct||0).toFixed(2)}</span>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('printItemsContainer').innerHTML = itemsHtml;
+            document.getElementById('printTotalBalance').innerHTML = `إجمالي إضافة: ${tAdd.toFixed(2)} <br> إجمالي خصم: ${tDed.toFixed(2)} <br> الصافي: ${(tAdd - tDed).toFixed(2)}`;
+            window.print(); 
+        }
+
+        function handlePdfMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات PDF"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; window.print(); }; document.getElementById('ioModal').style.display = 'flex'; }
+        function handleExcelMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات Excel"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; exportExcel(); }; document.getElementById('ioModal').style.display = 'flex'; }
+        async function exportExcel() {
+    if(treasuryMovements.length === 0) return await SerajAlert("لا توجد بيانات لتصديرها!");
+    if(typeof exportToExcel === 'function') {
+        exportToExcel(treasuryMovements, "تقرير_حركة_الخزينة");
+    } else {
+        await SerajAlert("ملف print_manager.js غير متصل أو الدالة غير موجودة!");
+    }
+}
+
+        window.onload = () => {
+            applySavedTheme();
+            updateTreasuryUI();
+            switchView('treasury-main-view'); // التشغيل المباشر كما كان بالكود الجديد
+        };
+
+        window.addEventListener('popstate', function(event) {
+            if (typeof goBackSmart === 'function') goBackSmart();
+            else window.location.href = 'index.html';
+        });
+    </script>
+
+</body>
+</html>
