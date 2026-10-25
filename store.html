@@ -34,7 +34,7 @@
         table th:nth-child(4), table td:nth-child(4) { width: 20%; text-align: center; }
         
         .lot-row-card { 
-            background: var(--bg-dark-2, rgba(30, 30, 30, 0.8)); 
+            background: var(--bg-dark-2, rgb(2, 1, 18)); 
             border-bottom: 1px solid var(--neon-border); 
             padding: 14px 10px; 
             display: flex; justify-content: space-around; align-items: center; 
@@ -49,13 +49,13 @@
         .barcode-input-group { display: flex; flex: 2; gap: 5px; width: 100%; }
         .barcode-input-group input { flex: 1; }
         .barcode-input-group button { 
-   background: var(--bg-dark-1, rgba(7, 0, 23, 0.91)); border: 1px solid var(--neon-border); 
+            background: var(--bg-dark-1, rgba(7, 0, 23, 0.91)); border: 1px solid var(--neon-border); 
             border-radius: 10px; color: var(--text-main, #fff); cursor: pointer; padding: 0 10px; 
             font-size: 18px; display: flex; align-items: center; justify-content: center; 
         }
         
         .sticky-headers-bar { 
-                      background-color: var(--bg-dark-1, rgba(6, 1, 18, 0.912)); color: var(--text-main, #fff); 
+            background-color: var(--bg-dark-1, rgba(6, 1, 18, 0.912)); color: var(--text-main, #fff); 
             border-radius: 12px; padding: 12px 10px; display: flex; justify-content: space-around; 
             font-size: 16px; font-weight: bold; text-align: center; border: 1px solid var(--neon-border); 
         }
@@ -71,12 +71,12 @@
 
         /* شريط البحث والمايك الخفيف والطابور */
         .search-container { position: relative; margin-bottom: 5px; display: flex; gap: 8px; align-items: center; }
-        .search-input { flex: 1; padding: 14px; border: 2px solid var(--neon-border); border-radius: 16px; font-size: 18px; box-sizing: border-box; background: var(--card-bg, rgba(19, 17, 44, 0.6)); box-shadow: 0 0 10px var(--neon-glow); outline: none; color: var(--text-main, #fff); font-weight: bold; transition: background-color 0.15s, border-color 0.15s; }
+        .search-input { flex: 1; padding: 14px; border: 2px solid var(--neon-border); border-radius: 16px; font-size: 18px; box-sizing: border-box; background: var(--card-bg, rgba(2, 1, 18, 0.997)); box-shadow: 0 0 10px var(--neon-glow); outline: none; color: var(--text-main, #fff); font-weight: bold; transition: background-color 0.15s, border-color 0.15s; }
         .search-input:focus { border-color: #fff; }
         .mic-btn-search { background: #2563eb; color: white; border: 2px solid #3b82f6; border-radius: 16px; width: 55px; height: 55px; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; flex-shrink: 0; }
         .mic-btn-search.recording { background: #dc2626; border-color: #ef4444; }
         
-        .queue-container { display: none; align-items: center; justify-content: space-between; background: var(--card-bg, rgba(19, 17, 44, 0.8)); border: 1px dashed var(--neon-border); border-radius: 12px; padding: 8px 15px; margin-top: 8px; }
+        .queue-container { display: none; align-items: center; justify-content: space-between; background: var(--card-bg, rgb(3, 2, 18)); border: 1px dashed var(--neon-border); border-radius: 12px; padding: 8px 15px; margin-top: 8px; }
         .queue-text { font-size: 15px; color: #fde047; font-weight: bold; }
         .queue-btn-next { background: #059669; color: white; border: none; padding: 8px 20px; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; }
         .queue-btn-next:active { transform: scale(0.95); }
@@ -105,7 +105,7 @@
 
                 <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
                     <div>
-                        <span style="font-size: 12px; color: #aaa;">طابور الجرد والبحث:</span><br>
+                        <span style="font-size: 12px; color: #0d0c0c;">طابور الجرد والبحث:</span><br>
                         <span id="queueStatusText" class="queue-text">--</span>
                     </div>
                     <div style="display: flex; gap: 6px;">
@@ -117,7 +117,7 @@
 
             <div class="inventory-scroll-container">
                 <div class="table-wrapper" style="max-height: none; border: none; background: transparent; box-shadow: none;">
-                    <table style="background: var(--card-bg, rgba(20, 20, 20, 0.9)); border-radius: 16px; box-shadow: 0 0 20px var(--neon-glow); border: 2px solid var(--neon-border);">
+                    <table style="background: var(--card-bg, rgb(20, 20, 20)); border-radius: 16px; box-shadow: 0 0 20px var(--neon-glow); border: 2px solid var(--neon-border);">
                         <thead>
                             <tr>
                                 <th style="text-align: right;" onclick="sortInventory('name')">المنتج ↕</th>
