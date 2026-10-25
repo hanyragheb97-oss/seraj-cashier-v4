@@ -12,8 +12,6 @@
     <link rel="stylesheet" href="style.css">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <!-- أضف هذا السطر في الـ head إذا لم يكن موجوداً -->
   
     <style>
         /* إظهار شاشة حساب العميل */
@@ -462,7 +460,7 @@
             
             if(isList) {
                 if(action === 'thermal') SerajAlert('الطباعة الحرارية غير متاحة للقائمة، افتح حساب عميل أولاً.');
-                else if(action === 'pdf_export') SerajAlert('لتصدير الـ PDF اطبع حراري وقم بالحفظ.');
+                else if(action === 'pdf_export') SerajAlert('لتصدير الـ PDF افتح حساب عميل أولاً.');
             } else {
                 if(action === 'thermal') printThermalStatement();
                 else if(action === 'pdf_export') exportPdfStatement();
@@ -472,25 +470,6 @@
         function safeLoadData() {
             if(typeof DB !== 'undefined') { customersDB = DB.getCustomers() || []; }
         }
-
-        // 🚀 الدالة القديمة تم إيقاف عملها بالكامل بناءً على تعليمات المهندس المعماري
-        // للاعتماد على التحميل الكسول وتحديث الرصيد اللحظي لرفع الأداء.
-        function recalculateCustomerBalances() {
-            console.log("تم إيقاف اللوب الثقيل. الأرصدة تعتمد الآن على التحديث اللحظي من المبيعات.");
-        }
-
-        // 🚀 دالة جديدة لتحديث رصيد العميل "المحدد فقط" بعد إجراء حركة من شاشتنا
-        function updateSingleCustomerBalance(c) {
-    if(typeof DB !== 'undefined' && typeof DB.calculateCustomerBalances === 'function') {
-        // نطلب من الداتا بيز حساب الرصيد وتحديث الكائن الحالي
-        let updatedData = DB.calculateCustomerBalances(c.id);
-        if(updatedData) {
-            Object.assign(c, updatedData); // دمج البيانات المحدثة مع الكائن الحالي
-        }
-    } else {
-        console.warn("تنبيه: دالة DB.calculateCustomerBalances غير متوفرة في db.js");
-    }
-}
 
         function switchView(viewId) {
             document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
@@ -598,8 +577,11 @@
             }
             
             if (document.getElementById('customer-account-view').classList.contains('active-view') && currentActiveCustomerId) {
-                updateAccountSummary(customersDB.find(x => x.id === currentActiveCustomerId));
-                renderAccountTransactions(customersDB.find(x => x.id === currentActiveCustomerId));
+                let activeCust = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+                if (activeCust) {
+                    updateAccountSummary(activeCust);
+                    renderAccountTransactions(activeCust);
+                }
             }
 
             const rawQuery = document.getElementById('customerSearch').value.trim().toLowerCase();
@@ -642,7 +624,7 @@
                 }
                 else if(currentSortField === 'date') {
                     let dateA = valA.lastActivityDate && valA.lastActivityDate !== '---' && valA.lastActivityDate !== 'لا يوجد' ? new Date(valA.lastActivityDate).getTime() : 0;
-                    let dateB = valB.lastActivityDate && valB.lastActivityDate !== '---' && valB.lastActivityDate !== 'لا يوجد' ? new Date(valB.lastActivityDate).getTime() : 0;
+                    let dateB = valA.lastActivityDate && valB.lastActivityDate !== '---' && valB.lastActivityDate !== 'لا يوجد' ? new Date(valB.lastActivityDate).getTime() : 0;
                     return currentSortAsc ? dateA - dateB : dateB - dateA;
                 }
                 return 0;
@@ -685,7 +667,7 @@
             }
 
             currentActiveCustomerId = id;
-            const c = customersDB.find(x => x.id === id);
+            const c = customersDB.find(x => String(x.id) === String(id));
             if(!c) return;
             document.getElementById('accountHeaderTitle').innerText = `حسابات العميل: ${c.name}`;
             if(!c.transactions) c.transactions = [];
@@ -697,7 +679,7 @@
 
         function openEditCustomerModal(id) {
             closeAllMenus();
-            let c = customersDB.find(x => x.id === id);
+            let c = customersDB.find(x => String(x.id) === String(id));
             if(!c) return;
             history.pushState({ modalOpen: true }, '');
             document.getElementById('editCustId').value = c.id;
@@ -707,9 +689,13 @@
             document.getElementById('editCustomerModal').style.display = 'flex';
         }
 
-function saveEditedCustomer(e) {
+        function saveEditedCustomer(e) {
             if(e) { e.preventDefault(); e.stopPropagation(); }
-            let id = parseFloat(document.getElementById('editCustId').value);
+            if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
+                if (!window.Utils.preventDoubleClick(e.target)) return;
+            }
+
+            let id = document.getElementById('editCustId').value;
             let c = customersDB.find(x => String(x.id) === String(id));
             if(!c) return;
             
@@ -771,11 +757,11 @@ function saveEditedCustomer(e) {
 
         async function deleteCustomer(e) {
             if(e) { e.preventDefault(); e.stopPropagation(); }
-            let id = parseFloat(document.getElementById('editCustId').value);
+            let id = document.getElementById('editCustId').value;
             let c = customersDB.find(x => String(x.id) === String(id));
             if(!c) return;
             
-            let currentBal = Math.abs(c.balance || 0);
+            let currentBal = Math.abs(c.netBalanceVal !== undefined ? c.netBalanceVal : (c.balance || 0));
             if(currentBal > 0.05) { 
                 return SerajAlert("❌ لا يمكن حذف عميل عليه أو له رصيد! قم بتصفية حسابه (الرصيد 0.00) أولاً.", "error");
             }
@@ -783,7 +769,7 @@ function saveEditedCustomer(e) {
             let isConfirmed = await SerajConfirm("هل أنت متأكد من حذف هذا العميل نهائياً؟ (سيختفي من جميع الأجهزة)");
             if(isConfirmed) {
                 if(typeof DB !== 'undefined' && typeof DB.deleteItem === 'function') {
-                    DB.deleteItem('customers', c.id, 'hard');
+                    DB.deleteItem('customers', c.id, 'soft');
                     customersDB = DB.getCustomers();
                 }
                 
@@ -799,44 +785,50 @@ function saveEditedCustomer(e) {
             document.getElementById('addCustomerModal').style.display = 'flex'; 
         }
         
-function saveNewCustomer(e) {
-    if(e) { e.preventDefault(); e.stopPropagation(); }
-    const name = document.getElementById('newCustName').value.trim();
-    const phone = document.getElementById('newCustPhone').value.trim();
-    if(!name) return SerajAlert("برجاء إدخال اسم العميل!", "error");
+        function saveNewCustomer(e) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
+                if (!window.Utils.preventDoubleClick(e.target)) return;
+            }
 
-    // 🌟 فحص ذكي ومسبق لمنع تكرار الاسم (مع توحيد الهمزات والتاء المربوطة عبر db.js) 🌟
-    let normNew = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(name) : name.toLowerCase();
-    
-    let existing = customersDB.find(x => !x.isDeleted && !x.deleted && (
-        (window.Utils && window.Utils.normalizeName) 
-            ? window.Utils.normalizeName(x.name) === normNew 
-            : x.name.trim().toLowerCase() === name.toLowerCase()
-    ));
+            const name = document.getElementById('newCustName').value.trim();
+            const phone = document.getElementById('newCustPhone').value.trim();
+            if(!name) return SerajAlert("برجاء إدخال اسم العميل!", "error");
 
-    if (existing) {
-        return SerajAlert(`⚠️ عذراً، هذا العميل مسجل مسبقاً باسم: "${existing.name}" ولا يمكن تكراره!`, "error");
-    }
+            // 🌟 فحص ذكي ومسبق لمنع تكرار الاسم (مع توحيد الهمزات والتاء المربوطة عبر db.js) 🌟
+            let normNew = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(name) : name.toLowerCase();
+            
+            let existing = customersDB.find(x => !x.isDeleted && !x.deleted && (
+                (window.Utils && window.Utils.normalizeName) 
+                    ? window.Utils.normalizeName(x.name) === normNew 
+                    : x.name.trim().toLowerCase() === name.toLowerCase()
+            ));
 
-    // إذا لم يكن موجوداً، يتم حفظه بشكل طبيعي
-    customersDB.push({ id: Date.now(), name: name, phone: phone, balance: 0, transactions: [] });
-    
-    if(typeof DB !== 'undefined') {
-        DB.saveCustomers(customersDB);
-        customersDB = DB.getCustomers();
-    }
-    
-    document.getElementById('newCustName').value = '';
-    document.getElementById('newCustPhone').value = '';
-    
-    setTimeout(() => {
-        closeModals(); 
-        renderCustomersList();
-        SerajAlert("✅ تم إضافة العميل بنجاح", "success");
-    }, 300);
-}
+            if (existing) {
+                return SerajAlert(`⚠️ عذراً، هذا العميل مسجل مسبقاً باسم: "${existing.name}" ولا يمكن تكراره!`, "error");
+            }
+
+            // إنشاء العميل بدون تعديل يدوي للرصيد (المركز يتولى الحساب)
+            let newCustId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId('CUST') : Date.now();
+            customersDB.push({ id: newCustId, name: name, phone: phone, transactions: [] });
+            
+            if(typeof DB !== 'undefined') {
+                DB.saveCustomers(customersDB);
+                customersDB = DB.getCustomers();
+            }
+            
+            document.getElementById('newCustName').value = '';
+            document.getElementById('newCustPhone').value = '';
+            
+            setTimeout(() => {
+                closeModals(); 
+                renderCustomersList();
+                SerajAlert("✅ تم إضافة العميل بنجاح", "success");
+            }, 300);
+        }
 
         function updateAccountSummary(customer) {
+            if (!customer) return;
             let currentBal = customer.displayCurrentBalance || 0;
             let defTotal = customer.deferredInvoicesTotal || 0;
             let isCurrentDebt = customer.isCurrentBalDebt !== undefined ? customer.isCurrentBalDebt : true;
@@ -887,13 +879,13 @@ function saveNewCustomer(e) {
             };
             document.getElementById('currentFilterLabel').innerHTML = labels[mode];
             closeAllMenus();
-            const c = customersDB.find(x => x.id === currentActiveCustomerId);
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
             if(c) renderAccountTransactions(c);
         }
 
         function openStatementView() {
             closeAllMenus();
-            const c = customersDB.find(x => x.id === currentActiveCustomerId);
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
             if(!c) return;
             document.getElementById('statementHeaderTitle').innerText = `كشف حساب العميل: ${c.name}`;
             renderStatementTable(c);
@@ -920,9 +912,12 @@ function saveNewCustomer(e) {
             currentStatementDuration = duration;
             document.getElementById('currentDurationLabelOutside').innerText = label;
             
-            const c = customersDB.find(x => x.id === currentActiveCustomerId);
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
             if(c) {
                 renderStatementTable(c);
+                if (document.getElementById('customer-account-view').classList.contains('active-view')) {
+                    renderAccountTransactions(c);
+                }
             }
         }
 
@@ -937,13 +932,18 @@ function saveNewCustomer(e) {
             
             setTimeout(() => {
                 closeModals();
-                const c = customersDB.find(x => x.id === currentActiveCustomerId);
-                if(c) renderStatementTable(c);
+                const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+                if(c) {
+                    renderStatementTable(c);
+                    if (document.getElementById('customer-account-view').classList.contains('active-view')) {
+                        renderAccountTransactions(c);
+                    }
+                }
             }, 300);
         }
 
-// 🌟 بناء كشف الحساب مركزياً من المحرك الرئيسي db.js 🌟
-function renderStatementTable(customer) {
+        // 🌟 بناء كشف الحساب مركزياً من المحرك الرئيسي db.js 🌟
+        function renderStatementTable(customer) {
             const tbody = document.getElementById('statementTableBody');
             tbody.innerHTML = '';
             if (!customer) return;
@@ -1016,12 +1016,13 @@ function renderStatementTable(customer) {
         function renderAccountTransactions(customer) {
             const tbody = document.getElementById('accountTransactionsTableBody');
             tbody.innerHTML = '';
+            if (!customer) return;
             
             let allSalesInvoices = [];
             if(typeof DB !== 'undefined') allSalesInvoices = DB.getSalesInvoices() || [];
             
             let customerInvoices = allSalesInvoices.filter(inv => {
-               if(String(inv.customerId) !== String(customer.id) && String(inv.customer || '').trim() !== String(customer.name || '').trim()) return false;
+                if(String(inv.customerId) !== String(customer.id) && String(inv.customer || '').trim() !== String(customer.name || '').trim()) return false;
                 if(inv.type === 'quotation') return false;
                 if(inv.isDeleted || inv.deleted || inv.status === 'deleted' || inv.type === 'deleted') return false;
                 if(inv.isCancelled || inv.isCanceled || inv.cancelled || inv.canceled || inv.status === 'cancelled' || inv.type === 'canceled') return false;
@@ -1037,10 +1038,9 @@ function renderStatementTable(customer) {
                     if (rem > 0) {
                         let totalReq = (parseFloat(inv.total) || 0) - (parseFloat(inv.discount) || 0);
                         
-                        // 🌟 إضافة تمييز المرتجع 🌟
                         let isReturn = inv.type === 'return' || inv.type === 'return_sale';
                         let invoiceTypeName = isReturn ? 'فاتورة مرتجع آجل' : 'فاتورة آجل';
-                        let badgeColor = isReturn ? '#ff1a40' : 'var(--text-main)'; // لون مميز للمرتجع
+                        let badgeColor = isReturn ? '#ff1a40' : 'var(--text-main)';
 
                         displayList.push({
                             type: 'invoice_deferred', rawObj: inv, date: inv.date,
@@ -1056,10 +1056,9 @@ function renderStatementTable(customer) {
                     let totalReq = (parseFloat(inv.total) || 0) - (parseFloat(inv.discount) || 0);
                     let remText = isDef ? `<br><span style="font-size:13px; color:#ff1a40;">(المتبقي: ${rem.toFixed(2)})</span>` : `<br><span style="font-size:13px; color:#00ff66;">(مسددة بالكامل)</span>`;
                     
-                    // 🌟 إضافة تمييز المرتجع 🌟
                     let isReturn = inv.type === 'return' || inv.type === 'return_sale';
                     let invoiceTypeName = isReturn ? '<span style="color:#ff1a40;">فاتورة مرتجع</span>' : 'فاتورة';
-                    let rowColor = isReturn ? '#ff1a40' : (isDef ? 'var(--text-main)' : '#00ff66'); // أحمر للمرتجع، عادي للآجل، أخضر للمسدد
+                    let rowColor = isReturn ? '#ff1a40' : (isDef ? 'var(--text-main)' : '#00ff66');
 
                     displayList.push({
                         type: isDef ? 'invoice_deferred' : 'invoice', rawObj: inv, date: inv.date,
@@ -1072,7 +1071,6 @@ function renderStatementTable(customer) {
                 let vouchers = customer.transactions || [];
                 vouchers.forEach(t => {
                     if(t.type === 'log') {
-                        // إظهار الملاحظات السجلية
                         displayList.push({
                             type: 'log', rawObj: t, date: t.date,
                             title: `📝 ملاحظة سجل <br><span style="font-size:12px; color:#a855f7;">(${t.notes})</span>`,
@@ -1167,7 +1165,6 @@ function renderStatementTable(customer) {
                         </div>
                     `;
                 } else if (item.type === 'log') {
-                    // السجلات ليس لها قوائم منسدلة للحذف والتعديل
                     menuHtml = '';
                 }
 
@@ -1193,18 +1190,19 @@ function renderStatementTable(customer) {
         }
 
         function exportExcel() {
-    closeAllMenus();
-    if (document.getElementById('customers-list-view').classList.contains('active-view')) {
-        // تصدير قائمة العملاء
-        PrintManager.exportToExcel(customersDB, 'customers_list');
-    } else {
-        // تصدير كشف حساب العميل الحالي
-        const c = customersDB.find(x => x.id === currentActiveCustomerId);
-        if(!c) return SerajAlert("لم يتم تحديد عميل!");
-        // يفترض أن PrintManager لديها دالة مجهزة لاستلام بيانات الكشف
-        PrintManager.exportStatementToExcel(c); 
-    }
-}
+            closeAllMenus();
+            if (document.getElementById('customers-list-view').classList.contains('active-view')) {
+                if (typeof PrintManager !== 'undefined' && typeof PrintManager.exportToExcel === 'function') {
+                    PrintManager.exportToExcel(customersDB, 'customers_list');
+                }
+            } else {
+                const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+                if(!c) return SerajAlert("لم يتم تحديد عميل!");
+                if (typeof PrintManager !== 'undefined' && typeof PrintManager.exportStatementToExcel === 'function') {
+                    PrintManager.exportStatementToExcel(c);
+                }
+            }
+        }
 
         function triggerExcelImport() {
             closeAllMenus();
@@ -1229,15 +1227,23 @@ function renderStatementTable(customer) {
                         json.forEach(item => {
                             let name = String(item["العميل"] || item["اسم العميل"] || item["الاسم"] || item["name"] || "").trim();
                             let phone = String(item["الموبايل"] || item["رقم الموبايل"] || item["phone"] || "").trim();
-                            let balance = parseFloat(item["الرصيد النهائي"] || item["الرصيد"] || item["balance"]) || 0; 
+                            let openingDebt = parseFloat(item["الرصيد النهائي"] || item["الرصيد"] || item["balance"]) || 0; 
                             
                             if(name && name !== "" && name !== "undefined") {
-                                let exists = customersDB.find(c => c.name === name);
+                                let normNew = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(name) : name.toLowerCase();
+                                let exists = customersDB.find(c => !c.isDeleted && ((window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(c.name) === normNew : c.name.trim().toLowerCase() === normNew));
                                 if(!exists) {
+                                    let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId('CUST') : (Date.now() + Math.floor(Math.random() * 1000));
+                                    let initTx = [];
+                                    if (openingDebt > 0) {
+                                        let txId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId('REC') : Date.now();
+                                        initTx.push({ id: txId, type: 'payment', amount: openingDebt, date: new Date().toISOString().split('T')[0], notes: 'رصيد افتتاحي إكسيل' });
+                                    }
                                     customersDB.push({
-                                        id: Date.now() + Math.random(),
-                                        name: name, phone: phone, balance: balance,
-                                        transactions: balance > 0 ? [{id: Date.now(), type: 'payment', amount: balance, date: new Date().toISOString().split('T')[0], notes: 'رصيد افتتاحي إكسيل'}] : []
+                                        id: newId,
+                                        name: name,
+                                        phone: phone,
+                                        transactions: initTx
                                     });
                                     importedCount++;
                                 }
@@ -1245,9 +1251,12 @@ function renderStatementTable(customer) {
                         });
                         
                         if(importedCount > 0) {
-                            if(typeof DB !== 'undefined') DB.saveCustomers(customersDB);
+                            if(typeof DB !== 'undefined') {
+                                DB.saveCustomers(customersDB);
+                                customersDB = DB.getCustomers();
+                            }
                             renderCustomersList();
-                            SerajAlert(`تم استيراد ${importedCount} عميل بنجاح!`);
+                            SerajAlert(`تم استيراد ${importedCount} عميل بنجاح!`, "success");
                         } else {
                             SerajAlert("لم يتم استيراد أي عملاء. قد يكونوا مسجلين مسبقاً أو الأسماء غير مكتوبة في العمود الصحيح.");
                         }
@@ -1256,43 +1265,117 @@ function renderStatementTable(customer) {
                     }
                 } catch(e) {
                     console.error("Import Error:", e);
-                    SerajAlert("حدث خطأ أثناء قراءة ملف الإكسيل، تأكد من صحة الأعمدة.");
+                    SerajAlert("حدث خطأ أثناء قراءة ملف الإكسيل، تأكد من صحة الأعمدة.", "error");
                 }
             };
             reader.readAsArrayBuffer(file);
         }
 
+        // 🌟 تصدير كشف الحساب بصيغة A4 PDF عبر الدالة المركزية window.Utils.downloadRealPDF 🌟
         function exportPdfStatement() {
-    if(typeof closeAllMenus === 'function') closeAllMenus();
-    
-    if(!currentActiveCustomerId) {
-        return typeof SerajAlert === 'function' ? SerajAlert("لم يتم تحديد عميل!", "error") : alert("لم يتم تحديد عميل!");
-    }
+            if(typeof closeAllMenus === 'function') closeAllMenus();
+            
+            if(!currentActiveCustomerId) {
+                return typeof SerajAlert === 'function' ? SerajAlert("لم يتم تحديد عميل!", "error") : null;
+            }
 
-    // جلب كائن العميل بالكامل
-    const currentCustomerObject = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
-    if(!currentCustomerObject) return;
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+            if(!c) return;
 
-    // جلب النص الخاص بالفترة المحددة من الواجهة
-    let durationText = document.getElementById('currentDurationLabelOutside') ? document.getElementById('currentDurationLabelOutside').innerText : "الفترة المحددة";
+            // التأكد من بناء جدول كشف الحساب بأحدث البيانات المركزية قبل التصدير
+            renderStatementTable(c);
 
-    // توجيه البيانات لملف الطباعة المركزي (false تعني صفحة عملاء)
-    if (typeof PrintManager !== 'undefined') {
-        PrintManager.exportStatementToPDF(currentCustomerObject, durationText, "statementTableBody", false);
-    } else { 
-        typeof SerajAlert === 'function' ? SerajAlert("ملف الطباعة غير متصل (print_manager.js).", "error") : alert("ملف الطباعة غير متصل."); 
-    }
-}
+            let durationText = document.getElementById('currentDurationLabelOutside') ? document.getElementById('currentDurationLabelOutside').innerText : "الفترة المحددة";
+            let fileName = 'Statement_' + c.name.trim().replace(/\s+/g, '_');
+
+            // إذا كانت الدالة المركزية downloadRealPDF متوفرة في window.Utils نعتمد عليها مباشرة
+            if (window.Utils && typeof window.Utils.downloadRealPDF === 'function') {
+                let tableRows = document.querySelectorAll('#statementTableBody tr');
+                let rowsHtml = '';
+
+                tableRows.forEach(tr => {
+                    let cells = tr.querySelectorAll('td');
+                    if (cells.length === 1) {
+                        rowsHtml += `<tr><td colspan="4" style="text-align:center; font-weight:bold; padding:10px; border:1px solid #000; color:#000;">${cells[0].innerText.trim()}</td></tr>`;
+                    } else if (cells.length === 4) {
+                        let titleText = cells[0].querySelector('div:first-child') ? cells[0].querySelector('div:first-child').innerText.trim() : cells[0].innerText.split('\n')[0].trim();
+                        let dateText = cells[0].querySelector('div:nth-child(2)') ? cells[0].querySelector('div:nth-child(2)').innerText.trim() : '';
+                        let notesHtml = cells[1].innerText.trim();
+                        let aleihVal = cells[2].innerText.trim();
+                        let lehVal = cells[3].innerText.trim();
+
+                        rowsHtml += `
+                        <tr>
+                            <td style="text-align:right; padding:8px; border:1px solid #000; color:#000;"><strong>${titleText}</strong><br><span style="font-size:11px; color:#444;">${dateText}</span></td>
+                            <td style="text-align:center; padding:8px; border:1px solid #000; color:#000;">${notesHtml}</td>
+                            <td style="text-align:center; font-weight:bold; padding:8px; border:1px solid #000; color:#cc0000;">${aleihVal}</td>
+                            <td style="text-align:center; font-weight:bold; padding:8px; border:1px solid #000; color:#008800;">${lehVal}</td>
+                        </tr>`;
+                    } else if (cells.length === 3) {
+                        rowsHtml += `
+                        <tr style="background:#f3f4f6;">
+                            <td colspan="2" style="text-align:right; font-weight:bold; padding:10px; border:1px solid #000; color:#000;">${cells[0].innerText.trim()}</td>
+                            <td style="text-align:center; font-weight:bold; padding:10px; border:1px solid #000; color:#cc0000;">${cells[1].innerText.trim()}</td>
+                            <td style="text-align:center; font-weight:bold; padding:10px; border:1px solid #000; color:#008800;">${cells[2].innerText.trim()}</td>
+                        </tr>`;
+                    } else if (cells.length === 2) {
+                        rowsHtml += `
+                        <tr style="background:#e5e7eb;">
+                            <td colspan="2" style="text-align:right; font-size:16px; font-weight:bold; padding:12px; border:1px solid #000; color:#000;">${cells[0].innerText.trim()}</td>
+                            <td colspan="2" style="text-align:center; font-size:17px; font-weight:bold; padding:12px; border:1px solid #000; color:#000;">${cells[1].innerText.trim()}</td>
+                        </tr>`;
+                    }
+                });
+
+                let htmlString = `
+                <div dir="rtl" style="background:#fff; color:#000; padding:20px; font-family:Arial, sans-serif; width:100%; box-sizing:border-box;">
+                    <div style="text-align:center; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:15px;">
+                        <h2 style="margin:0; font-size:24px; color:#000;">سراج LED</h2>
+                        <div style="font-size:16px; font-weight:bold; margin-top:4px; color:#000;">كشف حساب تفصيلي للعميل</div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; border:1px solid #000; padding:10px; margin-bottom:15px; font-size:14px; background:#f9fafb;">
+                        <div>
+                            <div><strong>اسم العميل:</strong> ${c.name}</div>
+                            <div style="margin-top:4px;"><strong>رقم الموبايل:</strong> ${c.phone || '---'}</div>
+                        </div>
+                        <div style="text-align:left;">
+                            <div><strong>تاريخ الكشف:</strong> ${new Date().toISOString().split('T')[0]}</div>
+                            <div style="margin-top:4px;"><strong>الفترة:</strong> ${durationText}</div>
+                        </div>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                        <thead>
+                            <tr style="background:#e5e7eb;">
+                                <th style="border:1px solid #000; padding:8px; text-align:right; width:35%; color:#000;">البيان والتاريخ</th>
+                                <th style="border:1px solid #000; padding:8px; text-align:center; width:35%; color:#000;">الملاحظات</th>
+                                <th style="border:1px solid #000; padding:8px; text-align:center; width:15%; color:#cc0000;">عليه (مديونية)</th>
+                                <th style="border:1px solid #000; padding:8px; text-align:center; width:15%; color:#008800;">له (تسديد)</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>`;
+
+                window.Utils.downloadRealPDF(htmlString, fileName);
+            } else if (typeof PrintManager !== 'undefined' && typeof PrintManager.exportStatementToPDF === 'function') {
+                PrintManager.exportStatementToPDF(c, durationText, "statementTableBody", false);
+            } else { 
+                SerajAlert("دالة تصدير الـ PDF المركزية غير متصلة.", "error"); 
+            }
+        }
 
         function printThermalStatement() { 
             closeAllMenus(); 
-            const c = customersDB.find(x => x.id === currentActiveCustomerId);
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
             if(c) {
+                renderStatementTable(c);
                 document.getElementById('printCustomerName').innerText = `العميل: ${c.name}`;
                 document.getElementById('printDate').innerText = `التاريخ: ${new Date().toISOString().slice(0,10)}`;
                 let tbody = document.getElementById('statementTableBody');
                 document.getElementById('printItemsContainer').innerHTML = tbody.innerHTML;
-                document.getElementById('printTotalBalance').innerText = `الرصيد النهائي (الصافي): ${(c.balance||0).toFixed(2)}`;
+                let netVal = c.netBalanceVal || 0;
+                let netState = netVal > 0 ? (c.isNetDebt ? `عليه ${netVal.toFixed(2)}` : `له ${netVal.toFixed(2)}`) : '0.00';
+                document.getElementById('printTotalBalance').innerText = `الرصيد النهائي (الصافي): ${netState}`;
                 window.print(); 
             } else {
                 window.print();
@@ -1314,262 +1397,257 @@ function renderStatementTable(customer) {
             document.getElementById('invoicePaymentModal').style.display = 'flex';
         }
 
- 
-// ==========================================
-// 1. دالة التحصيل من داخل الفاتورة مباشرة (محدثة بالمعيار الذهبي)
-// ==========================================
-function confirmInvoicePayment(e) {
-    if(e) { e.preventDefault(); e.stopPropagation(); }
-    
-    // 1. حماية الزر من النقر المزدوج
-    if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
-        if (!window.Utils.preventDoubleClick(e.target)) return;
-    }
-
-    if(!activeSelectedInvoice) return;
-    let inv = activeSelectedInvoice.rawObj;
-    let rem = parseFloat(inv.remaining) || 0;
-    let maxRem = rem || ((parseFloat(inv.total)||0) - (parseFloat(inv.discount)||0));
-    
-    let pAmount = Math.max(0, parseFloat(document.getElementById('payModalAmountInput').value) || 0);
-    let customNotes = document.getElementById('payModalNotesInput').value.trim();
-    let date = document.getElementById('payModalDateInput').value;
-    let treasuryKey = document.getElementById('payModalTreasurySelect').value;
-
-    if(pAmount <= 0 || pAmount > maxRem) return SerajAlert("أدخل مبلغ صحيح لا يتجاوز المتبقي!");
-
-    const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
-    if(!c) return;
-
-    // 2. توليد المعرّف المركزي
-    let receiptId = window.Utils.generateUniqueId('REC');
-    let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
-    let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `تحصيل فاتورة رقم ${inv.id}`;
-    let allocatedInvoices = [{ id: inv.id, deducted: pAmount }];
-
-    if(!c.transactions) c.transactions = [];
-    c.lastActivityDate = date || new Date().toISOString().split('T')[0];
-
-    // بناء السند
-    let newTx = { 
-        id: receiptId, 
-        type: 'receipt', 
-        amount: pAmount, 
-        notes: notes, 
-        treasury: treasuryKey, 
-        date: date, 
-        _device: dName, 
-        _lastModifiedBy: dName, 
-        allocatedInvoices: allocatedInvoices 
-    };
-
-    // 3. إضافة السند للمصفوفة المفتوحة
-    c.transactions.push(newTx);
-    
-    if(typeof DB !== 'undefined') {
-        // (الحفاظ على منطق تسديد الفاتورة نفسها في المبيعات)
-        let salesInvoices = DB.getSalesInvoices() || [];
-        let invIndex = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
-        if(invIndex !== -1) {
-            let savedInv = salesInvoices[invIndex];
-            let currentPaid = parseFloat(savedInv.paid) || 0;
-            let totalReq = (parseFloat(savedInv.total)||0) - (parseFloat(savedInv.discount)||0);
-            let newPaid = currentPaid + pAmount;
-            let newRem = totalReq - newPaid;
-
-            savedInv.paid = newPaid;
-            savedInv.remaining = newRem > 0 ? newRem : 0;
-            if(savedInv.remaining <= 0 && savedInv.type === 'delayed') {
-                savedInv.type = 'sales'; 
+        // ==========================================
+        // 1. دالة التحصيل من داخل الفاتورة مباشرة (محدثة بمعمارية V4 Clean)
+        // ==========================================
+        function confirmInvoicePayment(e) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            
+            // 1. حماية الزر من النقر المزدوج
+            if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
+                if (!window.Utils.preventDoubleClick(e.target)) return;
             }
-            salesInvoices[invIndex] = savedInv;
-            DB.saveSalesInvoices(salesInvoices);
-        }
 
-// 4. حفظ العميل أولاً لضمان عدم ضياع السند عند المزامنة
-DB.saveCustomers(customersDB);
-
-// 5. الإرسال للخزينة بالرقم المنسق عبر المحرك المركزي مع تمرير الاسم والـ ID صراحةً
-if (typeof DB.recordTreasuryTransaction === 'function') {
-    DB.recordTreasuryTransaction({
-        id: String(receiptId),
-        type: 'customer_receipt',
-        vault: treasuryKey,
-        amountAdd: pAmount,
-        amountDeduct: 0,
-        notes: `سند تحصيل رقم ${receiptId} من العميل: ${c.name.trim()} (${notes})`,
-        date: date,
-        invoiceNo: String(receiptId),
-        _device: dName,
-        customerId: String(c.id),
-        customer: c.name.trim()
-    });
-}
-
-// 6. سحب الأرصدة المحسوبة النهائية من المركز
-customersDB = DB.getCustomers();
-    }
-
-let lastScroll = window.scrollY;
-    setTimeout(() => {
-        closeModals();
-        
-        // 6. البحث عن العميل المحدث (ولو تم دمجه نغير الأي دي للأساسي عشان الشاشة ماتضربش)
-        let updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
-        if (!updatedCustomer && c && c.name) {
-            updatedCustomer = customersDB.find(x => (window.Utils && window.Utils.normalizeName ? window.Utils.normalizeName(x.name) === window.Utils.normalizeName(c.name) : x.name === c.name));
-            if (updatedCustomer) currentActiveCustomerId = updatedCustomer.id;
-        }
-
-        if (updatedCustomer) {
-            updateAccountSummary(updatedCustomer);
-            renderAccountTransactions(updatedCustomer);
-        }
-        
-        window.scrollTo(0, lastScroll);
-        SerajAlert(`تم الإجراء بنجاح!`);
-    }, 300);
-}
-
-
-// ==========================================
-// 2. دالة إضافة سند عام (محدثة بالمعيار الذهبي)
-// ==========================================
-function saveTransaction(e) {
-    if(e) { e.preventDefault(); e.stopPropagation(); }
-    
-    if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
-        if (!window.Utils.preventDoubleClick(e.target)) return;
-    }
-
-    let c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
-    if(!c) return SerajAlert("لم يتم تحديد عميل!");
-    
-    let amount = Math.max(0, parseFloat(document.getElementById('transAmount').value) || 0);
-    let notes = document.getElementById('transNotes').value.trim();
-    let date = document.getElementById('transDate').value || new Date().toISOString().split('T')[0];
-    let treasuryKey = document.getElementById('transTreasurySelect').value; 
-    let txType = document.querySelector('input[name="transType"]:checked').value;
-
-    if(amount <= 0) return SerajAlert("أدخل مبلغ صحيح!");
-    if(!c.transactions) c.transactions = [];
-
-    let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') 
-        ? window.Utils.generateUniqueId('REC') 
-        : Date.now().toString();
-        
-    let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
-    let allocatedInvoices = [];
-
-    let newTx = { 
-        id: receiptId, 
-        type: txType, 
-        amount: amount, 
-        notes: notes, 
-        treasury: treasuryKey, 
-        date: date, 
-        _device: dName, 
-        _lastModifiedBy: dName 
-    };
-    
-    if(typeof DB !== 'undefined') {
-        let salesInvoices = DB.getSalesInvoices() || [];
-        let updatedInvoices = false;
-        
-        // التوزيع الذكي: يخصم الديون النقدية أولاً ثم الفواتير الآجلة الأقدم فالأحدث
-        if (txType === 'receipt') {
-            let remainingReceipt = amount;
-            let cNameClean = String(c.name || '').trim();
-            let cInvs = salesInvoices.filter(x => x && !x.isCanceled && x.type !== 'canceled' && !x.isDeleted && (String(x.customerId) === String(c.id) || String(x.customer || '').trim() === cNameClean) && (parseFloat(x.remaining) || 0) > 0 && x.type !== 'return' && x.type !== 'return_sale');
-            cInvs.sort((a, b) => new Date(a.date) - new Date(b.date)); 
+            if(!activeSelectedInvoice) return;
+            let inv = activeSelectedInvoice.rawObj;
+            let rem = parseFloat(inv.remaining) || 0;
+            let maxRem = rem || ((parseFloat(inv.total)||0) - (parseFloat(inv.discount)||0));
             
-            let totalDeferred = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.remaining) || 0), 0);
-            let currentNetDebt = c.isNetDebt ? (c.netBalanceVal || 0) : -(c.netBalanceVal || 0);
-            let cashDebt = Math.max(0, currentNetDebt - totalDeferred);
+            let pAmount = Math.max(0, parseFloat(document.getElementById('payModalAmountInput').value) || 0);
+            let customNotes = document.getElementById('payModalNotesInput').value.trim();
+            let date = document.getElementById('payModalDateInput').value || new Date().toISOString().split('T')[0];
+            let treasuryKey = document.getElementById('payModalTreasurySelect').value;
+
+            if(pAmount <= 0 || pAmount > maxRem) return SerajAlert("أدخل مبلغ صحيح لا يتجاوز المتبقي!");
+
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+            if(!c) return;
+
+            // 2. توليد المعرّف المركزي
+            let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId('REC') : Date.now().toString();
+            let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
+            let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `تحصيل فاتورة رقم ${inv.id}`;
+            let allocatedInvoices = [{ id: inv.id, deducted: pAmount }];
+
+            if(!c.transactions) c.transactions = [];
+            c.lastActivityDate = date;
+
+            // بناء السند
+            let newTx = { 
+                id: receiptId, 
+                type: 'receipt', 
+                amount: pAmount, 
+                notes: notes, 
+                treasury: treasuryKey, 
+                date: date, 
+                _device: dName, 
+                _lastModifiedBy: dName, 
+                allocatedInvoices: allocatedInvoices 
+            };
+
+            // 3. إضافة السند لمصفوفة العميل
+            c.transactions.push(newTx);
             
-            if (cashDebt > 0) {
-                if (remainingReceipt >= cashDebt) remainingReceipt -= cashDebt;
-                else remainingReceipt = 0;
+            if(typeof DB !== 'undefined') {
+                let salesInvoices = DB.getSalesInvoices() || [];
+                let invIndex = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
+                if(invIndex !== -1) {
+                    let savedInv = salesInvoices[invIndex];
+                    let currentPaid = parseFloat(savedInv.paid) || 0;
+                    let totalReq = (parseFloat(savedInv.total)||0) - (parseFloat(savedInv.discount)||0);
+                    let newPaid = currentPaid + pAmount;
+                    let newRem = totalReq - newPaid;
+
+                    savedInv.paid = newPaid;
+                    savedInv.remaining = newRem > 0 ? newRem : 0;
+                    if(savedInv.remaining <= 0 && savedInv.type === 'delayed') {
+                        savedInv.type = 'sales'; 
+                    }
+                    salesInvoices[invIndex] = savedInv;
+                    DB.saveSalesInvoices(salesInvoices);
+                }
+
+                // 4. حفظ العميل أولاً لضمان عدم ضياع السند عند المزامنة
+                DB.saveCustomers(customersDB);
+
+                // 5. الإرسال للخزينة بالرقم المنسق عبر المحرك المركزي مع تمرير الاسم والـ ID صراحةً
+                if (typeof DB.recordTreasuryTransaction === 'function') {
+                    DB.recordTreasuryTransaction({
+                        id: String(receiptId),
+                        type: 'customer_receipt',
+                        vault: treasuryKey,
+                        amountAdd: pAmount,
+                        amountDeduct: 0,
+                        notes: `سند تحصيل رقم ${receiptId} من العميل: ${c.name.trim()} (${notes})`,
+                        date: date,
+                        invoiceNo: String(receiptId),
+                        _device: dName,
+                        customerId: String(c.id),
+                        customer: c.name.trim()
+                    });
+                }
+
+                // 6. سحب الأرصدة المحسوبة النهائية من المركز
+                customersDB = DB.getCustomers();
             }
-            
-            if (remainingReceipt > 0 && cInvs.length > 0) {
-                let appliedInvoicesText = '';
+
+            let lastScroll = window.scrollY;
+            setTimeout(() => {
+                closeModals();
                 
-                for (let i = 0; i < cInvs.length; i++) {
-                    if (remainingReceipt <= 0) break;
-                    let inv = cInvs[i];
-                    let rem = parseFloat(inv.remaining) || 0;
+                let updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+                if (!updatedCustomer && c && c.name) {
+                    updatedCustomer = customersDB.find(x => (window.Utils && window.Utils.normalizeName ? window.Utils.normalizeName(x.name) === window.Utils.normalizeName(c.name) : x.name === c.name));
+                    if (updatedCustomer) currentActiveCustomerId = updatedCustomer.id;
+                }
+
+                if (updatedCustomer) {
+                    updateAccountSummary(updatedCustomer);
+                    renderAccountTransactions(updatedCustomer);
+                }
+                
+                window.scrollTo(0, lastScroll);
+                SerajAlert(`تم الإجراء بنجاح!`);
+            }, 300);
+        }
+
+        // ==========================================
+        // 2. دالة إضافة سند عام (محدثة بمعمارية V4 Clean)
+        // ==========================================
+        function saveTransaction(e) {
+            if(e) { e.preventDefault(); e.stopPropagation(); }
+            
+            if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
+                if (!window.Utils.preventDoubleClick(e.target)) return;
+            }
+
+            let c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+            if(!c) return SerajAlert("لم يتم تحديد عميل!");
+            
+            let amount = Math.max(0, parseFloat(document.getElementById('transAmount').value) || 0);
+            let notes = document.getElementById('transNotes').value.trim();
+            let date = document.getElementById('transDate').value || new Date().toISOString().split('T')[0];
+            let treasuryKey = document.getElementById('transTreasurySelect').value; 
+            let txType = document.querySelector('input[name="transType"]:checked').value;
+
+            if(amount <= 0) return SerajAlert("أدخل مبلغ صحيح!");
+            if(!c.transactions) c.transactions = [];
+
+            let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') 
+                ? window.Utils.generateUniqueId('REC') 
+                : Date.now().toString();
+                
+            let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
+            let allocatedInvoices = [];
+
+            let newTx = { 
+                id: receiptId, 
+                type: txType, 
+                amount: amount, 
+                notes: notes, 
+                treasury: treasuryKey, 
+                date: date, 
+                _device: dName, 
+                _lastModifiedBy: dName 
+            };
+            
+            if(typeof DB !== 'undefined') {
+                let salesInvoices = DB.getSalesInvoices() || [];
+                let updatedInvoices = false;
+                
+                // التوزيع الذكي: يخصم الديون النقدية أولاً ثم الفواتير الآجلة الأقدم فالأحدث
+                if (txType === 'receipt') {
+                    let remainingReceipt = amount;
+                    let cNameClean = String(c.name || '').trim();
+                    let cInvs = salesInvoices.filter(x => x && !x.isCanceled && x.type !== 'canceled' && !x.isDeleted && (String(x.customerId) === String(c.id) || String(x.customer || '').trim() === cNameClean) && (parseFloat(x.remaining) || 0) > 0 && x.type !== 'return' && x.type !== 'return_sale');
+                    cInvs.sort((a, b) => new Date(a.date) - new Date(b.date)); 
                     
-                    if (rem > 0) {
-                        let deduction = Math.round(Math.min(rem, remainingReceipt) * 100) / 100;
-                        inv.paid = Math.round(((parseFloat(inv.paid) || 0) + deduction) * 100) / 100;
-                        inv.remaining = Math.round((rem - deduction) * 100) / 100;
-                        remainingReceipt = Math.round((remainingReceipt - deduction) * 100) / 100;
+                    let totalDeferred = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.remaining) || 0), 0);
+                    let currentNetDebt = c.isNetDebt ? (c.netBalanceVal || 0) : -(c.netBalanceVal || 0);
+                    let cashDebt = Math.max(0, currentNetDebt - totalDeferred);
+                    
+                    if (cashDebt > 0) {
+                        if (remainingReceipt >= cashDebt) remainingReceipt -= cashDebt;
+                        else remainingReceipt = 0;
+                    }
+                    
+                    if (remainingReceipt > 0 && cInvs.length > 0) {
+                        let appliedInvoicesText = '';
                         
-                        allocatedInvoices.push({ id: inv.id, deducted: deduction });
+                        for (let i = 0; i < cInvs.length; i++) {
+                            if (remainingReceipt <= 0) break;
+                            let inv = cInvs[i];
+                            let rem = parseFloat(inv.remaining) || 0;
+                            
+                            if (rem > 0) {
+                                let deduction = Math.round(Math.min(rem, remainingReceipt) * 100) / 100;
+                                inv.paid = Math.round(((parseFloat(inv.paid) || 0) + deduction) * 100) / 100;
+                                inv.remaining = Math.round((rem - deduction) * 100) / 100;
+                                remainingReceipt = Math.round((remainingReceipt - deduction) * 100) / 100;
+                                
+                                allocatedInvoices.push({ id: inv.id, deducted: deduction });
+                                
+                                if (inv.remaining <= 0) inv.type = 'sales'; 
+                                
+                                let mainIdx = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
+                                if (mainIdx !== -1) salesInvoices[mainIdx] = inv;
+                                updatedInvoices = true;
+                                
+                                appliedInvoicesText += (appliedInvoicesText ? `، ${inv.id}` : `سداد فواتير: ${inv.id}`);
+                            }
+                        }
                         
-                        if (inv.remaining <= 0) inv.type = 'sales'; 
-                        
-                        let mainIdx = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
-                        if (mainIdx !== -1) salesInvoices[mainIdx] = inv;
-                        updatedInvoices = true;
-                        
-                       appliedInvoicesText += (appliedInvoicesText ? `، ${inv.id}` : `سداد فواتير: ${inv.id}`);
+                        if (appliedInvoicesText) {
+                            newTx.notes = (newTx.notes ? newTx.notes + ' ' : '') + appliedInvoicesText.trim();
+                        }
                     }
                 }
+
+                newTx.allocatedInvoices = allocatedInvoices;
+                c.lastActivityDate = date;
                 
-                if (appliedInvoicesText) {
-                    newTx.notes = (newTx.notes ? newTx.notes + ' ' : '') + appliedInvoicesText.trim();
+                // 1. إضافة السند لملف العميل وحفظ العميل أولاً
+                c.transactions.push(newTx);
+                DB.saveCustomers(customersDB);
+
+                // 2. حفظ الفواتير المحدثة ثانياً
+                if (updatedInvoices) {
+                    DB.saveSalesInvoices(salesInvoices);
                 }
+
+                // 3. تسجيل حركة الخزينة ثالثاً عبر المركز
+                if (typeof DB.recordTreasuryTransaction === 'function') {
+                    DB.recordTreasuryTransaction({
+                        id: String(receiptId), 
+                        type: txType === 'receipt' ? 'customer_receipt' : 'customer_payment',
+                        vault: treasuryKey, 
+                        amountAdd: txType === 'receipt' ? amount : 0, 
+                        amountDeduct: txType === 'payment' ? amount : 0,
+                        notes: `سند ${txType === 'receipt' ? 'تحصيل' : 'سحب'} رقم ${receiptId}: ${c.name.trim()} - ${newTx.notes}`, 
+                        date: date, 
+                        invoiceNo: String(receiptId), 
+                        _device: dName, 
+                        customerId: String(c.id),
+                        customer: c.name.trim()
+                    });
+                }
+
+                // 4. سحب الأرصدة المحسوبة النهائية من المركز
+                customersDB = DB.getCustomers();
             }
+
+            let lastScroll = window.scrollY;
+            setTimeout(() => {
+                closeModals();
+                const updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+                if (updatedCustomer) {
+                    updateAccountSummary(updatedCustomer);
+                    renderAccountTransactions(updatedCustomer);
+                }
+                window.scrollTo(0, lastScroll);
+                SerajAlert(`تم حفظ السند بنجاح! \n رقم السند: ${receiptId}`);
+            }, 200);
         }
-
-        newTx.allocatedInvoices = allocatedInvoices;
-        c.lastActivityDate = date;
-        
-        // 🌟 الترتيب المحاسبي الصحيح لمنع الخصم المزدوج أو ضياع السند 🌟
-        // 1. نضيف السند لملف العميل ونحفظ العميل أولاً في localStorage!
-        c.transactions.push(newTx);
-        DB.saveCustomers(customersDB);
-
-        // 2. نحفظ الفواتير المحدثة ثانياً (بعد أن أصبح السند محفوظاً في ملف العميل)
-        if (updatedInvoices) {
-            DB.saveSalesInvoices(salesInvoices);
-        }
-
-        // 3. نسجل حركة الخزينة ثالثاً
-        if (typeof DB.recordTreasuryTransaction === 'function') {
-            DB.recordTreasuryTransaction({
-                id: String(receiptId), 
-                type: txType === 'receipt' ? 'customer_receipt' : 'customer_payment',
-                vault: treasuryKey, 
-                amountAdd: txType === 'receipt' ? amount : 0, 
-                amountDeduct: txType === 'payment' ? amount : 0,
-                notes: `سند ${txType === 'receipt' ? 'تحصيل' : 'سحب'} رقم ${receiptId}: ${c.name.trim()} - ${newTx.notes}`, 
-                date: date, 
-                invoiceNo: String(receiptId), 
-                _device: dName, 
-                customerId: String(c.id),
-                customer: c.name.trim()
-            });
-        }
-
-        // 4. نسحب الأرصدة المحسوبة النهائية
-        customersDB = DB.getCustomers();
-    }
-
-    let lastScroll = window.scrollY;
-    setTimeout(() => {
-        closeModals();
-        const updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
-        if (updatedCustomer) {
-            updateAccountSummary(updatedCustomer);
-            renderAccountTransactions(updatedCustomer);
-        }
-        window.scrollTo(0, lastScroll);
-        SerajAlert(`تم حفظ السند بنجاح! \n رقم السند: ${receiptId}`);
-    }, 200);
-}
 
         function openViewModalFromOpt(e) {
             if(e) { e.preventDefault(); e.stopPropagation(); }
@@ -1709,7 +1787,7 @@ function saveTransaction(e) {
                 }
                 if(invoicesChanged) DB.saveSalesInvoices(salesInvoices);
 
-                // 3. مسح الحركة من الخزينة والسحابة نهائياً عبر المركز
+                // 3. مسح الحركة من الخزينة والسحابة عبر المركز
                 if (typeof DB.deleteItem === 'function') {
                     DB.deleteItem('treasury_moves', String(v.id), 'hard');
                 }
@@ -1834,7 +1912,7 @@ function saveTransaction(e) {
                 // 4. حفظ الفواتير إن تغيرت
                 if (invoicesChanged) DB.saveSalesInvoices(salesInvoices);
 
-                // 5. تحديث حركة الخزينة مركزياً (حذف القديمة وتسجيل الجديدة)
+                // 5. تحديث حركة الخزينة مركزياً
                 if (typeof DB.deleteItem === 'function') {
                     DB.deleteItem('treasury_moves', String(v.id), 'hard');
                 }
@@ -1885,12 +1963,9 @@ function saveTransaction(e) {
             setTimeout(() => document.getElementById('transAmount').focus(), 100);
         }
 
-
-
         window.onload = () => {
             if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme();
             safeLoadData();
-            // تم إيقاف الدالة الثقيلة
             renderCustomersList();
             
             let outLabel = document.getElementById('currentDurationLabelOutside');
@@ -1918,7 +1993,7 @@ function saveTransaction(e) {
         });
     </script>
 
-    <!-- ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+    <!-- ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة + رادار المزامنة المركزي -->
     <script>
         window.addEventListener('popstate', function(event) {
             if (typeof goBackSmart === 'function') {
@@ -1927,19 +2002,21 @@ function saveTransaction(e) {
         });
 
         window.addEventListener('seraj:updated', (e) => {
-    // تحديث القائمة الصامت بدون إزعاج المستخدم
-    if (typeof safeLoadData === 'function') safeLoadData();
-    if (typeof renderCustomersList === 'function') renderCustomersList();
+            if (typeof safeLoadData === 'function') safeLoadData();
+            if (typeof renderCustomersList === 'function') renderCustomersList();
 
-    // تحديث كشف الحساب إذا كان مفتوحاً
-    if (currentActiveCustomerId && document.getElementById('customer-account-view').classList.contains('active-view')) {
-        const updatedCustomer = customersDB.find(x => x.id === currentActiveCustomerId);
-        if (updatedCustomer) {
-            updateAccountSummary(updatedCustomer);
-            renderAccountTransactions(updatedCustomer);
-        }
-    }
-});        
+            if (currentActiveCustomerId) {
+                const updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+                if (updatedCustomer) {
+                    if (document.getElementById('customer-account-view').classList.contains('active-view')) {
+                        updateAccountSummary(updatedCustomer);
+                        renderAccountTransactions(updatedCustomer);
+                    } else if (document.getElementById('customer-statement-view').classList.contains('active-view')) {
+                        renderStatementTable(updatedCustomer);
+                    }
+                }
+            }
+        });        
     </script>
 </body> 
 </html>
