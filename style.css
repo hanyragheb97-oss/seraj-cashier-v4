@@ -79,7 +79,7 @@ html, body {
 .mic-btn-search { background: #2563eb; color: white; border: 2px solid #3b82f6; border-radius: 16px; width: 55px; height: 55px; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 15px rgba(37, 99, 235, 0.5); transition: all 0.2s; flex-shrink: 0;}
 
 /* --- 5. القوائم المنسدلة (الطباعة والبحث) --- */
-.dropdown-list { position: absolute; top: 100%; left: 0; right: 0; background-color: var(--card-bg-solid); border: 2px solid var(--neon-border); border-radius: 0 0 16px 16px; max-height: 70vh; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 35px rgba(0,0,0,0.8);}
+.dropdown-list { position: absolute; top: 100%; left: 0; right: 0; background-color: var(--card-bg-solid); border: 2px solid var(--neon-border); border-radius: 0 0 16px 16px; max-height: 70vh; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 35px rgb(0, 0, 0);}
 .dropdown-item { padding: 12px 15px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-white); font-weight: bold; font-size: 16px;}
 .dropdown-item:active { background-color: #2a154d; }
 
@@ -140,7 +140,7 @@ table tr:active { background-color: #2a154d; }
 
 .compact-row, .form-row, .input-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap:8px;}
 .compact-row label, .form-row label, .input-group label { font-size: 15px; font-weight: bold; color: var(--text-white); flex: 1; text-align: right; text-shadow: 0 0 8px rgba(255, 255, 255, 0.5); margin: 0; white-space: nowrap;}
-.compact-row input, .compact-row select, .compact-row textarea, .form-row input, .form-row select, .input-group input, .input-group select { width: 100%; padding: 10px; font-size: 16px; text-align: center; border: 2px solid var(--neon-border); border-radius: 12px; font-weight: bold; outline: none; background-color: var(--card-bg-solid); color: var(--text-white); box-shadow: inset 0 0 10px rgba(0,0,0,0.5); flex: 2; box-sizing: border-box;}
+.compact-row input, .compact-row select, .compact-row textarea, .form-row input, .form-row select, .input-group input, .input-group select { width: 100%; padding: 10px; font-size: 16px; text-align: center; border: 2px solid var(--neon-border); border-radius: 12px; font-weight: bold; outline: none; background-color: var(--card-bg-solid); color: var(--text-white); box-shadow: inset 0 0 10px rgb(0, 0, 0); flex: 2; box-sizing: border-box;}
 .compact-row input:focus, .compact-row select:focus, .form-row input:focus, .form-row select:focus { box-shadow: 0 0 25px var(--neon-glow); border-color: #ec4899; }
 
 .compact-btns, .btn-group { display: flex; gap: 12px; margin-top: 20px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 15px;}
