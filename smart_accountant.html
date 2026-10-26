@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المحاسب الذكي - سراج كاشير</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#070913">
+    
+    <style>
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-white: #ffffff;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        
+        body { 
+            background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); 
+            color: var(--text-white); 
+            height: 100vh; 
+            overflow: hidden; 
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+        
+        .header { 
+            background: var(--card-bg); backdrop-filter: blur(12px); color: var(--text-white); 
+            padding: 15px 20px; font-size: 22px; font-weight: bold; text-align: center; 
+            border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);
+            text-shadow: 0 0 12px rgba(255,255,255,0.9);
+            flex-shrink: 0; 
+            z-index: 50;
+        }
+
+        .sticky-nav-container {
+            background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(10px);
+            border-bottom: 2px solid #374151; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            flex-shrink: 0; 
+            z-index: 49;
+        }
+        
+        .tabs-nav { display: flex; border-bottom: 1px solid rgba(168, 85, 247, 0.2); }
+        .tab-btn { 
+            flex: 1; padding: 12px 5px; border: none; background: none; 
+            color: #9ca3af; font-size: 15px; font-weight: bold; cursor: pointer; transition: 0.3s; 
+        }
+        .tab-btn.active { color: #f59e0b; border-bottom: 3px solid #f59e0b; text-shadow: 0 0 8px rgba(245, 158, 11, 0.5); }
+
+        .sub-tabs { display: flex; justify-content: space-around; padding: 5px 0; min-height: 40px; align-items: center; }
+        .sub-tab-btn { flex: 1; text-align: center; background:none; border:none; color:#9ca3af; padding:8px 2px; font-weight:bold; font-size:13px; cursor:pointer; transition: 0.3s;}
+        .sub-tab-btn.active { color: #f59e0b; text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px;}
+
+        .swipe-container {
+            flex: 1; 
+            display: flex; width: 100%; overflow-x: auto; 
+            scroll-snap-type: x mandatory; 
+            scroll-behavior: smooth;
+            scrollbar-width: none; align-items: stretch;
+        }
+        .swipe-container::-webkit-scrollbar { display: none; }
+        
+        .tab-section { 
+            flex: 0 0 100vw; 
+            width: 100vw;
+            height: 100%; 
+            overflow-y: auto; 
+            padding: 15px 15px 85px 15px; 
+            scroll-snap-align: center; 
+            scroll-snap-stop: always; 
+        }
+
+        .stat-card-overview { background: var(--card-bg); margin-bottom: 8px; padding: 15px 18px; border-radius: 12px; border: 1px solid var(--neon-border); display: flex; flex-direction: column; align-items: flex-end; box-shadow: 0 0 10px var(--neon-glow); }
+        .stat-card-overview .title { font-size: 14px; color: var(--text-white); margin-bottom: 4px; font-weight: bold; }
+        .stat-card-overview .amount { font-size: 22px; font-weight: bold; color: #4ade80; }
+
+        .list-card { background: var(--card-bg); border: 1px solid #374151; padding: 15px 15px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-radius: 10px;}
+        .list-card .title { font-size: 14px; font-weight: bold; color: var(--text-white); }
+        .list-card .amount { font-size: 18px; font-weight: bold; color: #60a5fa; }
+        .list-card .amount span { font-size: 12px; color: #9ca3af; margin-right: 3px; }
+
+        .controls-row { display: flex; gap: 10px; margin-bottom: 12px; }
+        
+        /* القوائم المنسدلة الداخلية الجديدة */
+        .custom-dropdown { position: relative; flex: 1; background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 10px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: var(--text-white); font-weight: bold; font-size: 15px; box-shadow: 0 0 10px var(--neon-glow); z-index: 100; }
+        .custom-dropdown:after { content: '▼'; font-size: 12px; color: var(--neon-border); }
+        .custom-menu { position: absolute; top: 100%; right: 0; left: 0; background: var(--bg-dark-2); border: 2px solid var(--neon-border); border-radius: 10px; margin-top: 5px; box-shadow: 0 10px 25px rgba(0,0,0,0.8); display: none; flex-direction: column; z-index: 101; max-height: 250px; overflow-y: auto; }
+        .custom-menu div { padding: 12px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; font-size: 14px; cursor: pointer; transition: 0.2s;}
+        .custom-menu div:active { background: var(--neon-glow); color: #f59e0b; }
+        
+        .table-container {
+            height: calc(100vh - 290px); 
+            overflow-y: auto; border-radius: 12px; border: 2px solid var(--neon-border);
+            box-shadow: 0 0 15px var(--neon-glow); background: var(--card-bg); margin-top: 10px;
+        }
+        .orders-table { width: 100%; border-collapse: collapse; }
+        .orders-table th, .orders-table td { padding: 10px 6px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; font-size: 13px; font-weight: bold; }
+        .orders-table th { position: sticky; top: 0; background-color: #1e1332; color: white; border-bottom: 2px solid var(--neon-border); z-index: 10; font-size: 14px; padding: 12px 6px; }
+
+        .urgent { color: #ff1a40 !important; text-shadow: 0 0 8px rgba(255,26,64,0.6); }
+        .wa-btn { display: inline-block; background: #10b981; color: white; padding: 4px 8px; border-radius: 6px; text-decoration: none; font-size: 11px; box-shadow: 0 0 10px rgba(16, 185, 129, 0.5); white-space: nowrap; margin-right: 5px; }
+
+        .accordion { background: var(--card-bg); color: var(--text-white); cursor: pointer; padding: 18px; width: 100%; border: none; text-align: right; font-size: 18px; font-weight: bold; border-bottom: 1px solid rgba(168, 85, 247, 0.3); transition: 0.3s; display: flex; justify-content: space-between; border-radius: 10px; margin-bottom: 5px; }
+        .accordion.active { background: rgba(168, 85, 247, 0.15); color: var(--neon-border); border-right: 4px solid var(--neon-border); }
+        .accordion:after { content: '▼'; font-size: 14px; color: #9ca3af; }
+        .accordion.active:after { content: "▲"; color: var(--neon-border); }
+        .panel { padding: 0; background-color: rgba(7, 9, 19, 0.6); max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-radius: 0 0 10px 10px; margin-top: -5px; margin-bottom: 10px;}
+        .panel-item { padding: 15px 25px; border-bottom: 1px dashed #4b5563; font-size: 16px; color: #d1d5db; cursor: pointer; transition: 0.2s;}
+        .panel-item:active { color: #f59e0b; background: rgba(255,255,255,0.05); padding-right: 30px;}
+
+        .unified-bottom-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background-color: rgba(19, 17, 44, 0.95); border-top: 1px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 8px; z-index: 100; 
+            box-shadow: 0 -4px 25px var(--neon-glow); align-items: center;
+        }
+
+        .header-back-btn {
+            background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px;
+            padding: 0 15px; height: 45px; cursor: pointer; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;
+        }
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        .bottom-filter {
+            flex: 1; background: rgba(19, 17, 44, 0.85); border: 1px solid var(--neon-border); 
+            border-radius: 12px; padding: 0 12px; height: 45px; display: none; 
+            justify-content: space-between; align-items: center; font-size: 14px; 
+            font-weight: bold; color: var(--text-white); position: relative;
+            box-shadow: 0 0 10px var(--neon-glow); margin: 0;
+        }
+        
+        #ai-fab { bottom: 85px !important; left: 20px !important; z-index: 99999 !important; }
+
+/* ================= تنسيقات المفكره الذكيه الذكية الكاملة ================= */
+.quick-add-btn { 
+    position: fixed; 
+    bottom: 150px; 
+    left: 20px; 
+    background: #484e92; 
+    color: white; 
+    border: 2px solid #0621ea; 
+    border-radius: 50%; 
+    width: 60px; 
+    height: 60px; 
+    font-size: 32px; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    cursor: pointer; 
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); 
+    transition: all 0.2s; 
+    z-index: 900; 
+    font-weight: bold; 
+}
+.quick-add-btn:active { transform: scale(0.92); }
+
+.note-card { 
+            display: flex !important; 
+            flex-direction: row !important; 
+            justify-content: space-between !important; 
+            align-items: center !important; 
+            cursor: pointer; 
+            transition: all 0.2s; 
+            padding: 14px 18px !important; 
+            min-height: 90px;
+            border: 1px solid #10b981 !important; 
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.3) !important; 
+        }
+        .note-card:active { transform: scale(0.99); background: rgba(16, 185, 129, 0.15) !important; }
+
+/* شاشة وتفاصيل المفكره الذكيه (المودال) */
+        .note-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg-dark-1); z-index: 5000; display: flex; flex-direction: column; overflow: hidden; padding-top: 10px; }
+        
+        /* شريط الأزرار السفلي الجديد (إلغاء على اليمين، حذف في النص، حفظ على اليسار) */
+        .note-modal-footer { 
+            position: absolute; bottom: 0; left: 0; right: 0; 
+            background: rgba(19, 17, 44, 0.95); border-top: 1px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 10px; z-index: 5002; 
+            box-shadow: 0 -4px 25px var(--neon-glow); align-items: center; 
+        }
+        .note-btn-save { flex: 1; background: #10b981; color: white; border: none; border-radius: 12px; height: 45px; font-weight: bold; font-size: 15px; cursor: pointer; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+        .note-btn-delete { flex: 1; background: #ef4444; color: white; border: none; border-radius: 12px; height: 45px; font-weight: bold; font-size: 15px; cursor: pointer; box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+        .note-btn-save:active, .note-btn-delete:active { transform: scale(0.95); filter: brightness(1.2); }
+
+        /* تنسيق صفوف الجدول عند التحديد */
+        .note-table tbody tr { cursor: pointer; transition: 0.2s; }
+        .note-table tbody tr.selected-row { background: rgba(239, 68, 68, 0.25) !important; border: 2px solid #ef4444; }
+
+.note-inputs-container { padding: 10px 20px; text-align: center; }
+.note-title-input { width: 100%; background: transparent; border: none; border-bottom: 2px solid var(--neon-border); color: #f59e0b; font-size: 22px; font-weight: bold; text-align: center; padding: 5px; margin-bottom: 10px; outline: none; }
+.note-comment-input { width: 100%; background: transparent; border: none; border-bottom: 1px dashed #9ca3af; color: #d1d5db; font-size: 14px; text-align: center; padding: 5px; margin-bottom: 15px; outline: none; }
+.note-search-input { width: 100%; background: var(--card-bg); border: 2px solid #60a5fa; color: white; border-radius: 20px; padding: 10px 15px; font-size: 15px; text-align: center; outline: none; box-shadow: 0 0 10px rgba(96, 165, 250, 0.3); }
+
+.note-search-results { position: absolute; width: 100%; left: 0; right: 0; top: 100%; background: var(--bg-dark-2); border: 2px solid var(--neon-border); border-radius: 10px; max-height: 65vh; overflow-y: auto; z-index: 5001; box-shadow: 0 10px 25px rgba(0,0,0,0.9); margin-top: 5px; }
+.note-search-results div { padding: 12px 15px; border-bottom: 1px solid #374151; color: white; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-decoration: none !important; }
+        
+        /* إخفاء أي خطوط سفلية تحت الكلمات بقوة */
+        .note-search-results div *, .note-search-results span { text-decoration: none !important; border-bottom: none !important; outline: none !important; box-shadow: none !important; }
+        
+        .note-search-results div:active { background: var(--neon-glow); color: #f59e0b; }
+.note-table-wrapper { flex: 1; overflow-y: auto; padding: 10px 15px 40px 15px; margin-top: 10px; }
+.note-table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 10px; overflow: hidden; border: 1px solid var(--neon-border); }
+.note-table th, .note-table td { border: 1px solid #374151; padding: 10px 5px; text-align: center; font-size: 14px; font-weight: bold; }
+.note-table th { background: #1e1332; color: #ffffff; border-bottom: 2px solid var(--neon-border); }
+.note-td-input { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid #4b5563; border-radius: 6px; padding: 4px; color: white; text-align: center; font-weight: bold; font-size: 14px; outline: none; }
+
+/* ألوان عمود الحالة */
+.state-badge { padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-block; min-width: 40px; user-select: none; transition: 0.2s; font-weight: bold; }
+.state-orange { background: #f59e0b; color: #fff; box-shadow: 0 0 8px rgba(245, 158, 11, 0.6); }
+.state-red { background: #ef4444; color: #fff; box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); }
+.state-green { background: #10b981; color: #fff; box-shadow: 0 0 8px rgba(16, 185, 129, 0.6); }
+</style>
+</head>
+<body>
+
+    <div class="header">المحاسب الذكي 🤖</div>
+
+    <div class="sticky-nav-container">
+<!-- زراير التبويبات -->
+<div class="tabs-nav">
+    <button class="tab-btn" id="btn-reports" onclick="scrollToSection('sec-reports')">التقارير</button>
+    <button class="tab-btn active" id="btn-collected" onclick="scrollToSection('col-purchases-view')">بيانات مجمعة</button>
+    <button class="tab-btn" id="btn-overview" onclick="scrollToSection('ov-sales')">نظرة عامة</button>
+</div>
+        <!-- التبويبات الفرعية المتحركة -->
+        <div class="sub-tabs" id="dynamic-sub-tabs"></div>
+    </div>
+
+    <!-- حاوية السحب المدمجة -->
+    <div class="swipe-container" id="main-swiper" onscroll="handleScroll()">
+        
+<!-- ================= 7. التقارير (أقصى اليسار بعد السحب) ================= -->
+        <div class="tab-section" id="sec-reports" data-main="reports">
+            
+            <button class="accordion">المبيعات</button>
+            <div class="panel">
+                <div class="panel-item" onclick="window.location.href='sales_detailed.html'">تقرير مبيعات مفصل</div>
+                <div class="panel-item" onclick="window.location.href='sales_summary.html'">تقرير مبيعات مجمل</div>
+                <div class="panel-item" onclick="window.location.href='sales_unpaid.html'">تقرير فواتير المبيعات غير المسددة</div>
+                <div class="panel-item" onclick="window.location.href='sales_all.html'">سجل فواتير المبيعات (الكل)</div>
+            </div>
+
+            <button class="accordion">الأرباح</button>
+            <div class="panel">
+                <div class="panel-item" onclick="window.location.href='profit_detailed.html'">تقرير أرباح مفصل</div>
+                <div class="panel-item" onclick="window.location.href='profit_summary.html'">تقرير أرباح مجمل</div>
+                <div class="panel-item" onclick="window.location.href='profit_margin.html'">نسبة أرباح المنتجات</div>
+            </div>
+
+            <button class="accordion">العملاء</button>
+            <div class="panel">
+                <div class="panel-item" onclick="window.location.href='customers_debt.html'">تقرير بالمبالغ المتبقية عند العملاء</div>
+                <div class="panel-item" onclick="window.location.href='customer_reports.html'">تقارير حسابات العملاء</div>
+                <div class="panel-item" onclick="window.location.href='customer_products.html'">تقرير بالمنتجات المباعة لعميل</div>
+                <div class="panel-item" onclick="window.location.href='customer_statement.html'">كشف حساب عميل</div>
+            </div>
+
+ <button class="accordion">الموردين</button>
+            <div class="panel">
+                               
+                <div class="panel-item" onclick="window.location.href='suppliers_debt.html'">تقرير بالمبالغ المتبقية للموردين</div>
+                <div class="panel-item" onclick="window.location.href='supplier_invoices.html'">فواتير مورد</div>
+                <div class="panel-item" onclick="window.location.href='supplier_products.html'">تقرير بالمنتجات المشتراة من مورد</div>
+                <div class="panel-item" onclick="window.location.href='supplier_statement.html'">كشف حساب مورد</div>
+            </div>
+
+            <button class="accordion">المشتريات</button>
+            <div class="panel">
+                <div class="panel-item" onclick="window.location.href='purchases_detailed.html'">تقرير مشتريات مفصل</div>
+                <div class="panel-item" onclick="window.location.href='purchases_summary.html'">تقرير مشتريات مجمل</div>
+                <div class="panel-item" onclick="window.location.href='purchases_unpaid.html'">تقرير فواتير المشتريات غير المسددة</div>
+                <div class="panel-item" onclick="window.location.href='purchases_all.html'">فواتير المشتريات (الكل)</div>
+            </div>
+
+            <button class="accordion">المخزن</button>
+            <div class="panel">
+                <div class="panel-item" onclick="window.location.href='inventory_detailed.html'">جرد المخزن مفصل</div>
+                <div class="panel-item" onclick="window.location.href='inventory_summary.html'">جرد المخزن مجمل</div>
+            </div>
+            
+            <button class="accordion">المصروفات</button>
+            <div class="panel">
+                <div class="panel-item" onclick="window.location.href='expenses_detailed.html'">تقرير مصروفات مفصل</div>
+                <div class="panel-item" onclick="window.location.href='expenses_summary.html'">تقرير مصروفات مجمل</div>
+            </div>
+
+ <button class="accordion" onclick="window.location.href='treasury_movement.html'">الخزينة (عرض الحركات)</button>
+            
+        </div>
+
+        <!-- ================= 6. المبيعات المجمعة ================= -->
+        <div class="tab-section" id="col-sales-view" data-main="collected">
+            <div class="list-card"><div class="amount" id="col-returns">0.00 <span>ج</span></div><div class="title">إجمالي المرتجعات</div></div>
+            <div class="list-card"><div class="amount" id="col-discounts">0.00 <span>ج</span></div><div class="title">إجمالي الخصومات</div></div>
+            <div class="list-card"><div class="amount" id="col-netsales" style="color:white;">0.00 <span>ج</span></div><div class="title">صافي المبيعات</div></div>
+            <div class="list-card"><div class="amount" id="col-paid">0.00 <span>ج</span></div><div class="title">المسدد من المبيعات</div></div>
+            <div class="list-card"><div class="amount" id="col-deferred">0.00 <span>ج</span></div><div class="title">المتبقي من الفواتير الآجلة</div></div>
+            <div class="list-card"><div class="amount" id="col-vouchers">0.00 <span>ج</span></div><div class="title">حركات السداد والصرف للعملاء</div></div>
+            <div class="list-card"><div class="amount" id="col-profits">0.00 <span>ج</span></div><div class="title">إجمالي الأرباح</div></div>
+            <div class="list-card"><div class="amount" id="col-expenses" style="color:#ff1a40;">0.00 <span>ج</span></div><div class="title">إجمالي المصروفات</div></div>
+            <div class="list-card"><div class="amount" id="col-netprofits" style="color:#00ff66;">0.00 <span>ج</span></div><div class="title">الأرباح بعد المصروفات</div></div>
+            <div class="list-card"><div class="amount" id="col-margin" style="color:#f59e0b;">0 <span>%</span></div><div class="title">نسبة الأرباح</div></div>
+        </div>
+
+        <!-- ================= 5.5 المفكره الذكيه الذكية ================= -->
+        <div class="tab-section" id="col-notes-view" data-main="collected">
+            <div id="notes-list-container" style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 20px;">
+                <!-- ستظهر النوتات المحفوظة هنا -->
+            </div>
+        </div>
+
+        <!-- ================= 5. المشتريات المجمعة ================= -->
+        <!-- ================= 5. المشتريات المجمعة ================= -->
+        <div class="tab-section" id="col-purchases-view" data-main="collected">
+            <div class="list-card"><div class="amount" id="col-purchases-total">0.00 <span>ج</span></div><div class="title">إجمالي المشتريات</div></div>
+            <div class="list-card"><div class="amount" id="col-purchases-paid" style="color:#00ff66;">0.00 <span>ج</span></div><div class="title">إجمالي المبالغ المدفوعة</div></div>
+            <div class="list-card"><div class="amount" id="col-purchases-deferred" style="color:#ff1a40;">0.00 <span>ج</span></div><div class="title">إجمالي المتبقي للموردين</div></div>
+        </div>
+
+        <!-- ================= 4. طلبات الموردين ================= -->
+        <div class="tab-section" id="ov-suppliers" data-main="overview">
+            <div class="controls-row">
+                <div class="custom-dropdown" onclick="toggleCustomMenu(event, 'menu-supplier-filter')">
+                    <span id="label-sup-filter">كل الموردين</span>
+                    <input type="hidden" id="supplier-filter" value="all">
+                    <div class="custom-menu" id="menu-supplier-filter"></div>
+                </div>
+
+                <div class="custom-dropdown" onclick="toggleCustomMenu(event, 'menu-sup-period')">
+                    <span id="label-sup-period">سحب شهر</span>
+                    <input type="hidden" id="suppliers-period" value="30">
+                    <div class="custom-menu" id="menu-sup-period">
+                        <div onclick="selectCustomOption(event, 'suppliers-period', '7', 'سحب أسبوع', 'suppliers')">سحب أسبوع</div>
+                        <div onclick="selectCustomOption(event, 'suppliers-period', '30', 'سحب شهر', 'suppliers')">سحب شهر</div>
+                        <div onclick="selectCustomOption(event, 'suppliers-period', '90', 'سحب 3 شهور', 'suppliers')">سحب 3 شهور</div>
+                    </div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="orders-table">
+                    <thead><tr><th style="width: 55%;">الصنف / المورد</th><th>بالمخزن</th><th>الطلبية</th></tr></thead>
+                    <tbody id="smart-orders-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ================= 3. نواقص المخزن ================= -->
+        <div class="tab-section" id="ov-shortages" data-main="overview">
+            <div class="controls-row">
+                <div class="custom-dropdown" onclick="toggleCustomMenu(event, 'menu-short-period')">
+                    <span id="label-short-period">معدل سحب شهر</span>
+                    <input type="hidden" id="shortages-period" value="30">
+                    <div class="custom-menu" id="menu-short-period">
+                        <div onclick="selectCustomOption(event, 'shortages-period', '7', 'معدل سحب أسبوع', 'shortages')">معدل سحب أسبوع</div>
+                        <div onclick="selectCustomOption(event, 'shortages-period', '30', 'معدل سحب شهر', 'shortages')">معدل سحب شهر</div>
+                        <div onclick="selectCustomOption(event, 'shortages-period', '90', 'معدل سحب 3 شهور', 'shortages')">معدل سحب 3 شهور</div>
+                    </div>
+                </div>
+            </div>
+            <div class="table-container">
+                <table class="orders-table">
+                    <thead><tr><th style="width: 45%;">الصنف</th><th>بالمخزن</th><th>معدل السحب</th></tr></thead>
+                    <tbody id="shortages-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ================= 2. الأرباح ================= -->
+        <div class="tab-section" id="ov-profits" data-main="overview">
+            <div class="stat-card-overview"><div class="title">اليوم</div><div class="amount" id="profit-today" style="color:#00ff66;">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">أمس</div><div class="amount" id="profit-yesterday" style="color:#00ff66;">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">هذا الشهر</div><div class="amount" id="profit-month" style="color:#00ff66;">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">الشهر الماضي</div><div class="amount" id="profit-lastmonth" style="color:#00ff66;">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">مدى العمل</div><div class="amount" id="profit-total" style="color:#00ff66;">0.00 <span style="font-size:14px;">ج</span></div></div>
+        </div>
+
+        <!-- ================= 1. المبيعات (نقطة البداية - أقصى اليمين) ================= -->
+        <div class="tab-section" id="ov-sales" data-main="overview">
+            <div class="stat-card-overview"><div class="title">اليوم</div><div class="amount" id="sales-today">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">أمس</div><div class="amount" id="sales-yesterday">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">هذا الشهر</div><div class="amount" id="sales-month">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">الشهر الماضي</div><div class="amount" id="sales-lastmonth">0.00 <span style="font-size:14px;">ج</span></div></div>
+            <div class="stat-card-overview"><div class="title">مدى العمل</div><div class="amount" id="sales-total">0.00 <span style="font-size:14px;">ج</span></div></div>
+        </div>
+
+    </div>
+
+   <!-- شاشة تفاصيل المفكره الذكيه (المودال) -->
+    <div id="note-modal" class="note-modal" style="display:none;">
+        
+        <div class="note-inputs-container">
+            <input type="text" id="note-title" class="note-title-input" placeholder="اسم الملاحظة (اضغط للكتابة)">
+            <input type="text" id="note-comment" class="note-comment-input" placeholder="اكتب ملاحظه او تعليق (اختياري)">
+            
+            <div style="position:relative;">
+                <input type="text" id="note-search" class="note-search-input" placeholder="بحث المخزن..." onkeyup="smartSearch()" autocomplete="off">
+                <div id="note-search-results" class="note-search-results" style="display:none;"></div>
+            </div>
+        </div>
+        
+  <div class="note-table-wrapper" style="padding-bottom: 75px;">
+            <table class="note-table">
+                <thead>
+                    <tr>
+                        <th style="width: 35%">الصنف</th>
+                        <th style="width: 20%">الكمية</th>
+                        <th style="width: 20%">الحالة</th>
+                        <th style="width: 25%">المورد</th>
+                    </tr>
+                </thead>
+                <tbody id="note-table-body">
+                    <!-- الأصناف المضافة هتنزل هنا -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- شريط الأزرار السفلي الموحد (إلغاء يمين، حذف وسط، حفظ يسار) -->
+        <div class="note-modal-footer">
+                      
+            <!-- زرار الإلغاء على اليمين بنفس تصميم زر الـ BACK الموجود بالصفحة -->
+            <button class="header-back-btn" onclick="closeNoteModal()">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>  
+            <button class="note-btn-save" onclick="saveNote()">💾 حفظ</button>
+            
+             <button class="note-btn-delete" onclick="deleteSelectedRows()">🗑️ حذف المحدد</button>
+            
+        </div>
+    </div>
+
+    <!-- زر الإضافة السريعة العائم (مخصص لصفحة المفكره الذكيه وبيظهر فيها بس) -->
+    <button type="button" class="quick-add-btn" id="floating-note-add-btn" onclick="openNoteModal(null)" title="إضافة" style="display: none;">➕</button>
+
+    <!-- شريط التحكم السفلي الموحد -->
+    <div class="unified-bottom-bar">
+        <button class="header-back-btn" onclick="window.location.href='index.html'">
+            <span class="arrow">⬅</span>
+            <span class="text">BACK</span>
+        </button>
+
+        <div class="bottom-filter" id="global-bottom-filter">
+            <span style="font-size: 18px; margin-left: 5px;">📅</span>
+            <!-- قائمة منسدلة داخلية متناسقة للتواريخ -->
+            <div class="custom-dropdown" style="flex:1; border:none; background:transparent; box-shadow:none; padding:0;" onclick="toggleCustomMenu(event, 'menu-date-filter')">
+                <span id="label-date-filter" style="color:#00ff66; width:100%; text-align:center;">اخر 30 يوم</span>
+                <input type="hidden" id="date-filter" value="30days">
+                <div class="custom-menu" id="menu-date-filter" style="bottom: 100%; top: auto; margin-bottom: 10px;">
+                    <div onclick="selectCustomOption(event, 'date-filter', 'today', 'اليوم', 'collected')">اليوم</div>
+                    <div onclick="selectCustomOption(event, 'date-filter', 'yesterday', 'أمس', 'collected')">أمس</div>
+                    <div onclick="selectCustomOption(event, 'date-filter', '7days', 'اخر 7 ايام', 'collected')">اخر 7 ايام</div>
+                    <div onclick="selectCustomOption(event, 'date-filter', 'this_month', 'هذا الشهر', 'collected')">هذا الشهر</div>
+                    <div onclick="selectCustomOption(event, 'date-filter', '30days', 'اخر 30 يوم', 'collected')">اخر 30 يوم</div>
+                    <div onclick="selectCustomOption(event, 'date-filter', 'last_month', 'الشهر الماضى', 'collected')">الشهر الماضى</div>
+                    <div onclick="selectCustomOption(event, 'date-filter', 'all_time', 'مدى العمل (الكل)', 'collected')">مدى العمل (الكل)</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="db.js"></script>
+    <script src="ai_brain.js"></script>
+    
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+             if (typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme();
+             setupSmartAccordion();
+             populateSuppliers();
+             
+             calculateOverviewStats();
+             calculateCollectedData();
+             runSmartInventory('shortages');
+             runSmartInventory('suppliers');
+             
+// توجيه المتصفح لنقطة البداية بشكل فوري لفتح صفحة المفكره الذكيه افتراضياً
+let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-notes-view';
+             setTimeout(() => {
+                 let section = document.getElementById(savedSection);
+                 if(section) {
+                     section.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'start' });
+                     handleScroll();
+                 }
+             }, 50);
+        });
+
+        // قفل أي قائمة مفتوحة لو ضغطت في أي مكان فاضي في الشاشة
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.custom-menu').forEach(m => m.style.display = 'none');
+        });
+
+        function toggleCustomMenu(e, id) {
+            e.stopPropagation();
+            document.querySelectorAll('.custom-menu').forEach(m => { if(m.id !== id) m.style.display = 'none'; });
+            let m = document.getElementById(id);
+            if(m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
+        }
+
+        function selectCustomOption(e, inputId, val, label, mode) {
+            e.stopPropagation();
+            document.getElementById(inputId).value = val;
+            
+            if(inputId === 'suppliers-period') document.getElementById('label-sup-period').innerText = label;
+            if(inputId === 'shortages-period') document.getElementById('label-short-period').innerText = label;
+            if(inputId === 'supplier-filter') document.getElementById('label-sup-filter').innerText = label;
+            
+            if(inputId === 'date-filter') {
+                document.getElementById('label-date-filter').innerText = label;
+                calculateCollectedData();
+            } else {
+                runSmartInventory(mode);
+            }
+            
+            document.querySelectorAll('.custom-menu').forEach(m => m.style.display = 'none');
+        }
+
+        function scrollToSection(id) {
+            let section = document.getElementById(id);
+            if(section) section.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+        }
+
+        function handleScroll() {
+            let sections = document.querySelectorAll('.tab-section');
+            let windowCenter = window.innerWidth / 2;
+            let activeSection = null;
+
+            sections.forEach(sec => {
+                let rect = sec.getBoundingClientRect();
+                if (rect.left < windowCenter && rect.right > windowCenter) {
+                    activeSection = sec;
+                }
+            });
+
+            if (!activeSection) return;
+
+            let mainCat = activeSection.getAttribute('data-main');
+            let subCatId = activeSection.id;
+
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            let mainBtn = document.getElementById('btn-' + mainCat);
+            if(mainBtn) mainBtn.classList.add('active');
+
+            let dynamicTabsContainer = document.getElementById('dynamic-sub-tabs');
+            let subTabsHtml = '';
+
+            if (mainCat === 'overview') {
+                subTabsHtml = `
+                    <button class="sub-tab-btn ${subCatId === 'ov-suppliers' ? 'active' : ''}" onclick="scrollToSection('ov-suppliers')">الموردين</button>
+                    <button class="sub-tab-btn ${subCatId === 'ov-shortages' ? 'active' : ''}" onclick="scrollToSection('ov-shortages')">نواقص المخزن</button>
+                    <button class="sub-tab-btn ${subCatId === 'ov-profits' ? 'active' : ''}" onclick="scrollToSection('ov-profits')">الارباح</button>
+                    <button class="sub-tab-btn ${subCatId === 'ov-sales' ? 'active' : ''}" onclick="scrollToSection('ov-sales')">المبيعات</button>
+                `;
+            } else if (mainCat === 'collected') {
+                subTabsHtml = `
+                    <button class="sub-tab-btn ${subCatId === 'col-sales-view' ? 'active' : ''}" onclick="scrollToSection('col-sales-view')">المبيعات</button>
+                    <button class="sub-tab-btn ${subCatId === 'col-notes-view' ? 'active' : ''}" onclick="scrollToSection('col-notes-view')">المفكره الذكيه</button>
+                    <button class="sub-tab-btn ${subCatId === 'col-purchases-view' ? 'active' : ''}" onclick="scrollToSection('col-purchases-view')">المشتريات</button>
+                `;
+            }
+            dynamicTabsContainer.innerHTML = subTabsHtml;
+
+            let bottomFilter = document.getElementById('global-bottom-filter');
+            if(mainCat === 'collected') {
+                bottomFilter.style.display = 'flex';
+            } else {
+                bottomFilter.style.display = 'none';
+            }
+
+            // إظهار وإخفاء زر الإضافة العائم بناءً على تبويب المفكره الذكيه
+            let floatingAddBtn = document.getElementById('floating-note-add-btn');
+            if (floatingAddBtn) {
+                if (subCatId === 'col-notes-view') {
+                    floatingAddBtn.style.display = 'flex';
+                } else {
+                    floatingAddBtn.style.display = 'none';
+                }
+            }
+
+            sessionStorage.setItem('smartAcc_currentSection', subCatId);
+        }
+
+        function setupSmartAccordion() {
+            let acc = document.getElementsByClassName("accordion");
+            for (let i = 0; i < acc.length; i++) {
+                acc[i].addEventListener("click", function() {
+                    let isActive = this.classList.contains("active");
+                    
+                    for (let j = 0; j < acc.length; j++) {
+                        acc[j].classList.remove("active");
+                        let panelToClose = acc[j].nextElementSibling;
+                        if (panelToClose && panelToClose.classList.contains("panel")) {
+                            panelToClose.style.maxHeight = null;
+                        }
+                    }
+                    
+                    if (!isActive) {
+                        this.classList.add("active");
+                        let panel = this.nextElementSibling;
+                        if (panel && panel.classList.contains("panel")) {
+                            panel.style.maxHeight = panel.scrollHeight + "px";
+                        }
+                    }
+                });
+            }
+        }
+
+        function isSameDay(d1, d2) {
+            return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
+        }
+
+        function calculateOverviewStats() {
+            if (typeof DB === 'undefined') return;
+            let invoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices() : [];
+            let productsDB = (typeof DB.getProducts === 'function') ? DB.getProducts() : []; 
+            
+            let today = new Date();
+            let yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+            
+            let sToday = 0, sYesterday = 0, sThisMonth = 0, sLastMonth = 0, sTotal = 0;
+            let pToday = 0, pYesterday = 0, pThisMonth = 0, pLastMonth = 0, pTotal = 0;
+
+            invoices.forEach(inv => {
+                if (inv.type === 'quotation') return;
+                if (inv.isCanceled) return;
+                
+                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
+                let isReturn = (inv.type === 'return'); 
+                
+                let rawTotal = parseFloat(inv.total) || 0;
+                let rawDiscount = parseFloat(inv.discount) || 0;
+                let finalReq = Math.abs(rawTotal) - Math.abs(rawDiscount);
+                
+                if (isReturn) finalReq = -finalReq; 
+                
+                let invCost = 0;
+                if(inv.items) {
+                    inv.items.forEach(item => { 
+                        let pPrice = parseFloat(item.purchasePrice);
+                        if (isNaN(pPrice) || pPrice === 0) {
+                            let p = productsDB.find(x => x.id === item.id);
+                            if (p) {
+                                if (p.lots && p.lots.length > 0) pPrice = parseFloat(p.lots[p.lots.length - 1].purchasePrice) || 0;
+                                else pPrice = parseFloat(p.purchasePrice) || 0;
+                            } else { pPrice = 0; }
+                        }
+                        invCost += pPrice * Math.abs(parseFloat(item.qty) || 0); 
+                    });
+                }
+                
+                if (isReturn) invCost = -invCost; 
+                let invProfit = finalReq - invCost;
+                
+                sTotal += finalReq; pTotal += invProfit;
+                if (isSameDay(invDate, today)) { sToday += finalReq; pToday += invProfit; }
+                if (isSameDay(invDate, yesterday)) { sYesterday += finalReq; pYesterday += invProfit; }
+                
+                if (invDate.getFullYear() === today.getFullYear()) {
+                    if (invDate.getMonth() === today.getMonth()) { sThisMonth += finalReq; pThisMonth += invProfit; }
+                    if (invDate.getMonth() === today.getMonth() - 1) { sLastMonth += finalReq; pLastMonth += invProfit; }
+                } else if (today.getMonth() === 0 && invDate.getMonth() === 11 && invDate.getFullYear() === today.getFullYear() - 1) {
+                    sLastMonth += finalReq; pLastMonth += invProfit;
+                }
+            });
+
+            document.getElementById('sales-today').innerHTML = sToday.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('sales-yesterday').innerHTML = sYesterday.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('sales-month').innerHTML = sThisMonth.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('sales-lastmonth').innerHTML = sLastMonth.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('sales-total').innerHTML = sTotal.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+
+            document.getElementById('profit-today').innerHTML = pToday.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('profit-yesterday').innerHTML = pYesterday.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('profit-month').innerHTML = pThisMonth.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('profit-lastmonth').innerHTML = pLastMonth.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+            document.getElementById('profit-total').innerHTML = pTotal.toFixed(2) + ' <span style="font-size:14px;">ج</span>';
+        }
+
+        function calculateCollectedData() {
+            if (typeof DB === 'undefined') return;
+            let filterType = document.getElementById('date-filter').value;
+            let today = new Date();
+            let yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+
+            let invoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices() : [];
+            let returnsDB = (typeof DB.getSalesReturns === 'function') ? DB.getSalesReturns() : []; 
+            let purchaseInvoices = (typeof DB.getPurchaseInvoices === 'function') ? DB.getPurchaseInvoices() : [];
+            let expensesDB = (typeof DB.getExpenses === 'function') ? DB.getExpenses() : [];
+            let customers = (typeof DB.getCustomers === 'function') ? DB.getCustomers() : [];
+            let productsDB = (typeof DB.getProducts === 'function') ? DB.getProducts() : []; 
+
+            let colReturns = 0, colNetSales = 0, colDiscount = 0, colPaid = 0, colDeferred = 0, colProfits = 0;
+            let colExpenses = 0, colVouchers = 0;
+
+            returnsDB.forEach(ret => {
+                let retDate = new Date(ret.date);
+                if(checkDateFilter(retDate, filterType, today, yesterday)) colReturns += Math.abs(parseFloat(ret.total) || 0);
+            });
+
+            invoices.forEach(inv => {
+                if (inv.type === 'quotation') return;
+                if (inv.isCanceled) return;
+                
+                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
+                if(!checkDateFilter(invDate, filterType, today, yesterday)) return;
+
+                let isReturn = (inv.type === 'return');
+                
+                let rawTotal = parseFloat(inv.total) || 0;
+                let rawDiscount = parseFloat(inv.discount) || 0;
+                let finalReq = Math.abs(rawTotal) - Math.abs(rawDiscount);
+                if (isReturn) finalReq = -finalReq;
+                
+                let invCost = 0;
+                if(inv.items) { 
+                    inv.items.forEach(item => { 
+                        let pPrice = parseFloat(item.purchasePrice);
+                        if (isNaN(pPrice) || pPrice === 0) {
+                            let p = productsDB.find(x => x.id === item.id);
+                            if (p) {
+                                if (p.lots && p.lots.length > 0) pPrice = parseFloat(p.lots[p.lots.length - 1].purchasePrice) || 0;
+                                else pPrice = parseFloat(p.purchasePrice) || 0;
+                            } else { pPrice = 0; }
+                        }
+                        invCost += pPrice * Math.abs(parseFloat(item.qty) || 0); 
+                    }); 
+                }
+                if (isReturn) invCost = -invCost;
+
+                if (isReturn) {
+                    colReturns += Math.abs(finalReq);
+                }
+                
+                colNetSales += finalReq;
+                colDiscount += Math.abs(rawDiscount);
+                
+                let paid = Math.abs(parseFloat(inv.paid) || 0);
+                let deferred = Math.abs(inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining || 0);
+                
+                if (isReturn) { colPaid -= paid; colDeferred -= deferred; } 
+                else { colPaid += paid; colDeferred += deferred; }
+                
+                colProfits += (finalReq - invCost);
+            });
+
+            expensesDB.forEach(exp => {
+                let expDate = new Date(exp.date);
+                if(checkDateFilter(expDate, filterType, today, yesterday)) colExpenses += parseFloat(exp.amount) || 0;
+            });
+
+            customers.forEach(c => {
+                if(c.transactions) {
+                    c.transactions.forEach(tx => {
+                        let txDate = new Date(tx.date);
+                        if(checkDateFilter(txDate, filterType, today, yesterday)) {
+                            if(tx.type === 'receipt') colVouchers += parseFloat(tx.amount) || 0;
+                        }
+                    });
+                }
+            });
+
+            let colNetProfits = colProfits - colExpenses;
+            let colMargin = colNetSales > 0 ? (colNetProfits / colNetSales) * 100 : 0;
+
+            document.getElementById('col-returns').innerHTML = colReturns.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-discounts').innerHTML = colDiscount.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-netsales').innerHTML = colNetSales.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-paid').innerHTML = colPaid.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-deferred').innerHTML = colDeferred.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-vouchers').innerHTML = colVouchers.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-profits').innerHTML = colProfits.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-expenses').innerHTML = colExpenses.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-netprofits').innerHTML = colNetProfits.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-margin').innerHTML = colMargin.toFixed(1) + ' <span>%</span>';
+
+            let colPurchasesTotal = 0, colPurchasesPaid = 0, colPurchasesDeferred = 0;
+            purchaseInvoices.forEach(inv => {
+                if (inv.isCanceled) return;
+                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
+                if(!checkDateFilter(invDate, filterType, today, yesterday)) return;
+                colPurchasesTotal += parseFloat(inv.total) || 0;
+                colPurchasesPaid += parseFloat(inv.paid) || 0;
+                colPurchasesDeferred += parseFloat(inv.remaining) || 0;
+            });
+
+            document.getElementById('col-purchases-total').innerHTML = colPurchasesTotal.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-purchases-paid').innerHTML = colPurchasesPaid.toFixed(2) + ' <span>ج</span>';
+            document.getElementById('col-purchases-deferred').innerHTML = colPurchasesDeferred.toFixed(2) + ' <span>ج</span>';
+        }
+
+        function checkDateFilter(itemDate, filterType, today, yesterday) {
+            let diffDays = (today - itemDate) / (1000 * 3600 * 24);
+            if (filterType === 'all_time') return true;
+            if (filterType === 'today') return isSameDay(itemDate, today);
+            if (filterType === 'yesterday') return isSameDay(itemDate, yesterday);
+            if (filterType === '7days') return diffDays <= 7;
+            if (filterType === '30days') return diffDays <= 30;
+            if (filterType === 'this_month') return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear();
+            if (filterType === 'last_month') {
+                let lm = new Date(today.getFullYear(), today.getMonth()-1, 1);
+                return itemDate.getMonth() === lm.getMonth() && itemDate.getFullYear() === lm.getFullYear();
+            }
+            return false;
+        }
+
+        function populateSuppliers() {
+            if (typeof DB === 'undefined') return;
+            let suppliers = (typeof DB.getSuppliers === 'function') ? DB.getSuppliers() : [];
+            let menu = document.getElementById('menu-supplier-filter');
+            if(!menu) return;
+            
+            menu.innerHTML = `<div onclick="selectCustomOption(event, 'supplier-filter', 'all', 'كل الموردين', 'suppliers')">كل الموردين</div>`;
+            
+            suppliers.forEach(s => {
+                if (s.isCanceled || s.hidden) return;
+                
+                let div = document.createElement('div');
+                div.innerText = s.name;
+                div.onclick = (e) => selectCustomOption(e, 'supplier-filter', s.name, s.name, 'suppliers');
+                menu.appendChild(div);
+            });
+        }
+
+        function getLastPurchasedQty(productName, targetSupplierName) {
+            if (typeof DB.getPurchaseInvoices !== 'function') return null;
+            let pInvoices = DB.getPurchaseInvoices().sort((a,b) => new Date(b.date) - new Date(a.date));
+            for (let inv of pInvoices) {
+                if (inv.supplier === targetSupplierName && inv.items) {
+                    let foundItem = inv.items.find(i => i.name === productName);
+                    if (foundItem) return parseFloat(foundItem.qty);
+                }
+            }
+            return null;
+        }
+
+function runSmartInventory(mode) {
+            if (typeof DB === 'undefined') return;
+            let daysLimit = 30; 
+            let activeSupplierName = 'all';
+
+            if(mode === 'shortages') {
+                daysLimit = parseInt(document.getElementById('shortages-period').value) || 30;
+            } else if (mode === 'suppliers') {
+                daysLimit = parseInt(document.getElementById('suppliers-period').value) || 30;
+                activeSupplierName = document.getElementById('supplier-filter').value;
+            }
+            
+            let allProducts = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts() : [];
+            if (allProducts.length === 0) {
+                let localData = localStorage.getItem('seraj_products');
+                if (localData) allProducts = JSON.parse(localData);
+            }
+            
+            // الفلتر الأساسي (شامل إخفاء الأصناف الفرعية/اللمبات)
+            let products = allProducts.filter(p => {
+                if (p.isDeleted === true || String(p.isDeleted).toLowerCase() === 'true' ||
+                    p.deleted === true || String(p.deleted).toLowerCase() === 'true' ||
+                    p.archived === true || String(p.archived).toLowerCase() === 'true' || 
+                    p.autoParentId) { // p.autoParentId هو اللي بيخفي اللمبة
+                    return false;
+                }
+                return true;
+            });
+
+            let salesInvoices = (typeof DB !== 'undefined' && typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices() : [];
+            let today = new Date();
+            let periodSales = {}; 
+
+            salesInvoices.forEach(inv => {
+                if (inv.type === 'quotation') return;
+                if (inv.isCanceled) return;
+
+                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
+                let daysDiff = (today.getTime() - invDate.getTime()) / (1000 * 3600 * 24);
+                
+                if(daysDiff <= daysLimit && inv.items) {
+                    let isReturn = (inv.type === 'return');
+                    let multiplier = isReturn ? -1 : 1; 
+
+                    inv.items.forEach(item => {
+                        if(!periodSales[item.id]) periodSales[item.id] = 0;
+                        periodSales[item.id] += (parseFloat(item.qty) || 0) * multiplier;
+                    });
+                }
+            });
+
+            // إضافة السحب الناتج عن فك الكراتين تلقائياً (عشان يطلب الكرتونة)
+            products.forEach(p => {
+                if (p.lots && p.lots.length > 0) {
+                    p.lots.forEach(lot => {
+                        if (lot.isAutoUnpack && lot.unpackedCartons > 0) {
+                            let lotDate = new Date(lot.date || today);
+                            let daysDiff = (today.getTime() - lotDate.getTime()) / (1000 * 3600 * 24);
+                            if (daysDiff <= daysLimit) {
+                                if(!periodSales[p.id]) periodSales[p.id] = 0;
+                                periodSales[p.id] += lot.unpackedCartons; 
+                            }
+                        }
+                    });
+                }
+            });
+
+            // ================= عرض نواقص المخزن =================
+            if (mode === 'shortages') {
+                let shBody = document.getElementById('shortages-body');
+                shBody.innerHTML = '';
+                let hasShortages = false;
+                
+                products.forEach(p => {
+                    let soldInPeriod = periodSales[p.id] || 0;
+                    let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
+                    
+                    if (soldInPeriod > 0 && currentStock < soldInPeriod) {
+                        hasShortages = true;
+                        let statusText = currentStock <= 0 ? '<div style="color:#ff1a40; font-size:12px; margin-top:3px;">(نفد تماماً)</div>' : '';
+                        
+                        // 🌟 تحسين التصميم: مساحات أوسع، خط أتخن وأوضح للموبايل 🌟
+                        shBody.insertAdjacentHTML('beforeend', `
+                        <tr style="border-bottom: 1px solid rgba(168, 85, 247, 0.2);">
+                            <td style="text-align: right; padding: 14px 10px;">
+                                <div style="font-size: 15px; font-weight: bold; color: var(--text-white);">${p.name}</div>
+                                ${statusText}
+                            </td>
+                            <td class="urgent" style="font-size: 16px; font-weight: bold; padding: 14px 5px;">${currentStock.toFixed(2).replace(/\.00$/, '')}</td>
+                            <td style="color:#00ff66; font-size: 16px; font-weight: bold; padding: 14px 5px;">${soldInPeriod.toFixed(2).replace(/\.00$/, '')}</td>
+                        </tr>`);
+                    }
+                });
+                if(!hasShortages) shBody.innerHTML = '<tr><td colspan="3" style="color:#00ff66; padding:25px; font-weight:bold; font-size:16px; text-align:center;">المخزن آمن لهذه الفترة 👍</td></tr>';
+            } 
+            
+            // ================= عرض طلبات الموردين =================
+            else if (mode === 'suppliers') {
+                let supBody = document.getElementById('smart-orders-body');
+                supBody.innerHTML = '';
+                let hasOrders = false;
+
+                products.forEach(p => {
+                    let soldInPeriod = periodSales[p.id] || 0;
+                    let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
+                    
+                    let pSupplier = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].supplier : (p.supplier || 'بدون مورد');
+                    let belongsToSupplier = false;
+
+                    if (activeSupplierName === 'all') {
+                        belongsToSupplier = true;
+                    } else {
+                        if (p.supplier === activeSupplierName || (p.lots && p.lots.some(l => l.supplier === activeSupplierName))) {
+                            belongsToSupplier = true;
+                            pSupplier = activeSupplierName;
+                        }
+                    }
+
+                    if (belongsToSupplier && (soldInPeriod > 0 && currentStock < soldInPeriod)) {
+                        hasOrders = true;
+                        let actualSupplier = activeSupplierName === 'all' ? pSupplier : activeSupplierName;
+                        
+                        let requiredQty = soldInPeriod - (currentStock > 0 ? currentStock : 0);
+                        let recommendedQty = getLastPurchasedQty(p.name, actualSupplier) || requiredQty;
+                        
+                        supBody.insertAdjacentHTML('beforeend', `
+                        <tr style="border-bottom: 1px solid rgba(168, 85, 247, 0.2);">
+                            <td style="text-align: right; padding: 14px 10px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <div style="flex:1;">
+                                        <div style="font-size: 15px; font-weight: bold; color: var(--text-white);">${p.name}</div>
+                                        <div style="color:var(--neon-border); font-size:12px; margin-top:4px;">المورد: ${actualSupplier}</div>
+                                    </div>
+                                    <a href="https://wa.me/?text=${encodeURIComponent(`مطلوب طلبية من: ${p.name} (الكمية: ${recommendedQty})`)}" class="wa-btn" target="_blank" style="padding: 6px 12px; font-size: 13px;">📱 واتس</a>
+                                </div>
+                            </td>
+                            <td class="urgent" style="font-size: 16px; font-weight: bold; padding: 14px 5px;">${currentStock.toFixed(2).replace(/\.00$/, '')}</td>
+                            <td style="color:#00ff66; font-size: 16px; font-weight: bold; padding: 14px 5px;">${Number(recommendedQty).toFixed(2).replace(/\.00$/, '')}</td>
+                        </tr>`);
+                    }
+                });
+                if(!hasOrders) supBody.innerHTML = '<tr><td colspan="3" style="color:#00ff66; padding:25px; font-weight:bold; font-size:16px; text-align:center;">لا توجد طلبات ملحة لهذا المورد 👍</td></tr>';
+            }
+        }
+
+        // ================= العقل البرمجي للنوتة الذكية =================
+        let smartNotesDB = [];
+        try {
+            smartNotesDB = JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]');
+        } catch(e) {
+            smartNotesDB = [];
+        }
+        let currentEditingNoteId = null;
+
+function renderNotesList() {
+            // تحديث البيانات دائماً من الداتابيز المركزية لضمان قراءة تعديلات الأجهزة الأخرى فوراً
+            if (typeof DB !== 'undefined' && typeof DB.getSmartNotes === 'function') {
+                smartNotesDB = DB.getSmartNotes();
+            } else {
+                try { smartNotesDB = JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]'); } catch(e) {}
+            }
+
+            let container = document.getElementById('notes-list-container');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            if (smartNotesDB.length === 0) {
+                container.innerHTML = `
+                    <div class="stat-card-overview note-card" onclick="openNoteModal(null)">
+                        <div style="flex: 1; text-align: right; font-size: 13px; color: #9ca3af;">مفكرة جديدة</div>
+                        <div style="flex: 1.2; text-align: center; color: #00ff66; font-size: 18px; font-weight: bold; text-shadow: 0 0 8px rgba(0, 255, 102, 0.4);">ملاحظات عامة</div>
+                        <div style="flex: 1; text-align: left; font-size: 13px; color: #f59e0b; font-weight: bold;">اضغط للبدء ➕</div>
+                    </div>
+                `;
+                return;
+            }
+
+            smartNotesDB.forEach(note => {
+                let card = document.createElement('div');
+                card.className = 'stat-card-overview note-card';
+                card.onclick = () => openNoteModal(note.id);
+
+                let rightComment = note.comment || '';
+                let centerTitle = note.title || 'ملاحظة بدون اسم';
+                
+                // ترتيب الأصناف حسب أولوية الألوان: أحمر (1) -> برتقالي (2) -> أخضر (3)
+                let sortedItems = (note.items || []).slice().sort((a, b) => {
+                    const getPriority = (item) => {
+                        if (item.stateColor === 'state-red') return 1;
+                        if (item.stateColor === 'state-green') return 3;
+                        return 2; // برتقالي أو افتراضي
+                    };
+                    return getPriority(a) - getPriority(b);
+                });
+
+                // عرض حتى 4 أصناف
+                let maxDisplay = 4;
+                let displayItems = sortedItems.slice(0, maxDisplay);
+                let remainingCount = sortedItems.length - maxDisplay;
+
+                let leftItemsHtml = '';
+                displayItems.forEach(item => {
+                    let itemColor = '#f59e0b'; // برتقالي افتراضي
+                    if (item.stateColor === 'state-red') itemColor = '#ef4444';
+                    else if (item.stateColor === 'state-green') itemColor = '#00ff66';
+
+                    let cleanName = (item.name || '').replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
+                    leftItemsHtml += `<div style="color: ${itemColor}; font-size: 12px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: left; line-height: 1.3;">• ${cleanName}</div>`;
+                });
+
+                if (remainingCount > 0) {
+                    leftItemsHtml += `<div style="color: #9ca3af; font-size: 11px; font-weight: bold; text-align: left; margin-top: 2px;">+${remainingCount} أصناف أخرى</div>`;
+                }
+
+                card.innerHTML = `
+                    <!-- 1. اليمين: الملاحظة / التعليق -->
+                    <div style="flex: 1; text-align: right; font-size: 13px; color: #d1d5db; overflow: hidden; text-overflow: ellipsis; white-space: normal; line-height: 1.4; padding-left: 8px;">${rightComment}</div>
+                    
+                    <!-- 2. الوسط: اسم الملاحظة كبير وبالأخضر المتوهج -->
+                    <div style="flex: 1.2; text-align: center; color: #00ff66; font-size: 21px; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 102, 0.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 5px;">${centerTitle}</div>
+                    
+                    <!-- 3. الشمال: الأصناف مرتبة حسب الأولوية والألوان -->
+                    <div style="flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; overflow: hidden; padding-right: 8px;">
+                        ${leftItemsHtml}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            renderNotesList();
+        });
+
+        function openNoteModal(noteId) {
+            let modal = document.getElementById('note-modal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            
+            let resDiv = document.getElementById('note-search-results');
+            if (resDiv) resDiv.style.display = 'none';
+            
+            let searchInp = document.getElementById('note-search');
+            if (searchInp) searchInp.value = '';
+            
+            let tbody = document.getElementById('note-table-body');
+            if (tbody) tbody.innerHTML = '';
+
+            if (noteId) {
+                currentEditingNoteId = noteId;
+                let note = smartNotesDB.find(n => n.id === noteId);
+                if (note) {
+                    document.getElementById('note-title').value = note.title || '';
+                    document.getElementById('note-comment').value = note.comment || '';
+                    if (note.items && Array.isArray(note.items)) {
+    note.items.slice().reverse().forEach(item => {
+        // التحقق مما إذا كان الاسم يحتوي على كلمة مؤرشف لكي نظل مميزين لها
+        let archivedFlag = item.name.includes('(مؤرشف)');
+        let cleanName = item.name.replace(' <span style="color:#ff1a40; font-size:11px;">(مؤرشف)</span>', '');
+        addNoteRow(cleanName, item.qty, item.state, item.stateColor, item.supplier, archivedFlag);
+    });
+}
+                }
+            } else {
+                currentEditingNoteId = Date.now().toString();
+                document.getElementById('note-title').value = '';
+                document.getElementById('note-comment').value = '';
+                document.getElementById('note-title').focus();
+            }
+        }
+
+        function closeNoteModal() {
+            let modal = document.getElementById('note-modal');
+            if (modal) modal.style.display = 'none';
+        }
+
+          let searchTimer;
+         function smartSearch() {
+             clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    // ضع هنا اسم دالة البحث الخاصة بك، وهي غالباً عندنا handleNoteSearch
+                   let query = document.getElementById('note-search').value;
+               handleNoteSearch(query);
+            }, 150); 
+        }
+
+        function handleNoteSearch(query) {
+            let resultsDiv = document.getElementById('note-search-results');
+            if (!resultsDiv) return;
+            if (!query || query.trim() === '') {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            // استخدام (true) لجلب كافة الأصناف (بما فيها المؤرشفة) للبحث فقط
+            let products = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts(true) : [];
+            if (products.length === 0) {
+                let localData = localStorage.getItem('seraj_products');
+                if (localData) {
+                    try { products = JSON.parse(localData); } catch(e) {}
+                }
+            }
+
+            let filtered = products.filter(p => {
+                if (!p || !p.name) return false;
+                let q = query.toLowerCase();
+                let matchName = p.name.toLowerCase().includes(q);
+                let matchBarcode = p.barcode && String(p.barcode).toLowerCase().includes(q);
+                return matchName || matchBarcode;
+            });
+            
+            resultsDiv.innerHTML = '';
+            
+            // 1. خيار الإضافة يتم وضعه أولاً في قمة القائمة فوق خالص
+            let addFreeDiv = document.createElement('div');
+            addFreeDiv.style.cssText = `padding: 12px 15px; border-bottom: 1px solid #374151; color: white; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: rgba(59, 130, 246, 0.2); text-decoration: none !important;`;
+            addFreeDiv.innerHTML = `<span style="color:#4ade80;">➕ إضافة "${query}"</span> <span style="color:#9ca3af; font-size:13px;">(صنف حر)</span>`;
+            addFreeDiv.onclick = () => {
+                selectItemForNote(query, 'مؤقت', true, false);
+                resultsDiv.style.display = 'none';
+                document.getElementById('note-search').value = '';
+            };
+            resultsDiv.appendChild(addFreeDiv);
+            
+            // 2. عرض نتائج البحث الخاصة بالمخزن تحتها مباشرة مع إزالة أي خطوط تحت النصوص
+            filtered.forEach(p => {
+                let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
+                
+                let isArchived = p.isDeleted || p.deleted || p.archived;
+                let archivedTag = isArchived ? `<span style="color:#ff1a40; font-size:11px; margin-right:5px; font-weight:bold;">(مؤرشف)</span>` : '';
+                let itemStyle = isArchived ? `background: rgba(220, 38, 38, 0.15); border-right: 3px solid #ff1a40;` : '';
+
+                // تنظيف اسم الصنف من أي أكواد مخفية قد تسبب ظهور خطوط (مثل <u> أو <a>)
+                let cleanName = (p.name || '').replace(/<[^>]*>?/gm, '');
+
+                let div = document.createElement('div');
+                div.style.cssText = `padding: 12px 15px; border-bottom: 1px solid #374151; color: white; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-decoration: none !important; ${itemStyle}`;
+                div.innerHTML = `<div><span>${cleanName}</span> ${archivedTag}</div> <span style="color:#f59e0b; font-size:13px;">رصيد: ${currentStock}</span>`;  div.onclick = () => {
+                    selectItemForNote(p.name, currentStock, false, isArchived);
+                    resultsDiv.style.display = 'none';
+                    document.getElementById('note-search').value = '';
+                };
+                resultsDiv.appendChild(div);
+            });
+            
+            resultsDiv.style.display = 'block';
+        }
+
+        function getLastPurchaseDetails(productName) {
+            let details = { qty: 1, supplier: '' };
+            if (typeof DB !== 'undefined' && typeof DB.getPurchaseInvoices === 'function') {
+                let pInvoices = (DB.getPurchaseInvoices() || []).slice().sort((a,b) => new Date(b.date) - new Date(a.date));
+                for (let inv of pInvoices) {
+                    if (inv.isCanceled) continue;
+                    if (inv.items && Array.isArray(inv.items)) {
+                        let found = inv.items.find(i => i.name === productName);
+                        if (found) {
+                            details.qty = parseFloat(found.qty) || 1;
+                            details.supplier = inv.supplier || '';
+                            return details;
+                        }
+                    }
+                }
+            }
+            // لو مفيش فاتورة مشتريات، نشوف لو المورد متسجل على كارت الصنف نفسه
+            let products = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts() : [];
+            let prod = products.find(x => x.name === productName);
+            if (prod) {
+                if (prod.lots && prod.lots.length > 0 && prod.lots[prod.lots.length - 1].supplier) {
+                    details.supplier = prod.lots[prod.lots.length - 1].supplier;
+                } else if (prod.supplier) {
+                    details.supplier = prod.supplier;
+                }
+            }
+            return details;
+        }
+
+        function selectItemForNote(name, stockOrTemp, isFreeItem, isArchived = false) {
+            let details = isFreeItem ? { qty: 1, supplier: '' } : getLastPurchaseDetails(name);
+            let stateVal = isFreeItem ? 'مؤقت' : stockOrTemp;
+            addNoteRow(name, details.qty, stateVal, 'state-orange', details.supplier, isArchived);
+        }
+
+        function addNoteRow(name, qty, stateVal, stateColorClass, supplier, isArchived = false) {
+            let tbody = document.getElementById('note-table-body');
+            if (!tbody) return;
+            let tr = document.createElement('tr');
+            
+            tr.onclick = function(e) {
+                if (e.target.tagName === 'INPUT' || e.target.classList.contains('state-badge')) return;
+                this.classList.toggle('selected-row');
+            };
+
+            let colorCls = stateColorClass || 'state-orange';
+            
+            // لو الصنف مؤرشف، نميز اسمه في الجدول بوضع كلمة (مؤرشف) بلون مختلف ونميز الصف خفيفاً
+            let displayName = isArchived ? `${name} <span style="color:#ff1a40; font-size:11px;">(مؤرشف)</span>` : name;
+            if (isArchived) tr.style.background = "rgba(220, 38, 38, 0.08)";
+
+            tr.innerHTML = `
+                <td style="text-align:right; padding-right:8px; text-decoration: none !important;">${displayName}</td>
+                <td><input type="number" class="note-td-input qty-val" value="${qty}"></td>
+                <td><span class="state-badge ${colorCls}" onclick="cycleStateColor(this)">${stateVal}</span></td>
+                <td><input type="text" class="note-td-input sup-val" value="${supplier || ''}" placeholder="المورد"></td>
+            `;
+            tbody.insertBefore(tr, tbody.firstChild);
+        }
+
+        // دالة حذف الصفوف المحددة
+        function deleteSelectedRows() {
+            let tbody = document.getElementById('note-table-body');
+            if (!tbody) return;
+            let selectedRows = tbody.querySelectorAll('tr.selected-row');
+            if (selectedRows.length === 0) {
+                alert("برجاء تحديد صنف واحد على الأقل للحذف (اضغط على الصنف لتعلميه).");
+                return;
+            }
+            if (confirm("هل أنت متأكد من حذف الأصناف المحددة من هذه المفكره الذكيه؟")) {
+                selectedRows.forEach(row => row.remove());
+            }
+        }
+
+        function cycleStateColor(el) {
+            if (el.classList.contains('state-orange')) {
+                el.classList.remove('state-orange');
+                el.classList.add('state-red');
+            } else if (el.classList.contains('state-red')) {
+                el.classList.remove('state-red');
+                el.classList.add('state-green');
+            } else {
+                el.classList.remove('state-green');
+                el.classList.add('state-orange');
+            }
+        }
+
+        function saveNote() {
+            let titleInput = document.getElementById('note-title');
+            let commentInput = document.getElementById('note-comment');
+            let title = titleInput ? titleInput.value.trim() : '';
+            let comment = commentInput ? commentInput.value.trim() : '';
+            
+            let items = [];
+            let tbody = document.getElementById('note-table-body');
+            if (tbody) {
+                let rows = tbody.querySelectorAll('tr');
+                rows.forEach(tr => {
+                    let name = tr.cells[0].innerText;
+                    let qty = tr.querySelector('.qty-val').value;
+                    let stateBadge = tr.querySelector('.state-badge');
+                    let stateVal = stateBadge ? stateBadge.innerText : '';
+                    let stateColor = 'state-orange';
+                    if (stateBadge && stateBadge.classList.contains('state-red')) stateColor = 'state-red';
+                    if (stateBadge && stateBadge.classList.contains('state-green')) stateColor = 'state-green';
+                    let supplierInput = tr.querySelector('.sup-val');
+                    let supplier = supplierInput ? supplierInput.value : '';
+                    
+                    items.push({ name, qty, state: stateVal, stateColor, supplier });
+                });
+            }
+            
+            let existingIndex = smartNotesDB.findIndex(n => n.id === currentEditingNoteId);
+
+            // الشرط الجديد: لو العنوان فارغ (أو اتقمسح) ومافيش أصناف جوه المفكره الذكيه خالص
+            if (title === '' && items.length === 0) {
+                // لو المفكره الذكيه دي كانت قديمة ومحفوظة قبل كده، نقوم بحذفها نهائياً
+                if (existingIndex > -1) {
+                    smartNotesDB.splice(existingIndex, 1);
+                    localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
+                    
+                    // تحديث السحابة لو متاح
+                    if (typeof DB !== 'undefined' && typeof DB.saveSmartNotes === 'function') {
+                        DB.saveSmartNotes(smartNotesDB);
+                    }
+                }
+                // لو كانت جديدة ولسه متسجلتش أساساً وفاضية، ماعملش حاجة واقفل المودال بس
+                renderNotesList();
+                closeNoteModal();
+                return;
+            }
+            
+            // لو فيها بيانات (عنوان أو أصناف)، تكمل عملية الحفظ بشكل طبيعي
+            let finalTitle = title !== '' ? title : 'ملاحظة بدون اسم';
+            let noteObj = { 
+                id: currentEditingNoteId, 
+                title: finalTitle, 
+                comment, 
+                items, 
+                date: new Date().toISOString(),
+                _lastModified: Date.now(),
+                updatedBy: (typeof myDeviceName !== 'undefined') ? myDeviceName : (localStorage.getItem('seraj_device_name') || 'جهاز بالمحل')
+            };
+            
+            if (existingIndex > -1) {
+                smartNotesDB[existingIndex] = noteObj;
+            } else {
+                smartNotesDB.unshift(noteObj);
+            }
+            
+            localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
+            
+            if (typeof DB !== 'undefined' && typeof DB.saveSmartNotes === 'function') {
+                DB.saveSmartNotes(smartNotesDB);
+            }
+            
+            renderNotesList();
+            closeNoteModal();
+        }
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                    .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+            });
+        }
+    </script>
+</body>
+</html>
+ 
