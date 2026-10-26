@@ -8,7 +8,7 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#070913">
 
-    <!-- ✅ الربط بملف التصميم الموحد ✅ -->
+    <!-- ✅ الربط بملف التصميم المركزي الموحد ✅ -->
     <link rel="stylesheet" href="style.css">
 
     <!-- تحميل المكتبات في الخلفية لتسريع فتح الصفحة -->
@@ -16,121 +16,8 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript" defer></script>
-
-    <style>
-        /* 1. التنسيقات الخاصة بشريط العنوان */
-        .header { background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: var(--text-main, #ffffff); padding: 15px 20px; display: flex; align-items: center; justify-content: space-between; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; border-bottom: 2px solid var(--neon-border, #a855f7); box-shadow: 0 0 25px var(--neon-glow, rgba(168, 85, 247, 0.4)); }
-        .header-history-btn { background: rgba(19, 17, 44, 0.8); border: 1px solid var(--neon-border, #a855f7); border-radius: 12px; color: var(--text-main, #ffffff); font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 6px; padding: 6px 14px; box-shadow: 0 0 12px var(--neon-glow, rgba(168, 85, 247, 0.4)); transition: all 0.2s; }
-        .header-history-btn:active { transform: scale(0.95); background: var(--neon-glow, rgba(168, 85, 247, 0.4)); }
-        .header-camera-btn { background: var(--neon-glow, rgba(168, 85, 247, 0.4)); border: 1px solid var(--neon-border, #a855f7); border-radius: 12px; color: var(--text-main, #ffffff); font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px 14px; box-shadow: 0 0 12px var(--neon-glow, rgba(168, 85, 247, 0.4)); transition: all 0.2s;}
-        .header-camera-btn:active { transform: scale(0.95); background: var(--neon-border, #a855f7); }
-
-        .purchases-container { padding: 15px; max-width: 800px; margin: auto; padding-bottom: 120px;}
-
-        /* 2. شريط البحث والباركود وزر الإضافة السريعة (+) */
-        .search-container { position: relative; margin-bottom: 15px; display: flex; gap: 8px; align-items: center;}
-        .search-input { flex: 1; padding: 14px; border: 2px solid var(--neon-border, #a855f7); border-radius: 16px; font-size: 18px; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); box-shadow: 0 0 15px var(--neon-glow, rgba(168, 85, 247, 0.4)); outline: none; color: var(--text-main, #ffffff); font-weight: bold; transition: all 0.3s;}
-        .search-input:focus { box-shadow: 0 0 30px var(--neon-glow, rgba(168, 85, 247, 0.4)); background: rgba(19, 17, 44, 0.9); }
-
-        /* تعديل زر الإضافة السريعة ليكون عائم أسفل الشاشة */
-        .quick-add-btn { position: fixed; bottom: 150px; left: 20px; background: #484e92; color: white; border: 2px solid #0621ea; border-radius: 50%; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); transition: all 0.2s; z-index: 900; font-weight: bold; }
-        .quick-add-btn:active { transform: scale(0.92); }
-
-        /* تنسيقات المايك وطابور المشتريات */
-        .mic-btn-search { background: rgba(19, 17, 44, 0.6); color: var(--neon-border, #a855f7); border: 2px solid var(--neon-border, #a855f7); border-radius: 16px; width: 55px; height: 55px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 15px var(--neon-glow, rgba(168, 85, 247, 0.4)); transition: all 0.3s; flex-shrink: 0; }
-        .mic-btn-search:active { transform: scale(0.92); background: var(--neon-glow, rgba(168, 85, 247, 0.4)); }
-        .mic-btn-search svg { width: 28px; height: 28px; fill: var(--text-white, #ffffff); transition: all 0.3s; }
-        .mic-btn-search.recording { background: #ff1a40; border-color: #ff1a40; box-shadow: 0 0 25px rgba(255, 26, 64, 0.8); animation: pulseRecord 1s infinite; }
-        @keyframes pulseRecord { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-
-        .queue-container { display: none; align-items: center; justify-content: space-between; background: rgba(19, 17, 44, 0.8); border: 1px dashed var(--neon-border, #a855f7); border-radius: 12px; padding: 8px 15px; margin-bottom: 15px; box-shadow: 0 0 10px var(--neon-glow, rgba(168, 85, 247, 0.4)); }
-        .queue-text { font-size: 15px; color: #00ff66; font-weight: bold; }
-        .queue-btn-next { background: #1d4ed8; color: white; border: none; padding: 8px 15px; border-radius: 10px; font-size: 14px; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); transition: all 0.2s;}
-        .queue-btn-next:active { transform: scale(0.95); }
-
-        /* 3. القائمة المنسدلة للبحث وبادج المخزون */
-        .dropdown-list { position: absolute; top: 100%; left: 0; right: 0; background: #13112c; border: 2px solid var(--neon-border, #a855f7); border-radius: 0 0 16px 16px; max-height: 70vh; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 35px rgba(0,0,0,0.5);}
-        .dropdown-item { padding: 12px 15px; border-bottom: 1px solid var(--neon-glow, rgba(168, 85, 247, 0.4)); cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-main, #ffffff); font-weight: bold; font-size: 16px;}
-        .dropdown-item:active { background-color: var(--neon-glow, rgba(168, 85, 247, 0.4)); }
-        .stock-badge { background: linear-gradient(135deg, #9333ea, #db2777); color: white; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; box-shadow: 0 0 10px rgba(219, 39, 119, 0.5);}
-
-        /* 4. جدول فاتورة المشتريات */
-        .table-wrapper { max-height: calc(100vh - 220px) !important; overflow-y: auto; border-radius: 16px; border: 2px solid var(--neon-border, #a855f7); box-shadow: 0 0 20px var(--neon-glow, rgba(168, 85, 247, 0.4)); background: rgba(19, 17, 44, 0.8); backdrop-filter: blur(10px); margin-bottom: 15px; -webkit-overflow-scrolling: touch;}
-        .table-wrapper table { width: 100%; border-collapse: collapse; text-align: center; font-size: 16px; border: none; }
-        .table-wrapper th { background-color: rgba(19, 17, 44, 0.9); padding: 14px 10px; border-bottom: 2px solid var(--neon-border, #a855f7); color: var(--text-main, #ffffff); font-weight: bold; font-size: 17px; text-shadow: 0 0 8px rgba(255, 255, 255, 0.5); position: sticky; top: 0; z-index: 10; }
-        .table-wrapper td { padding: 0 10px; border-bottom: 1px solid var(--neon-glow, rgba(168, 85, 247, 0.4)); cursor: pointer; touch-action: pan-y; color: var(--text-main, #ffffff); font-weight: bold; font-size: 16px; vertical-align: middle; }
-        .swipe-row { transition: transform 0.1s ease-out, background 0.2s; background: rgba(19, 17, 44, 0.5); position: relative; }
-
-        /* 5. الشريط السفلي */
-        .bottom-dashboard { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 15px; background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(10px); border-top: 1px solid var(--neon-border, #a855f7); display: flex; justify-content: space-between; align-items: center; z-index: 200; box-shadow: 0 -4px 25px var(--neon-glow, rgba(168, 85, 247, 0.4)); gap: 10px; }
-        .dashboard-right { display: flex; align-items: center; gap: 8px; flex: 1; }
-        .dashboard-left { display: flex; align-items: center; gap: 8px; }
-        .bottom-back-btn { background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0; }
-        .bottom-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
-        .bottom-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
-        .bottom-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
-
-        .save-btn { display: none; flex: 1; align-items: center; justify-content: center; background: rgba(7, 9, 19, 0.95); color: var(--text-main, #ffffff); border: 1px solid var(--neon-border, #a855f7); height: 45px; font-size: 18px; border-radius: 12px; cursor: pointer; font-weight: bold; box-shadow: 0 0 10px var(--neon-glow, rgba(168, 85, 247, 0.4)); transition: all 0.2s; }
-        .save-btn:active { transform: scale(0.96); box-shadow: 0 0 20px var(--neon-glow, rgba(168, 85, 247, 0.4)); background: var(--neon-glow, rgba(168, 85, 247, 0.4)); }
-
-        .floating-total { display: none; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: var(--text-main, #ffffff); padding: 4px 15px; background: rgba(19, 17, 44, 0.85); border: 1px solid var(--neon-border, #a855f7); border-radius: 12px; text-align: center; box-shadow: 0 0 10px var(--neon-glow, rgba(168, 85, 247, 0.4)); line-height: 1.2; height: 45px; box-sizing: border-box; }
-        .floating-total span.total-label { font-size: 12px; color: var(--text-main, #ffffff); font-weight: normal; }
-        .floating-total .total-val { color: #00ff66; text-shadow: 0 0 10px rgba(0, 255, 102, 0.9); font-size: 20px; }
-
-        /* 6. الطباعة والإشعارات */
-        .bottom-print-bar { position: fixed; bottom: 70px; left: 0; right: 0; padding: 12px 20px; display: none; justify-content: center; align-items: center; z-index: 150; animation: slideUp 0.3s ease-out; }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-        .bottom-print-btn { background: #10b981; color: white; border: 2px solid #059669; border-radius: 20px; padding: 12px 30px; font-size: 18px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.6); transition: all 0.2s;}
-
-        /* 7. النوافذ المنبثقة (نفس التنسيق الموحد) */
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5, 7, 15, 0.85); display: none; justify-content: center; align-items: center; z-index: 300; backdrop-filter: blur(8px);}
-        .compact-modal { background: rgba(19, 17, 44, 0.95); padding: 25px; border-radius: 24px; width: 92%; max-width: 440px; box-shadow: 0 0 45px var(--neon-glow, rgba(168, 85, 247, 0.4)); max-height: 92vh; overflow-y: auto; border: 2px solid var(--neon-border, #a855f7);}
-        .compact-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--neon-glow, rgba(168, 85, 247, 0.4)); padding-bottom: 15px; margin-bottom: 20px;}
-        .compact-header h3 { margin: 0; font-size: 20px; color: var(--text-main, #ffffff); text-shadow: 0 0 12px rgba(255, 255, 255, 0.8);}
-
-        .details-toggle-btn { background: rgba(19, 17, 44, 0.7); color: var(--text-main, #ffffff); border: 2px dashed var(--neon-border, #a855f7); width: 100%; padding: 10px; border-radius: 12px; font-weight: bold; font-size: 15px; cursor: pointer; margin-bottom: 15px; box-shadow: 0 0 10px var(--neon-glow, rgba(168, 85, 247, 0.4)); transition: all 0.2s;}
-        .hidden-details { display: none; background: rgba(19, 17, 44, 0.85); padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--neon-glow, rgba(168, 85, 247, 0.4));}
-        .batches-slider { display: flex; overflow-x: auto; gap: 10px; padding-bottom: 10px; scroll-snap-type: x mandatory;}
-        .batch-card { min-width: 140px; background: rgba(25, 22, 56, 0.9); border: 1px solid var(--neon-border, #a855f7); border-radius: 10px; padding: 10px; font-size: 13px; text-align: right; line-height: 1.6; flex-shrink: 0; color: var(--text-main, #ffffff); font-weight: bold;}
-
-        .compact-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;}
-        .compact-row label { font-size: 17px; font-weight: bold; color: var(--text-main, #ffffff); flex: 1; text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);}
-        .compact-row input, .compact-row select, .compact-row textarea { width: 170px; padding: 10px; font-size: 18px; text-align: center; border: 2px solid var(--neon-border, #a855f7); border-radius: 14px; font-weight: bold; outline: none; background: rgba(19, 17, 44, 0.6); color: var(--text-main, #ffffff); box-shadow: 0 0 10px var(--neon-glow, rgba(168, 85, 247, 0.4));}
-
-        .color-red-val { color: #ff1a40 !important; font-weight: bold; text-shadow: 0 0 12px rgba(255, 26, 64, 0.9), 0 0 25px rgba(255, 26, 64, 0.5); }
-        .color-green-val { color: #00ff66 !important; font-weight: bold; text-shadow: 0 0 12px rgba(0, 255, 102, 0.9), 0 0 25px rgba(0, 255, 102, 0.5); }
-
-        .compact-supplier { margin-top: 18px; border-top: 2px solid var(--neon-glow, rgba(168, 85, 247, 0.4)); padding-top: 18px; display: flex; flex-direction: column; gap: 8px;}
-        .compact-supplier label { font-size: 18px; font-weight: bold; color: var(--text-main, #ffffff); text-align: right; text-shadow: 0 0 8px rgba(255, 255, 255, 0.5);}
-        .compact-supplier input { width: 100%; padding: 14px; border: 2px solid var(--neon-border, #a855f7); border-radius: 16px; text-align: right; font-size: 19px; font-weight: bold; outline: none; background: rgba(19, 17, 44, 0.6); box-sizing: border-box; color: var(--text-main, #ffffff); box-shadow: 0 0 15px var(--neon-glow, rgba(168, 85, 247, 0.4));}
-
-        .compact-btns { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid var(--neon-glow, rgba(168, 85, 247, 0.4)); padding-top: 20px;}
-        .compact-btns button { flex: 1; border: none; font-size: 20px; font-weight: bold; cursor: pointer; padding: 14px; border-radius: 16px; box-shadow: 0 0 15px rgba(0,0,0,0.3); transition: all 0.2s;}
-        .btn-save-ai { background: rgba(7, 9, 19, 0.95) !important; border: 2px solid var(--neon-border, #a855f7) !important; color: var(--text-main, #ffffff) !important; box-shadow: 0 0 15px var(--neon-glow, rgba(168, 85, 247, 0.4)) !important;}
-        .btn-close-ai { background: rgba(19, 17, 44, 0.8) !important; border: 2px solid var(--neon-border, #a855f7) !important; color: var(--text-main, #ffffff) !important; box-shadow: 0 0 12px var(--neon-glow, rgba(168, 85, 247, 0.4)) !important;}
-
-        #liveSupplierBalance { font-size: 16px; font-weight: bold; text-align: center; margin-top: 10px; min-height: 20px; color: var(--text-white, #ffffff); }
-
-        /* 8. الطباعة */
-        #printReceiptArea { display: none; }
-        @media print {
-            @page { margin: 0; size: 80mm auto; }
-            body { margin: 0; padding: 0; background: #fff; }
-            body > *:not(#printReceiptArea) { display: none !important; }
-            #printReceiptArea { display: block !important; width: 72mm; margin: 0 auto; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl; color: #000; }
-            .print-header { font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 5px; }
-            .print-meta-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: normal; border-bottom: 1px dashed #000; padding-bottom: 4px; margin-bottom: 4px; }
-            .print-supplier { font-size: 13px; font-weight: normal; margin-bottom: 6px; text-align: right; }
-            .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px; font-weight: normal; }
-            .print-table th { border-bottom: 1px solid #000; border-top: 1px solid #000; padding: 4px 2px; text-align: center; font-weight: bold; }
-            .print-table td { padding: 4px 2px; border-bottom: 1px dashed #000; text-align: center; }
-            .print-table th:first-child, .print-table td:first-child { text-align: right; width: 45%; }
-            .print-totals { border-top: 1px solid #000; padding-top: 6px; text-align: left; font-size: 14px; font-weight: bold; line-height: 1.5; }
-            .print-totals span.label { float: right; font-weight: normal; }
-        }
-    </style>
 </head>
-<body onclick="closeAllMenus(event);">
+<body class="page-purchases" onclick="closeAllMenus(event);">
 
     <div class="header" id="mainHeader">
         <button type="button" class="header-camera-btn" onclick="startBarcodeScan('productSearch', true)" title="تصوير الباركود">📷</button>
@@ -138,13 +25,13 @@
         <button type="button" class="header-history-btn" onclick="window.location.href='purchases_history.html'"><span>📋</span> السجل</button>
     </div>
 
-    <!-- زر الإضافة السريعة العائم -->
-    <button type="button" class="quick-add-btn" onclick="openQuickAddModal()" title="إضافة صنف جديد">➕</button>
+    <!-- زر الإضافة السريعة العائم (+) -->
+    <button type="button" class="seraj-btn-add-floating" onclick="openQuickAddModal()" title="إضافة صنف جديد">➕</button>
 
     <div class="purchases-container">
         <!-- === منطقة البحث والموجة الصوتية === -->
-        <div class="search-container" style="position: relative;">
-            <input type="text" id="productSearch" class="search-input" placeholder="ابحث أو تحدث بالموجة الصوتية..." oninput="smartSearch()" onclick="event.stopPropagation()">
+        <div class="search-container">
+            <input type="text" id="productSearch" class="seraj-search-input search-input" placeholder="ابحث أو تحدث بالموجة الصوتية..." oninput="smartSearch()" onclick="event.stopPropagation()">
             <button type="button" id="aiAssistantBtn" class="mic-btn-search" onclick="event.stopPropagation(); openAiModal()" title="إضافة سريعة بالصوت">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zm5 9.5A1.5 1.5 0 0 1 18.5 13a6.5 6.5 0 0 1-13 0A1.5 1.5 0 0 1 7 11.5a1.5 1.5 0 0 1 1.5 1.5 3.5 3.5 0 0 0 7 0 1.5 1.5 0 0 1 1.5-1.5zm-5 8a1.5 1.5 0 0 1 1.5 1.5V23a1.5 1.5 0 0 1-3 0v-2A1.5 1.5 0 0 1 12 19.5z"/>
@@ -158,7 +45,7 @@
         <!-- === طابور الإضافة المخفي === -->
         <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
             <div>
-                <span style="font-size: 12px; color: #aaa;">طابور المشتريات:</span><br>
+                <small>طابور المشتريات:</small><br>
                 <span id="queueStatusText" class="queue-text">--</span>
             </div>
             <div>
@@ -166,11 +53,11 @@
             </div>
         </div>
 
-        <!-- === جدول الفاتورة === -->
-        <div class="table-wrapper">
-            <table>
+        <!-- === جدول الفاتورة الموحد === -->
+        <div class="seraj-table-wrapper table-wrapper">
+            <table class="seraj-table">
                 <thead>
-                    <tr><th style="text-align: right; width: 45%;">الصنف</th><th>الشراء</th><th>العدد</th><th>الإجمالي</th></tr>
+                    <tr><th>الصنف</th><th>الشراء</th><th>العدد</th><th>الإجمالي</th></tr>
                 </thead>
                 <tbody id="invoiceItems"></tbody>
             </table>
@@ -184,7 +71,7 @@
                 <span class="arrow">⬅</span>
                 <span class="text">BACK</span>
             </button>
-            <button type="button" id="mainSaveBtn" class="save-btn" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => openSaveModal()); } else { openSaveModal(); }">حفظ الفاتورة</button>
+            <button type="button" id="mainSaveBtn" class="seraj-btn-save save-btn" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => openSaveModal()); } else { openSaveModal(); }">حفظ الفاتورة</button>
         </div>
         <div class="dashboard-left">
             <div id="totalDisplayDiv" class="floating-total">
@@ -196,9 +83,9 @@
 
     <!-- === الطباعة والتصدير === -->
     <div class="bottom-print-bar" id="bottomPrintBar" onclick="event.stopPropagation()">
-        <div style="position: relative;">
+        <div>
             <button type="button" class="bottom-print-btn" onclick="togglePrintMenu(event)">🖨️ طباعة / تصدير ▼</button>
-            <div class="print-dropdown-menu" id="printDropdownMenu" style="bottom: 50px;">
+            <div class="print-dropdown-menu" id="printDropdownMenu">
                 <div class="print-dropdown-item" onclick="printLastInvoice()">🖨️ طباعة حرارية (80mm)</div>
                 <div class="print-dropdown-item" onclick="exportLastInvoiceToPDF()">📄 تصدير PDF</div>
                 <div class="print-dropdown-item" onclick="exportLastInvoiceToExcel()">📊 تصدير Excel</div>
@@ -207,183 +94,190 @@
     </div>
 
     <!-- منطقة الطباعة الحرارية المخفية -->
-    <div id="printReceiptArea"></div>
+    <div id="printReceiptArea" hidden></div>
 
-    <!-- === النوافذ المنبثقة === -->
+    <!-- === النوافذ المنبثقة الموحدة === -->
 
     <!-- نافذة المايك المنبثقة -->
-    <div class="modal-overlay" id="aiModalOverlay" onclick="closeAiModal()">
-        <div class="compact-modal" onclick="event.stopPropagation()">
+    <div class="seraj-modal-overlay modal-overlay" id="aiModalOverlay" onclick="closeAiModal()">
+        <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header">
-                <h3 style="color: var(--neon-border, #a855f7);">استماع المشتريات الذكي</h3>
-                <span style="font-size: 11px; background: #00ff66; color: black; padding: 2px 6px; border-radius: 10px; font-weight: bold;">أوفلاين ⚡</span>
+                <h3>استماع المشتريات الذكي</h3>
+                <span class="stock-badge">أوفلاين ⚡</span>
             </div>
-            <textarea id="aiInputText" placeholder="مثال: هاتلي 3 لمبة 9 وات و 2 شريط لحام..." style="width: 100%; height: 100px; padding: 10px; font-size: 18px; border: 2px solid var(--neon-border, #a855f7); border-radius: 14px; outline: none; background: rgba(19, 17, 44, 0.6); color: var(--text-white, #ffffff); resize: none; margin-bottom: 15px;"></textarea>
+            <div class="seraj-form-row compact-row">
+                <textarea id="aiInputText" placeholder="مثال: هاتلي 3 لمبة 9 وات و 2 شريط لحام..." rows="4"></textarea>
+            </div>
             
-            <div class="compact-row" style="justify-content: center; margin-bottom: 15px;">
-                <button type="button" onclick="startAiMic()" id="aiMicBtn" style="background: #2563eb; color: white; border: 2px solid #3b82f6; padding: 12px 25px; border-radius: 20px; font-weight: bold; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;">
-                    اضغط هنا للبدء
+            <div class="seraj-form-row compact-row">
+                <button type="button" onclick="startAiMic()" id="aiMicBtn" class="seraj-btn-save">
+                    🎤 اضغط هنا للبدء
                 </button>
             </div>
             
-            <div id="aiLoadingIndicator" style="display: none; text-align: center; margin-bottom: 15px; color: #00ff66; font-weight: bold;">جاري دمج الأصناف للطابور... ⏳</div>
+            <div id="aiLoadingIndicator" class="queue-text" hidden>جاري دمج الأصناف للطابور... ⏳</div>
             
             <div class="compact-btns">
-                <button type="button" class="btn-close-ai" onclick="closeAiModal()">إلغاء</button>
-                <button type="button" id="sendAiBtn" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => processLocalAI()); } else { processLocalAI(); }">إدراج في الطابور 🚀</button>
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeAiModal()">إلغاء</button>
+                <button type="button" id="sendAiBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => processLocalAI()); } else { processLocalAI(); }">إدراج في الطابور 🚀</button>
             </div>
         </div>
     </div>
 
     <!-- 1. نافذة التعديل مع تفاصيل الباتشات -->
-    <div class="modal-overlay" id="editModalOverlay" onclick="closeModals()">
-        <div class="compact-modal" onclick="event.stopPropagation()">
+    <div class="seraj-modal-overlay modal-overlay" id="editModalOverlay" onclick="closeModals()">
+        <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3 id="editItemName">تعديل الصنف</h3></div>
 
             <button type="button" class="details-toggle-btn" onclick="toggleDetails()">+ عرض تفاصيل المخزن (للمقارنة)</button>
             <div class="hidden-details" id="hiddenDetailsBox">
                 <div class="batches-slider" id="editBatchesSlider"></div>
-                <div style="text-align: center; margin-top: 8px; font-weight: bold; color: var(--text-white, #ffffff);">
+                <div>
                     إجمالي الرصيد بالمخزن: <span id="editTotalStock">0</span>
                 </div>
             </div>
 
-            <div class="compact-row" style="margin-bottom: 20px;">
-                <label style="flex: unset; width: 140px; text-align: right;">صورة المنتج:</label>
-                <div style="display: flex; flex: 1; align-items: center; gap: 8px;">
-                    <input type="file" id="editProdImageInput" accept="image/*" style="display:none;" onchange="previewSelectedImage('editProdImagePreview', this)">
-                    <button type="button" onclick="document.getElementById('editProdImageInput').click()" style="flex:1; background: rgba(168, 85, 247, 0.2); font-size:14px; border: 1px solid var(--neon-border, #a855f7); border-radius:12px; color: white; padding: 10px; cursor: pointer;">📸 تعديل الصورة</button>
-                    <img id="editProdImagePreview" src="" style="width: 42px; height: 42px; border-radius: 8px; border: 1px solid var(--neon-border, #a855f7); display:none; object-fit: cover; cursor: pointer;" onclick="showFullImage(event, document.getElementById('editItemIndex').value.replace('new_', ''))">
+            <div class="seraj-form-row compact-row">
+                <label>صورة المنتج:</label>
+                <div>
+                    <input type="file" id="editProdImageInput" accept="image/*" hidden onchange="previewSelectedImage('editProdImagePreview', this)">
+                    <button type="button" class="details-toggle-btn" onclick="document.getElementById('editProdImageInput').click()">📸 تعديل الصورة</button>
+                    <img id="editProdImagePreview" src="" alt="صورة الصنف" width="42" height="42" hidden onclick="showFullImage(event, document.getElementById('editItemIndex').value.replace('new_', ''))">
                 </div>
             </div>
 
-            <div class="compact-row"><label>سعر الشراء (للقطعة):</label><input type="number" id="editPrice" onclick="this.select()"></div>
-            <div class="compact-row"><label>سعر البيع للجمهور:</label><input type="number" id="editSellPrice" onclick="this.select()"></div>
-            <div class="compact-row"><label>الكمية المشتراة:</label><input type="number" id="editQty" onclick="this.select()"></div>
+            <div class="seraj-form-row compact-row"><label>سعر الشراء (للقطعة):</label><input type="number" id="editPrice" onclick="this.select()"></div>
+            <div class="seraj-form-row compact-row"><label>سعر البيع للجمهور:</label><input type="number" id="editSellPrice" onclick="this.select()"></div>
+            <div class="seraj-form-row compact-row"><label>الكمية المشتراة:</label><input type="number" id="editQty" onclick="this.select()"></div>
             <input type="hidden" id="editItemIndex">
 
             <div class="compact-btns">
-                <button type="button" class="btn-close-ai" onclick="closeModals()">إغلاق</button>
-                <button type="button" id="confirmItemEditBtn" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => saveItemEdit()); } else { saveItemEdit(); }">تأكيد وإدراج</button>
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeModals()">إغلاق</button>
+                <button type="button" id="confirmItemEditBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => saveItemEdit()); } else { saveItemEdit(); }">تأكيد وإدراج</button>
             </div>
         </div>
     </div>
 
-    <!-- 2. نافذة حفظ الفاتورة (حسابات المورد) - نسخة الشاشة الكاملة (Full-Screen) -->
-    <div class="modal-overlay" id="saveModalOverlay" onclick="closeModals()" style="background-color: #070913; z-index: 9999;">
-        <div class="compact-modal" onclick="event.stopPropagation()" style="width: 100vw; height: 100vh; max-width: none; max-height: none; border-radius: 0; border: none; padding: 25px 20px; background-color: #070913; overflow-y: auto; display: flex; flex-direction: column; box-sizing: border-box;">
+    <!-- 2. نافذة حفظ الفاتورة (حسابات المورد) -->
+    <div class="seraj-modal-overlay modal-overlay" id="saveModalOverlay" onclick="closeModals()">
+        <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
             
             <!-- 1. خصم من المورد -->
-            <div class="compact-row" style="margin-bottom: 15px;">
-                <label style="color:#ff1a40; font-size: 18px; font-weight: bold;">خصم من المورد</label>
-                <input type="number" id="modalDiscount" value="0" onclick="this.select()" oninput="calculateModalTotals()" style="padding: 12px; font-size: 22px; font-weight: bold; border-radius: 10px;">
+            <div class="seraj-form-row compact-row">
+                <label class="color-red-val">خصم من المورد</label>
+                <input type="number" id="modalDiscount" value="0" onclick="this.select()" oninput="calculateModalTotals()">
             </div>
 
             <!-- 2. الصافي المطلوب -->
-            <div class="compact-row" style="margin-bottom: 15px;">
-                <label style="font-size: 18px; font-weight: bold;">الصافي المطلوب</label>
-                <input type="number" id="modalTotal" class="color-red-val" value="0" readonly style="padding: 12px; font-size: 24px; font-weight: bold; border-radius: 10px;">
+            <div class="seraj-form-row compact-row">
+                <label>الصافي المطلوب</label>
+                <input type="number" id="modalTotal" class="color-red-val" value="0" readonly>
             </div>
             
             <!-- 3. المبلغ المدفوع -->
-            <div class="compact-row" style="margin-bottom: 15px;">
-                <label style="color:#00ff66; font-size: 18px; font-weight: bold;">المبلغ المدفوع</label>
-                <input type="number" id="modalPaid" class="color-green-val" value="0" onclick="this.select()" oninput="calculateModalTotals()" style="padding: 12px; font-size: 24px; font-weight: bold; border-radius: 10px;">
+            <div class="seraj-form-row compact-row">
+                <label class="color-green-val">المبلغ المدفوع</label>
+                <input type="number" id="modalPaid" class="color-green-val" value="0" onclick="this.select()" oninput="calculateModalTotals()">
             </div>
             
             <!-- 4. المتبقي (آجل) -->
-            <div class="compact-row" style="margin-bottom: 20px;">
-                <label style="font-size: 18px; font-weight: bold;">المتبقي (آجل)</label>
-                <input type="number" id="modalRemaining" value="0" readonly dir="ltr" style="padding: 12px; font-size: 22px; font-weight: bold; border-radius: 10px;">
+            <div class="seraj-form-row compact-row">
+                <label>المتبقي (آجل)</label>
+                <input type="number" id="modalRemaining" value="0" readonly dir="ltr">
             </div>
 
             <!-- 5. الخزينة والملاحظات -->
-            <div class="compact-row" style="gap: 15px; margin-bottom: 20px;">
-                <select id="modalVaultSelect" style="flex: 1; height: 55px; font-weight: bold; font-size: 18px; border-radius: 12px; border: 2px solid var(--neon-border, #a855f7); background-color: #120f29; color: var(--text-white, #ffffff);">
+            <div class="seraj-form-row compact-row">
+                <select id="modalVaultSelect">
                     <option value="main">الخزينة الرئيسية</option>
                     <option value="insta">إنستا (InstaPay)</option>
                     <option value="wallet">محفظة إلكترونية</option>
                 </select>
-                <input type="text" id="modalNotes" placeholder="ملاحظات الفاتورة..." style="flex: 1; height: 55px; padding: 10px 15px; font-size: 18px; text-align: right; border: 2px solid var(--neon-border, #a855f7); border-radius: 12px; font-weight: bold; outline: none; background-color: #120f29; color: var(--text-white, #ffffff); box-shadow: none;">
+                <input type="text" id="modalNotes" placeholder="ملاحظات الفاتورة...">
             </div>
 
             <!-- 6. التاريخ -->
-            <div class="compact-row" style="justify-content: center; background-color: #120f29; padding: 12px; border-radius: 12px; border: 1px dashed var(--neon-border, #a855f7); margin-bottom: 20px;">
-                <label style="flex: none; margin-left: 10px; color: var(--text-white, #ffffff); font-size: 18px; font-weight: bold;">التاريخ:</label>
-                <input type="date" id="modalDate" style="width: 180px; padding: 8px; font-size: 18px; background-color: #070913; color: var(--text-white, #ffffff); border: 1px solid var(--neon-border, #a855f7); border-radius: 8px; font-weight: bold;">
+            <div class="seraj-form-row compact-row">
+                <label>التاريخ:</label>
+                <input type="date" id="modalDate">
             </div>
 
             <!-- 7. اسم المورد -->
-            <div class="compact-row" style="position:relative; margin-bottom: 5px;">
-                <label style="font-size: 20px; font-weight: 900;">اسم المورد</label>
-                <div style="flex: 2; position: relative; width: 100%;">
+            <div class="seraj-form-row compact-row">
+                <label>اسم المورد</label>
+                <div class="search-container">
                     <input type="hidden" id="selectedSupplierId" value="">
-                    <input type="text" id="supplierSearch" placeholder="اسم المورد..." oninput="handleSupplierInput()" style="width: 100%; box-sizing: border-box; margin: 0; padding: 16px; font-size: 22px; font-weight: bold; background-color: #120f29; color: var(--text-white, #ffffff); border: 2px solid var(--neon-border, #a855f7); border-radius: 12px; outline: none;">
-                    <div id="supplierResults" class="dropdown-list" style="bottom: 100%; top: auto; font-size: 18px;"></div>
+                    <input type="text" id="supplierSearch" class="seraj-search-input search-input" placeholder="اسم المورد..." oninput="handleSupplierInput()">
+                    <div id="supplierResults" class="dropdown-list"></div>
                 </div>
             </div>
             
             <!-- 8. الرصيد -->
-            <div id="liveSupplierBalance" style="text-align: center; margin-bottom: 15px; font-weight: bold; font-size: 18px; min-height: 25px;"></div>
+            <div id="liveSupplierBalance"></div>
 
             <!-- 9. أزرار الحفظ والإغلاق -->
-            <div class="compact-btns" style="margin-top: auto; padding-top: 15px; border-top: 2px solid rgba(168, 85, 247, 0.3);">
-                <button type="button" class="btn-close-ai" onclick="closeModals()" style="padding: 15px; font-size: 22px; font-weight: bold; border-radius: 16px;">رجوع</button>
-                <button type="button" id="confirmSaveBtn" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => SerajConfirmSave()); } else { SerajConfirmSave(); }" style="padding: 15px; font-size: 22px; font-weight: bold; border-radius: 16px; background-color: #051a0d !important; border-color: #00ff66 !important; color: #00ff66 !important;">✔ تأكيد الشراء</button>
+            <div class="compact-btns">
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeModals()">رجوع</button>
+                <button type="button" id="confirmSaveBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => SerajConfirmSave()); } else { SerajConfirmSave(); }">✔ تأكيد الشراء</button>
             </div>
             
         </div>
     </div>
 
     <!-- 3. نافذة الإضافة السريعة (+) لمنتج جديد تماماً -->
-    <div class="modal-overlay" id="quickAddModalOverlay" onclick="closeModals()">
-        <div class="compact-modal" onclick="event.stopPropagation()">
-            <div class="compact-header"><h3 style="color:#00ff66; text-shadow: 0 0 12px rgba(0, 255, 102, 0.8);">إضافة منتج جديد</h3></div>
+    <div class="seraj-modal-overlay modal-overlay" id="quickAddModalOverlay" onclick="closeModals()">
+        <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3 class="color-green-val">إضافة منتج جديد</h3></div>
 
-            <div class="compact-row"><label>اسم المنتج:</label><input type="text" id="newProdName"></div>
-            <div class="compact-row"><label>الصنف:</label><input type="text" id="newProdCategory" value="عام"></div>
+            <div class="seraj-form-row compact-row"><label>اسم المنتج:</label><input type="text" id="newProdName"></div>
+            <div class="seraj-form-row compact-row"><label>الصنف:</label><input type="text" id="newProdCategory" value="عام"></div>
 
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-weight: bold; font-size: 17px; color: var(--text-white, #ffffff); margin-bottom: 8px;">الباركود / الكود:</label>
-                <div style="display: flex; gap: 5px; width: 100%;">
-                    <input type="text" id="newProdBarcode" placeholder="الكود الجديد" style="flex: 1; padding: 10px; border-radius: 12px; border: 2px solid var(--neon-border, #a855f7); background: rgba(19, 17, 44, 0.6); color: white; font-weight: bold; outline: none; text-align: center;">
-                    <button type="button" onclick="startBarcodeScan('newProdBarcode', false)" title="تصوير الباركود" style="background: rgba(168, 85, 247, 0.3); border: 1px solid var(--neon-border, #a855f7); border-radius: 10px; color: white; cursor: pointer; padding: 0 15px; font-size: 18px;">📷</button>
+            <div class="seraj-form-row compact-row">
+                <label>الباركود / الكود:</label>
+                <div class="search-container">
+                    <input type="text" id="newProdBarcode" class="seraj-search-input search-input" placeholder="الكود الجديد">
+                    <button type="button" class="header-camera-btn" onclick="startBarcodeScan('newProdBarcode', false)" title="تصوير الباركود">📷</button>
                 </div>
             </div>
 
-            <div class="compact-row" style="margin-bottom: 20px;">
-                <label style="flex: unset; width: 120px; text-align: right;">صورة المنتج:</label>
-                <div style="display: flex; flex: 1; align-items: center; gap: 8px;">
-                    <input type="file" id="newProdImageInput" accept="image/*" style="display:none;" onchange="previewSelectedImage('newProdImagePreview', this)">
-                    <button type="button" onclick="document.getElementById('newProdImageInput').click()" style="flex:1; background: rgba(168, 85, 247, 0.2); font-size:14px; border: 1px solid var(--neon-border, #a855f7); border-radius:12px; color: white; padding: 10px; cursor: pointer;">📸 اختر صورة</button>
-                    <img id="newProdImagePreview" src="" style="width: 42px; height: 42px; border-radius: 8px; border: 1px solid var(--neon-border, #a855f7); display:none; object-fit: cover;">
+            <div class="seraj-form-row compact-row">
+                <label>صورة المنتج:</label>
+                <div>
+                    <input type="file" id="newProdImageInput" accept="image/*" hidden onchange="previewSelectedImage('newProdImagePreview', this)">
+                    <button type="button" class="details-toggle-btn" onclick="document.getElementById('newProdImageInput').click()">📸 اختر صورة</button>
+                    <img id="newProdImagePreview" src="" alt="صورة المنتج الجديد" width="42" height="42" hidden>
                 </div>
             </div>
 
-            <div class="compact-row"><label>سعر الشراء:</label><input type="number" id="newProdPurchase" value="0" onclick="this.select()"></div>
-            <div class="compact-row"><label>سعر البيع:</label><input type="number" id="newProdPrice" value="0" onclick="this.select()"></div>
+            <div class="seraj-form-row compact-row"><label>سعر الشراء:</label><input type="number" id="newProdPurchase" value="0" onclick="this.select()"></div>
+            <div class="seraj-form-row compact-row"><label>سعر البيع:</label><input type="number" id="newProdPrice" value="0" onclick="this.select()"></div>
 
             <div class="compact-btns">
-                <button type="button" class="btn-close-ai" onclick="closeModals()">إلغاء</button>
-                <button type="button" id="saveQuickProdBtn" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => saveNewProductQuick()); } else { saveNewProductQuick(); }">حفظ المنتج</button>
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeModals()">إلغاء</button>
+                <button type="button" id="saveQuickProdBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => saveNewProductQuick()); } else { saveNewProductQuick(); }">حفظ المنتج</button>
             </div>
         </div>
     </div>
 
     <!-- 4. قارئ الباركود -->
-    <div class="modal-overlay" id="scannerModal" style="z-index: 500;">
-        <div class="compact-modal" style="text-align: center; padding: 15px;">
-            <div class="compact-header"><h3 style="margin:0;">📷 توجيه الكاميرا للباركود</h3></div>
-            <div id="reader" style="width: 100%; border-radius: 10px; overflow: hidden; margin-top: 10px; background: white;"></div>
-            <button type="button" class="btn-close-ai" style="width: 100%; margin-top: 15px; padding: 12px; font-weight: bold; border-radius: 10px;" onclick="stopBarcodeScan()">إغلاق الكاميرا</button>
+    <div class="seraj-modal-overlay modal-overlay" id="scannerModal">
+        <div class="seraj-modal compact-modal">
+            <div class="compact-header"><h3>📷 توجيه الكاميرا للباركود</h3></div>
+            <div id="reader"></div>
+            <div class="compact-btns">
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="stopBarcodeScan()">إغلاق الكاميرا</button>
+            </div>
         </div>
     </div>
 
     <!-- 5. نافذة تكبير الصورة -->
-    <div class="modal-overlay" id="fullImageModal" onclick="this.style.display='none'" style="z-index: 9999;">
-        <div style="position: relative; max-width: 90vw; max-height: 90vh;" onclick="event.stopPropagation()">
-            <button type="button" onclick="document.getElementById('fullImageModal').style.display='none'" style="position: absolute; top: -15px; right: -15px; background: red; color: white; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px rgba(0,0,0,0.5); z-index: 10001;">✖</button>
-            <img id="fullImageDisplay" src="" style="max-width: 100%; max-height: 90vh; border-radius: 12px; border: 3px solid var(--neon-border, #a855f7); box-shadow: 0 0 30px var(--neon-glow, rgba(168, 85, 247, 0.4));">
+    <div class="seraj-modal-overlay modal-overlay" id="fullImageModal" onclick="closeModals()">
+        <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header">
+                <h3>معاينة الصورة</h3>
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeModals()">✖</button>
+            </div>
+            <img id="fullImageDisplay" src="" alt="معاينة الصورة بالحجم الكامل">
         </div>
     </div>
 
@@ -472,25 +366,17 @@
                     let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
                     let dispPurchasePrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].purchasePrice : (parseFloat(p.purchasePrice) || 0);
                     
-                    let isDeletedText = p.isDeleted ? `<span style="color:#ff1a40; font-size:12px; font-weight:bold; margin-right:5px;">(مؤرشف)</span>` : '';
-                    let itemStyle = p.isDeleted ? `background-color: rgba(220, 38, 38, 0.1); border-right: 3px solid #ff1a40;` : '';
-
-                    let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border, #a855f7); margin-left: 10px; object-fit: cover;">` : '';
+                    let isItemArchived = (p.isDeleted || p.isArchived);
+                    let isDeletedText = isItemArchived ? `<span class="color-red-val" style="font-size:13px; font-weight:bold; margin-right:5px;">(مؤرشف)</span>` : '';
+                    let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" alt="" width="35" height="35">` : '';
 
                     const div = document.createElement('div'); 
-                    div.className = 'dropdown-item';
-                    div.style.cssText = itemStyle;
+                    div.className = isItemArchived ? 'dropdown-item archived-item' : 'dropdown-item';
+                    // استخدام <span> كما طلب مدير النظام لضبط المحاذاة المركزية
                     div.innerHTML = `
-                        <div style="display: flex; align-items: center; width: 45%;">
-                            ${imgHtml}
-                            <strong style="line-height: 1.3;">${p.name}</strong> ${isDeletedText}
-                        </div> 
-                        <div style="color:#ff1a40; font-size:18px; font-weight:bold; width: 25%; text-align: center;">
-                            ${dispPurchasePrice}
-                        </div>
-                        <div style="width: 30%; text-align: left;">
-                            <span class="stock-badge">رصيد: ${totalStock}</span>
-                        </div>
+                        <span style="display:flex; align-items:center; gap:5px;">${imgHtml} <strong>${p.name}</strong> ${isDeletedText}</span>
+                        <span class="color-red-val" style="font-weight:bold;">${dispPurchasePrice}</span>
+                        <span class="stock-badge">رصيد: ${totalStock}</span>
                     `;
                     
                     div.onmousedown = async (e) => {
@@ -558,8 +444,10 @@
             let preview = document.getElementById('editProdImagePreview');
             if (p.hasImage) {
                 loadImageFromDB(p.id, 'editProdImagePreview');
+                preview.hidden = false;
                 preview.style.display = 'block';
             } else {
+                preview.hidden = true;
                 preview.style.display = 'none';
                 preview.src = '';
             }
@@ -574,19 +462,19 @@
                     totalStock += bStock;
                     slider.innerHTML += `
                         <div class="batch-card">
-                            <div style="color:var(--neon-border, #a855f7); font-weight:bold;">مورد: ${b.supplier || 'نقدي'}</div>
-                            <div>شراء: <span style="color:#ff1a40;">${b.purchasePrice}</span> ج</div>
-                            <div>بيع: <span style="color:#00ff66;">${b.price}</span> ج</div>
-                            <div>كمية: <span style="color:#00ff66; font-weight:bold;">${bStock}</span></div>
+                            <div><strong>مورد: ${b.supplier || 'نقدي'}</strong></div>
+                            <div>شراء: <span class="color-red-val">${b.purchasePrice}</span> ج</div>
+                            <div>بيع: <span class="color-green-val">${b.price}</span> ج</div>
+                            <div>كمية: <span class="color-green-val">${bStock}</span></div>
                         </div>
                     `;
                 });
             } else { 
                 totalStock = parseFloat(p.stock) || 0;
                 slider.innerHTML = `
-                    <div class="batch-card" style="min-width:100%;">
-                        <div>شراء سابق: <span style="color:#ff1a40;">${p.purchasePrice || 0}</span> ج</div>
-                        <div>الكمية الحالية: <span style="color:#00ff66; font-weight:bold;">${totalStock}</span></div>
+                    <div class="batch-card">
+                        <div>شراء سابق: <span class="color-red-val">${p.purchasePrice || 0}</span> ج</div>
+                        <div>الكمية الحالية: <span class="color-green-val">${totalStock}</span></div>
                     </div>
                 `;
             }
@@ -610,8 +498,10 @@
             let preview = document.getElementById('editProdImagePreview');
             if (invoice[index].hasImage) {
                 loadImageFromDB(invoice[index].id, 'editProdImagePreview');
+                preview.hidden = false;
                 preview.style.display = 'block';
             } else {
+                preview.hidden = true;
                 preview.style.display = 'none';
                 preview.src = '';
             }
@@ -628,19 +518,19 @@
                     totalStock += bStock;
                     slider.innerHTML += `
                         <div class="batch-card">
-                            <div style="color:var(--neon-border, #a855f7); font-weight:bold;">مورد: ${b.supplier || 'نقدي'}</div>
-                            <div>شراء: <span style="color:#ff1a40;">${b.purchasePrice}</span> ج</div>
-                            <div>بيع: <span style="color:#00ff66;">${b.price}</span> ج</div>
-                            <div>كمية: <span style="color:#00ff66; font-weight:bold;">${bStock}</span></div>
+                            <div><strong>مورد: ${b.supplier || 'نقدي'}</strong></div>
+                            <div>شراء: <span class="color-red-val">${b.purchasePrice}</span> ج</div>
+                            <div>بيع: <span class="color-green-val">${b.price}</span> ج</div>
+                            <div>كمية: <span class="color-green-val">${bStock}</span></div>
                         </div>
                     `;
                 });
             } else if (p) { 
                 totalStock = parseFloat(p.stock) || 0;
                 slider.innerHTML = `
-                    <div class="batch-card" style="min-width:100%;">
-                        <div>شراء سابق: <span style="color:#ff1a40;">${p.purchasePrice || 0}</span> ج</div>
-                        <div>الكمية الحالية: <span style="color:#00ff66; font-weight:bold;">${totalStock}</span></div>
+                    <div class="batch-card">
+                        <div>شراء سابق: <span class="color-red-val">${p.purchasePrice || 0}</span> ج</div>
+                        <div>الكمية الحالية: <span class="color-green-val">${totalStock}</span></div>
                     </div>
                 `;
             }
@@ -791,18 +681,18 @@
                     }
                 };
 
-                let imgHtml = item.hasImage ? `<div style="padding: 5px; cursor: pointer;" onclick="showFullImage(event, '${item.id}')"><img id="inv_img_${item.id}" src="" style="width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--neon-border, #a855f7); object-fit: cover;"></div>` : '';
+                let imgHtml = item.hasImage ? `<span onclick="showFullImage(event, '${item.id}')"><img id="inv_img_${item.id}" src="" alt="" width="30" height="30"></span>` : '';
 
                 tr.innerHTML = `
-                    <td style="text-align: right;">
-                        <div style="display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-height: 45px; padding: 4px 0;">
+                    <td>
+                        <div>
                             ${imgHtml}
-                            <strong style="color: var(--text-white, #ffffff); font-size: 15px; line-height: 1.4;">${item.name}</strong>
+                            <strong>${item.name}</strong>
                         </div>
                     </td>
-                    <td style="color: var(--text-white, #ffffff); font-weight:bold; vertical-align: middle;">${itemPrice.toFixed(2)}</td>
-                    <td style="font-weight:bold; color: var(--text-white, #ffffff); vertical-align: middle;">${itemQty}</td>
-                    <td style="font-weight:bold; color: #ff1a40; text-shadow: 0 0 12px rgba(255, 26, 64, 0.9); vertical-align: middle;">${itemTot.toFixed(2)}</td>
+                    <td>${itemPrice.toFixed(2)}</td>
+                    <td>${itemQty}</td>
+                    <td class="color-red-val">${itemTot.toFixed(2)}</td>
                 `;
                 tbody.appendChild(tr);
 
@@ -835,6 +725,7 @@
             
             document.getElementById('newProdImageInput').value = '';
             let addPreview = document.getElementById('newProdImagePreview');
+            addPreview.hidden = true;
             addPreview.style.display = 'none';
             addPreview.src = '';
 
@@ -907,6 +798,7 @@
             document.getElementById('supplierSearch').value = draftSup;
             handleSupplierInput();
 
+            // قراءة تاريخ اليوم الحالي مباشرة لتجنب مشكلة 1/1/1970
             let t = new Date();
             document.getElementById('modalDate').value = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
             
@@ -971,11 +863,11 @@
             if (supplier) {
                 let rawBal = parseFloat(supplier.calculatedBalance ?? supplier.balance ?? 0);
                 let net = rawBal.toFixed(2);
-                if (rawBal > 0) balDiv.innerHTML = `رصيد سابق: <span style="color:#00ff66;">${net} (له)</span>`;
-                else if (rawBal < 0) balDiv.innerHTML = `رصيد سابق: <span style="color:#ff3333;">${Math.abs(rawBal).toFixed(2)} (لنا)</span>`;
-                else balDiv.innerHTML = `رصيد سابق: <span style="color:#ffffff;">0.00 (صافي)</span>`;
+                if (rawBal > 0) balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${net} (له)</span>`;
+                else if (rawBal < 0) balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${Math.abs(rawBal).toFixed(2)} (لنا)</span>`;
+                else balDiv.innerHTML = `رصيد سابق: <span>0.00 (صافي)</span>`;
             } else {
-                balDiv.innerHTML = `<span style="color:var(--neon-border, #a855f7);">مورد جديد</span>`;
+                balDiv.innerHTML = `<span>مورد جديد</span>`;
             }
         }
 
@@ -1248,13 +1140,12 @@
                     <div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>
                     <div><span class="label">المدفوع:</span> ${parseFloat(inv.paid).toFixed(2)}</div>
                     <div><span class="label">باقي الفاتورة:</span> ${parseFloat(inv.remaining).toFixed(2)}</div>
-                    <div style="border-top: 1px dashed #000; margin-top: 6px; padding-top: 6px;">
-                        <div><span class="label">حساب سابق:</span> ${prevText}</div>
-                        <div><span class="label">إجمالي الحساب الجديد:</span> ${currText}</div>
-                    </div>
+                    <hr>
+                    <div><span class="label">حساب سابق:</span> ${prevText}</div>
+                    <div><span class="label">إجمالي الحساب الجديد:</span> ${currText}</div>
                 `;
             } else {
-                totalsHtml = `<div style="font-size: 16px;"><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>`;
+                totalsHtml = `<div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>`;
             }
 
             return `
@@ -1426,8 +1317,10 @@
             let preview = document.getElementById(previewId);
             if (inputElem.files && inputElem.files[0]) {
                 preview.src = URL.createObjectURL(inputElem.files[0]);
+                preview.hidden = false;
                 preview.style.display = 'block';
             } else {
+                preview.hidden = true;
                 preview.style.display = 'none';
                 preview.src = '';
             }
@@ -1477,8 +1370,17 @@
         }
 
         let aiMicRecognition = null;
-        function openAiModal() { history.pushState({ modalOpen: true }, ''); document.getElementById('aiModalOverlay').style.display = 'flex'; document.getElementById('aiInputText').value = ''; }
-        function closeAiModal() { document.getElementById('aiModalOverlay').style.display = 'none'; }
+        let isAiMicRecording = false;
+
+        function openAiModal() {
+            history.pushState({ modalOpen: true }, '');
+            document.getElementById('aiModalOverlay').style.display = 'flex';
+            document.getElementById('aiInputText').value = '';
+        }
+
+        function closeAiModal() {
+            document.getElementById('aiModalOverlay').style.display = 'none';
+        }
 
         function startAiMic() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1486,22 +1388,33 @@
             
             let btn = document.getElementById('aiMicBtn');
             let micIcon = document.getElementById('aiAssistantBtn');
-            if (aiMicRecognition && btn.style.backgroundColor === 'rgb(255, 26, 64)') { aiMicRecognition.stop(); return; }
+            if (aiMicRecognition && isAiMicRecording) {
+                aiMicRecognition.stop();
+                return;
+            }
             
             aiMicRecognition = new SpeechRecognition();
-            aiMicRecognition.lang = 'ar-EG'; aiMicRecognition.continuous = true; aiMicRecognition.interimResults = false;
+            aiMicRecognition.lang = 'ar-EG';
+            aiMicRecognition.continuous = true;
+            aiMicRecognition.interimResults = false;
 
             aiMicRecognition.onstart = () => {
-                btn.style.backgroundColor = '#ff1a40'; btn.style.borderColor = '#ff1a40'; btn.innerText = '🔴 جاري الاستماع...';
+                isAiMicRecording = true;
+                btn.classList.add('recording');
+                btn.innerText = '🔴 جاري الاستماع...';
                 if(micIcon) micIcon.classList.add('recording');
             };
             aiMicRecognition.onresult = (e) => {
                 let text = "";
-                for (let i = e.resultIndex; i < e.results.length; ++i) { if (e.results[i].isFinal) text += e.results[i][0].transcript + " "; }
+                for (let i = e.resultIndex; i < e.results.length; ++i) {
+                    if (e.results[i].isFinal) text += e.results[i][0].transcript + " ";
+                }
                 if(text) document.getElementById('aiInputText').value += text;
             };
             aiMicRecognition.onend = () => {
-                btn.style.backgroundColor = '#2563eb'; btn.style.borderColor = '#3b82f6'; btn.innerText = '🎤 اضغط هنا وتحدث';
+                isAiMicRecording = false;
+                btn.classList.remove('recording');
+                btn.innerText = '🎤 اضغط هنا وتحدث';
                 if(micIcon) micIcon.classList.remove('recording');
             };
             try { aiMicRecognition.start(); } catch(e) { console.error("خطأ:", e); }
@@ -1514,13 +1427,22 @@
 
             let loading = document.getElementById('aiLoadingIndicator');
             let sendBtn = document.getElementById('sendAiBtn');
-            if (loading) loading.style.display = 'block';
+            if (loading) {
+                loading.hidden = false;
+                loading.style.display = 'block';
+            }
             if (sendBtn) sendBtn.disabled = true;
 
             setTimeout(() => {
                 try {
-                    loadDB();
-                    let result = window.SmartVoice.analyzeFullText(rawText, productsDB, 'purchases');
+                    let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) ? productsDB : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts(true) : []);
+                    let engine = window.SmartVoice || (typeof SmartVoice !== 'undefined' ? SmartVoice : null);
+                    
+                    if (!engine || typeof engine.analyzeFullText !== 'function') {
+                        throw new Error("المحرك الصوتي غير متصل بشكل سليم بالصفحة.");
+                    }
+                    
+                    let result = engine.analyzeFullText(rawText, safeProducts, 'purchases');
 
                     if (result && Array.isArray(result.queue) && result.queue.length > 0) {
                         searchQueue = result.queue;
@@ -1528,7 +1450,10 @@
                         SerajAlert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.");
                     }
 
-                    if (loading) loading.style.display = 'none';
+                    if (loading) {
+                        loading.hidden = true;
+                        loading.style.display = 'none';
+                    }
                     if (sendBtn) sendBtn.disabled = false;
                     closeAiModal();
 
@@ -1536,7 +1461,10 @@
                         updateQueueUI();
                     }
                 } catch (error) {
-                    if (loading) loading.style.display = 'none';
+                    if (loading) {
+                        loading.hidden = true;
+                        loading.style.display = 'none';
+                    }
                     if (sendBtn) sendBtn.disabled = false;
                     console.error("Purchases Voice Error:", error);
                     SerajAlert("حدث خطأ أثناء معالجة البيانات: " + error.message, "error");
@@ -1549,7 +1477,7 @@
     <script>
         window.addEventListener('popstate', function(event) {
             let modalClosed = false;
-            document.querySelectorAll('.modal-overlay').forEach(modal => {
+            document.querySelectorAll('.modal-overlay, .seraj-modal-overlay').forEach(modal => {
                 if (modal.style.display === 'flex' || modal.style.display === 'block') {
                     modal.style.display = 'none'; modalClosed = true;
                 }
