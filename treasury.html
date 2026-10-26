@@ -46,31 +46,14 @@
         /* ========================================================= */
         /* التنسيقات المحلية للشاشة */
         /* ========================================================= */
-:root {
-    /* اللون الافتراضي الجديد: الأزرق الفضائي */
-    --neon-border: #3bcaf6;
-    --neon-glow: rgba(59, 130, 246, 0.4);
-    --bg-dark-solid: #070913;      
-    --card-bg-solid: #0f172a;      /* درجة كحلي تتماشى مع الأزرق الفضائي */
-    --text-white: #ffffff;
-    --text-main: #ffffff;
-    --accent-red: #ff1a40;
-    --accent-green: #00ff66;
-}
-
-/* سمة اللون البنفسجي النيون (عند اختيارها من الإعدادات) */
-body.theme-purple {
-    --neon-border: #a855f7;
-    --neon-glow: rgba(168, 85, 247, 0.4);
-    --card-bg-solid: #120f29;
-}
-
-/* سمة الأزرق الفضائي (الافتراضية) */
-body.theme-space-blue {
-    --neon-border: #3bcaf6;
-    --neon-glow: rgba(59, 130, 246, 0.4);
-    --card-bg-solid: #0f172a;
-}
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-main: #ffffff;
+        }
 
         body { 
             font-family: 'Segoe UI', Tahoma, sans-serif; 
@@ -767,63 +750,23 @@ body.theme-space-blue {
         let searchDebounceTimeout;
 
         // دالة قراءة الوقت الآمنة عبر المركز
-// ==========================================
-// دوال الحماية للتواريخ والترتيب اللحظي وتوحيد الحركات
-// ==========================================
-function getSafeTime(dateString) {
-    if (!dateString) return 0;
-    if (typeof dateString === 'number') return dateString;
-    let str = String(dateString).trim();
-    if (str.includes('/')) {
-        let p = str.split('/');
-        if (p.length === 3 && p[0].length <= 2) str = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
-    } else if (str.includes('-') && str.split('-')[0].length <= 2) {
-        let p = str.split('-');
-        if (p.length === 3) str = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
-    }
-    let d = new Date(str);
-    if (!isNaN(d.getTime())) {
-        d.setHours(0, 0, 0, 0);
-        return d.getTime();
-    }
-    return 0;
-}
-
-// استخراج التوقيت الدقيق (أحدث إضافة أو أحدث تعديل يظهر فوق)
-function getExactMoveTimestamp(m) {
-    if (!m) return 0;
-    let editTime = Number(m._updatedAt || m.updatedAt || m._lastModified || m.lastModified || 0);
-    let createTime = Number(m.timestamp || m.createdAt || m._createdAt || m.time || 0);
-    let idTime = 0;
-    if (typeof m.id === 'number') {
-        idTime = m.id;
-    } else if (m.id) {
-        let match = String(m.id).match(/\d{10,15}/);
-        if (match) idTime = parseInt(match[0], 10);
-    }
-    let dateTime = m.date ? new Date(m.date).getTime() : 0;
-    if (isNaN(dateTime)) dateTime = getSafeTime(m.date);
-    return Math.max(editTime || 0, createTime || 0, idTime || 0, dateTime || 0);
-}
-
-// توحيد مسميات الحركات والخزائن والمبالغ القادمة من كافة الصفحات
-function normalizeMoveCategory(type) {
-    let t = String(type || '').toLowerCase().trim();
-    if (t === 'sales' || t === 'sale' || t === 'sales_invoice' || t === 'invoice_sale') return 'sales';
-    if (t === 'return_sale' || t === 'sales_return' || t === 'return' || t === 'return_purchase' || t === 'purchase_return') return 'return_sale';
-    if (t === 'purchase' || t === 'purchases' || t === 'purchase_invoice' || t === 'invoice_purchase') return 'purchase';
-    if (t.includes('customer') || t.includes('cust') || t === 'customers') return 'customers';
-    if (t.includes('supplier') || t.includes('supp') || t === 'suppliers') return 'suppliers';
-    if (t === 'expenses' || t === 'expense') return 'expenses';
-    return 'direct';
-}
-
-function normalizeVaultName(v) {
-    let val = String(v || 'main').toLowerCase().trim();
-    if (val.includes('insta') || val.includes('انستا') || val.includes('إنستا')) return 'insta';
-    if (val.includes('wallet') || val.includes('محفظ')) return 'wallet';
-    return 'main';
-}
+        function getSafeTime(dateString) {
+            if (window.Utils && typeof window.Utils.getSafeTime === 'function') {
+                return window.Utils.getSafeTime(dateString);
+            }
+            if (!dateString) return 0;
+            let d = new Date(dateString).getTime();
+            if (!isNaN(d)) return d;
+            if (dateString.includes('/')) {
+                let p = dateString.split('/');
+                if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+            }
+            if (dateString.includes('-') && dateString.split('-')[0].length <= 2) {
+                let p = dateString.split('-');
+                if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+            }
+            return 0;
+        }
 
         // إغلاق القوائم المنسدلة عند الضغط في أي مكان
         document.addEventListener('click', function(e) {
@@ -974,8 +917,6 @@ function normalizeVaultName(v) {
                     amountDeduct: isAdd ? 0 : amount,
                     notes: notes,
                     date: date,
-                    timestamp: Date.now(),
-                    _updatedAt: Date.now(),
                     _device: dName
                 };
 
@@ -1010,8 +951,6 @@ function normalizeVaultName(v) {
                     amountDeduct: amount,
                     notes: destination,
                     date: date,
-                    timestamp: Date.now(),
-                    _updatedAt: Date.now(),
                     _device: dName
                 };
 
@@ -1177,154 +1116,112 @@ function normalizeVaultName(v) {
         // 1. دالة عرض حركات الخزينة الشاملة
         // ==========================================
         function renderMovementsTable() {
-    // جلب أحدث الحركات دائماً من قاعدة البيانات المركزية
-    if (typeof DB !== 'undefined') {
-        treasuryMovements = DB.getTreasuryMoves() || [];
-        vaultsDB = DB.recalculateVaultBalances ? DB.recalculateVaultBalances(true) : (DB.getVaults() || {});
-    }
+            if (typeof DB !== 'undefined') {
+                treasuryMovements = DB.getTreasuryMoves() || [];
+                vaultsDB = DB.recalculateVaultBalances ? DB.recalculateVaultBalances(true) : (DB.getVaults() || {});
+            }
 
-    const tbody = document.getElementById('movementsTableBody');
-    if(!tbody) return;
+            const tbody = document.getElementById('movementsTableBody');
+            if(!tbody) return;
 
-    // استبعاد الحركات الملغاة فقط وتجهيز كافة الحركات المؤثرة في الخزينة
-    let list = treasuryMovements.filter(m => m && !m.isCanceled && !m.isDeleted && m.type !== 'canceled');
+            let list = [...treasuryMovements];
 
-    // فلترة حسب نوع الحركة (بيع، مرتجع، شراء، عملاء، موردين، مصروفات، مباشرة)
-    if(currentMovementFilter !== 'all') {
-        list = list.filter(m => normalizeMoveCategory(m.type) === currentMovementFilter);
-    }
+            if(currentMovementFilter !== 'all') {
+                if(currentMovementFilter === 'customers') {
+                    list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+                } else if (currentMovementFilter === 'suppliers') {
+                    list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+                } else {
+                    list = list.filter(m => m.type === currentMovementFilter);
+                }
+            }
 
-    // فلترة حسب الخزينة
-    if(currentVaultFilter !== 'all') {
-        list = list.filter(m => normalizeVaultName(m.vault || m.treasury || m.paymentMethod) === currentVaultFilter);
-    }
+            if(currentVaultFilter !== 'all') {
+                list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+            }
 
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const todayTime = today.getTime();
+            list = filterListByDuration(list);
 
-    list = list.filter(m => {
-        let itemTime = m.date ? getSafeTime(m.date) : todayTime;
-        if (!itemTime) itemTime = todayTime;
+            let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
+            let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
 
-        if(currentDurationFilter === 'today') return itemTime === todayTime;
-        if(currentDurationFilter === 'yesterday') { let y = new Date(todayTime); y.setDate(y.getDate()-1); return itemTime === y.getTime(); }
-        if(currentDurationFilter === '7days') { let d = new Date(todayTime); d.setDate(d.getDate()-7); return itemTime >= d.getTime(); }
-        if(currentDurationFilter === 'thisMonth') { let itemDate = new Date(itemTime); return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear(); }
-        if(currentDurationFilter === '30days') { let d = new Date(todayTime); d.setDate(d.getDate()-30); return itemTime >= d.getTime(); }
-        if(currentDurationFilter === 'lastMonth') {
-            let itemDate = new Date(itemTime);
-            let lastM = new Date(todayTime);
-            lastM.setMonth(lastM.getMonth() - 1);
-            return itemDate.getMonth() === lastM.getMonth() && itemDate.getFullYear() === lastM.getFullYear();
-        }
-        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
-            let sTime = getSafeTime(customStartDate);
-            let eTime = getSafeTime(customEndDate);
-            return itemTime >= sTime && itemTime <= eTime;
-        }
-        return true;
-    });
+            document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+            document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+            let net = totalAdd - totalDeduct;
+            let netEl = document.getElementById('sumNetVal');
+            netEl.innerText = net.toFixed(2);
+            netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
 
-    // حساب الإجماليات مع دعم أي صيغة مبلغ واردة من الصفحات الأخرى
-    let totalAdd = 0, totalDeduct = 0;
-    list.forEach(m => {
-        let add = parseFloat(m.amountAdd) || 0;
-        let ded = parseFloat(m.amountDeduct) || 0;
-        if (add === 0 && ded === 0 && m.amount) {
-            let cat = normalizeMoveCategory(m.type);
-            if (m.direction === 'in' || cat === 'sales' || m.type === 'customer_receipt' || m.type === 'supplier_receipt') add = parseFloat(m.amount) || 0;
-            else ded = parseFloat(m.amount) || 0;
-        }
-        totalAdd += add;
-        totalDeduct += ded;
-    });
+            tbody.innerHTML = '';
+            if(list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
+                return;
+            }
 
-    document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
-    document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
-    let net = totalAdd - totalDeduct;
-    let netEl = document.getElementById('sumNetVal');
-    netEl.innerText = net.toFixed(2);
-    netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+            list.sort((a, b) => {
+                let timeA = getSafeTime(a.date);
+                let timeB = getSafeTime(b.date);
+                if (timeB !== timeA) return timeB - timeA;
+                return (b.id || 0) - (a.id || 0);
+            });
 
-    tbody.innerHTML = '';
-    if(list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
-        return;
-    }
+            const fragment = document.createDocumentFragment();
+            let paginatedList = list.slice(0, renderLimitMovements);
 
-    // الترتيب الزمني الدقيق: أحدث حركة أو أحدث تعديل في الأعلى دائماً
-    list.sort((a, b) => {
-        let exactB = getExactMoveTimestamp(b);
-        let exactA = getExactMoveTimestamp(a);
-        if (exactB !== exactA) return exactB - exactA;
-        return getSafeTime(b.date) - getSafeTime(a.date);
-    });
+            paginatedList.forEach(m => {
+                const tr = document.createElement('tr');
+                let pressTimer;
+                const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = m.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
+                const cancelPress = () => { clearTimeout(pressTimer); };
+                const endPress = (e) => { if (e && e.preventDefault) { e.preventDefault(); } clearTimeout(pressTimer); };
 
-    const fragment = document.createDocumentFragment();
-    let paginatedList = list.slice(0, renderLimitMovements);
+                tr.onmousedown = startPress; tr.onmouseup = endPress; tr.onmouseleave = cancelPress;
+                tr.ontouchstart = startPress; tr.ontouchend = endPress;
 
-    paginatedList.forEach(m => {
-        const tr = document.createElement('tr');
-        let pressTimer;
-        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = m.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
-        const cancelPress = () => { clearTimeout(pressTimer); };
-        const endPress = (e) => { if (e && e.preventDefault) { e.preventDefault(); } clearTimeout(pressTimer); };
-
-        tr.onmousedown = startPress; tr.onmouseup = endPress; tr.onmouseleave = cancelPress;
-        tr.ontouchstart = startPress; tr.ontouchend = endPress;
-
-        let add = parseFloat(m.amountAdd) || 0;
-        let ded = parseFloat(m.amountDeduct) || 0;
-        let cat = normalizeMoveCategory(m.type);
-        if (add === 0 && ded === 0 && m.amount) {
-            if (m.direction === 'in' || cat === 'sales' || m.type === 'customer_receipt' || m.type === 'supplier_receipt') add = parseFloat(m.amount) || 0;
-            else ded = parseFloat(m.amount) || 0;
-        }
-
-        let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
-        let editTag = m._lastModifiedBy ? `<span style="color:#facc15; margin-right:4px;">✏️ معدلة (${m._lastModifiedBy})</span>` : '';
-        
-        let typeLabels = {
-            'sales': '🛒 فاتورة بيع', 'sale': '🛒 فاتورة بيع', 'sales_invoice': '🛒 فاتورة بيع',
-            'return_sale': '↩️ فاتورة مرتجع', 'sales_return': '↩️ مرتجع مبيعات', 'return': '↩️ فاتورة مرتجع',
-            'purchase_return': '↩️ مرتجع مشتريات', 'return_purchase': '↩️ مرتجع مشتريات',
-            'purchase': '📦 فاتورة شراء', 'purchases': '📦 فاتورة شراء', 'purchase_invoice': '📦 فاتورة شراء',
-            'customers': '👤 سند عميل', 'customer': '👤 سند عميل', 'customer_receipt': '👤 سند قبض عميل', 'customer_payment': '👤 سند صرف عميل',
-            'suppliers': '🏢 سند مورد', 'supplier': '🏢 سند مورد', 'supplier_receipt': '🏢 سند قبض مورد', 'supplier_payment': '🏢 سند صرف مورد',
-            'expenses': '💸 مصروفات', 'expense': '💸 مصروفات',
-            'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية خزينة'
+                let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
+                let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
+                
+                let typeLabels = { 
+            'sales': '🛒 بيع', 
+            'return_sale': '↩️ مرتجع', 
+            'purchase': '📦 فاتورة شراء', 
+            'purchase_return': '↩️ مرتجع شراء',
+            'customers': '👤 عميل', 
+            'customer_receipt': '👤 تحصيل عميل', 
+            'customer_payment': '👤 صرف عميل', 
+            'suppliers': '🏢 مورد', 
+            'supplier_receipt': '🏢 قبض مورد', 
+            'supplier_payment': '🏢 صرف مورد', 
+            'expenses': '💸 مصروف', 
+            'direct': '💰 حركة مباشرة', 
+            'correction': '⚖️ تسوية' 
         };
-        let typeStr = typeLabels[m.type] || typeLabels[cat] || '💰 حركة خزينة';
-        let invoiceNum = m.invoiceNo || m.refId || m.receiptNo || m.invoiceId || '';
-        let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
-        let partyName = m.customerName || m.customer || m.supplierName || m.supplier || '';
-        let partyStr = partyName ? ` - <span style="color:#38bdf8;">${partyName}</span>` : '';
-        let vName = normalizeVaultName(m.vault || m.treasury || m.paymentMethod);
-        let displayDate = (m.date && String(m.date).includes('T')) ? String(m.date).split('T')[0] : (m.date || '');
+        let typeStr = typeLabels[m.type] || 'حركة خزينة';
+        let invoiceNum = m.invoiceNo || m.purchaseId || m.billId || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+                let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
 
-        tr.innerHTML = `
-            <td style="text-align: right;">
-                <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}${partyStr}</div>
-                <div style="font-size:15px; color:#ffffff;">${m.notes || m.description || m.title || 'بدون بيان'}</div>
-                <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${displayDate} - (${vName})</div>
-                <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
-            </td>
-            <td class="total-add">${add.toFixed(2)}</td>
-            <td class="total-deduct">${ded.toFixed(2)}</td>
-        `;
-        fragment.appendChild(tr);
-    });
+                tr.innerHTML = `
+                    <td style="text-align: right;">
+                        <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}</div>
+                        <div style="font-size:15px; color:#ffffff;">${m.notes}</div>
+                        <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
+                        <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
+                    </td>
+                    <td class="total-add">${(parseFloat(m.amountAdd) || 0).toFixed(2)}</td>
+                    <td class="total-deduct">${(parseFloat(m.amountDeduct) || 0).toFixed(2)}</td>
+                `;
+                fragment.appendChild(tr);
+            });
 
-    if (list.length > renderLimitMovements) {
-        const moreTr = document.createElement('tr');
-        moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
-        moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
-        fragment.appendChild(moreTr);
-    }
+            if (list.length > renderLimitMovements) {
+                const moreTr = document.createElement('tr');
+                moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
+                moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
+                fragment.appendChild(moreTr);
+            }
 
-    tbody.appendChild(fragment);
-}
+            tbody.appendChild(fragment);
+        }
 
         // ==========================================
         // 2. دالة عرض المصروفات
@@ -1431,7 +1328,7 @@ function normalizeVaultName(v) {
         function saveEditedMovement(btnEl) {
             const btn = btnEl || (typeof event !== 'undefined' ? event.currentTarget || event.target : null);
             window.Utils.preventDoubleClick(btn, async () => {
-                let idVal = document.getElementById('editTrId').value;
+                let id = document.getElementById('editTrId').value;
                 let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
                 let notes = document.getElementById('editTrNotes').value.trim() || 'بدون بيان';
                 let date = document.getElementById('editTrDate').value;
@@ -1439,7 +1336,7 @@ function normalizeVaultName(v) {
 
                 if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
 
-                let index = treasuryMovements.findIndex(x => String(x.id) === String(idVal));
+                let index = treasuryMovements.findIndex(x => x.id == id);
                 if(index === -1) return;
 
                 let updatedMove = {
@@ -1448,7 +1345,6 @@ function normalizeVaultName(v) {
                     amountDeduct: isAdd ? 0 : amount,
                     notes: notes,
                     date: date,
-                    _updatedAt: Date.now(),
                     _lastModifiedBy: localStorage.getItem('seraj_device_name') || 'غير معروف'
                 };
 
