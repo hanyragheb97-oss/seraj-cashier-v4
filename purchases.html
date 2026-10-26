@@ -907,7 +907,7 @@
             document.getElementById('supplierSearch').value = draftSup;
             handleSupplierInput();
 
-            let t = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? new Date(window.Utils.getSafeTime()) : new Date();
+            let t = new Date();
             document.getElementById('modalDate').value = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
             
             document.getElementById('modalPaid').value = document.getElementById('modalTotal').value; 
