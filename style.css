@@ -1,192 +1,1230 @@
-/* ========================================================= */
-/* 🌌 سراج كاشير - النظام المعماري الشامل (نسخة V2 الصلبة السريعة) */
-/* تم إزالة الـ Blur والتدرجات اللونية لتسريع الأداء 100%       */
-/* ========================================================= */
+/* ========================================================================== */
+/* 🌌 سراج كاشير - ملف التصميم المركزي الموحد (Centralized CSS - V2 Solid)   */
+/* أداء فائق السرعة 100% (ألوان صلبة بالكامل بدون Blur أو تدرجات لونية)      */
+/* ========================================================================== */
 
-/* --- 1. الألوان الأساسية الصلبة (بدون تدرجات) --- */
+/* ========================================================================== */
+/* 1. متغيرات النظام والألوان المركزية (:root)                                */
+/* الافتراضي: الأزرق الفضائي (Space Blue) + دعم السمات من الخزينة             */
+/* ========================================================================== */
 :root {
-    /* اللون الافتراضي الجديد: الأزرق الفضائي */
-    --neon-border: #3bcaf6;
-    --neon-glow: rgba(59, 130, 246, 0.4);
-    --bg-dark-solid: #070913;      
-    --card-bg-solid: #0f172a;      /* درجة كحلي تتماشى مع الأزرق الفضائي */
-    --text-white: #ffffff;
-    --text-main: #ffffff;
-    --accent-red: #ff1a40;
-    --accent-green: #00ff66;
+    /* --- ألوان الخلفيات الأساسية الصلبة --- */
+    --bg-dark-1: #070913;                          /* لون الخلفية الأساسي للبرنامج بالكامل (أسود فضائي صلب) */
+    --bg-dark-2: #0b0d1e;                          /* لون الخلفية الثانوي للشريط العلوي والسفلي والنوافذ */
+    --bg-dark-solid: var(--bg-dark-1);             /* متغير مرادف للخلفية الأساسية لضمان التوافق مع كافة الصفحات */
+    --card-bg: #0f172a;                            /* لون خلفية البطاقات والجداول والحقول (أزرق فضائي داكن) */
+    --card-bg-solid: var(--card-bg);               /* متغير مرادف لخلفية البطاقات لضمان التوافق */
+    --card-bg-alt: #131c31;                        /* لون خلفية كروت الفواتير والسجلات الفرعية */
+    --table-header-bg: #162038;                    /* لون خلفية ترويسة الجداول الثابتة (th) */
+    --input-focus-bg: #172544;                     /* لون خلفية مربع البحث أو الحقل عند الوقوف عليه */
+    --row-active-bg: #1e293b;                      /* لون خلفية الصف أو العنصر عند الضغط عليه باللمس */
+
+    /* --- ألوان الإطارات والتوهج (الافتراضي: أزرق فضائي) --- */
+    --neon-border: #3b82f6;                        /* لون إطار النيون الأساسي في البرنامج (أزرق فضائي) */
+    --neon-glow: rgba(59, 130, 246, 0.4);          /* لون التوهج الخارجي للإطارات الأساسية */
+    --neon-border-soft: rgba(59, 130, 246, 0.25);  /* لون الخطوط الفاصلة الخفيفة داخل الجداول والقوائم */
+    --input-focus-border: #38bdf8;                 /* لون إطار حقل الإدخال عند التركيز والكتابة بداخله */
+
+    /* --- ألوان النصوص والخطوط --- */
+    --text-main: #ffffff;                          /* لون النصوص الأساسي في كل البرنامج (أبيض ناصع) */
+    --text-white: var(--text-main);                /* متغير مرادف للون النص الأبيض */
+    --text-muted: #cbd5e1;                         /* لون النصوص الفرعية والتواريخ والتفاصيل الثانوية */
+    --text-glow: rgba(255, 255, 255, 0.6);         /* لون التوهج الخفيف للعناوين والنصوص البارزة */
+
+    /* --- ألوان أزرار الحفظ والإضافة والنجاح (أخضر) --- */
+    --accent-green: #00ff66;                       /* اللون الأخضر الأساسي للأرقام الموجبة وأزرار الحفظ */
+    --btn-save-bg: #052e16;                        /* لون خلفية أزرار الحفظ والتأكيد والإضافة السريعة */
+    --btn-save-border: var(--accent-green);        /* لون إطار ونص أزرار الحفظ والإضافة */
+    --btn-save-glow: rgba(0, 255, 102, 0.4);       /* لون توهج أزرار الحفظ والإضافة */
+    --btn-save-active: #0a3d1f;                    /* لون خلفية زر الحفظ والإضافة عند الضغط عليه */
+
+    /* --- ألوان أزرار الإلغاء والحذف والمديونية (أحمر) --- */
+    --accent-red: #ff1a40;                         /* اللون الأحمر الأساسي للمديونيات والخطر وأزرار الإلغاء */
+    --btn-cancel-bg: #3b0a14;                      /* لون خلفية أزرار الإلغاء والحذف والإغلاق */
+    --btn-cancel-border: var(--accent-red);        /* لون إطار ونص أزرار الإلغاء والحذف */
+    --btn-cancel-glow: rgba(255, 26, 64, 0.4);     /* لون توهج أزرار الإلغاء والحذف */
+
+    /* --- ألوان أزرار التنقل والأدوات (رجوع، ميكروفون، كاميرا، شارات) --- */
+    --btn-nav-bg: #1d4ed8;                         /* لون خلفية أزرار الرجوع والميكروفون */
+    --btn-nav-border: #3b82f6;                     /* لون إطار أزرار الرجوع والميكروفون */
+    --btn-nav-glow: rgba(59, 130, 246, 0.65);      /* لون توهج أزرار الرجوع والميكروفون */
+    --btn-cam-bg: #17203d;                         /* لون خلفية زر الكاميرا والباركود */
+    --badge-bg: #2563eb;                           /* لون خلفية شارة رصيد المخزن (Stock Badge) */
+    --badge-glow: rgba(37, 99, 235, 0.5);          /* لون توهج شارة رصيد المخزن */
+
+    /* --- ألوان التفرقة الوظيفية لرؤوس الصفحات (Header Functional Accents) --- */
+    --page-sales-accent: #0ea5e9;                  /* لمسة أزرق سماوي لتمييز رأس صفحة المبيعات */
+    --page-sales-glow: rgba(14, 165, 233, 0.45);   /* توهج رأس صفحة المبيعات */
+    --page-purchases-accent: #f97316;              /* لمسة برتقالي لتمييز رأس صفحة المشتريات */
+    --page-purchases-glow: rgba(249, 115, 22, 0.45);/* توهج رأس صفحة المشتريات */
+    --page-inventory-accent: #8b5cf6;              /* لمسة بنفسجي نيلي لتمييز رأس صفحة المخزن */
+    --page-inventory-glow: rgba(139, 92, 246, 0.45);/* توهج رأس صفحة المخزن */
+    --page-treasury-accent: #10b981;               /* لمسة أخضر زمردي لتمييز رأس صفحة الخزينة */
+    --page-treasury-glow: rgba(16, 185, 129, 0.45);/* توهج رأس صفحة الخزينة */
+    --page-records-accent: #eab308;                /* لمسة ذهبي لتمييز رأس صفحة السجلات والتقارير */
+    --page-records-glow: rgba(234, 179, 8, 0.45);  /* توهج رأس صفحة السجلات */
+
+    /* --- ألوان سمة البنفسجي النيون (تُفعل عند اختيارها من الإعدادات/الخزينة) --- */
+    --purple-border: #a855f7;                      /* لون إطار سمة البنفسجي النيون */
+    --purple-glow: rgba(168, 85, 247, 0.4);        /* لون توهج سمة البنفسجي النيون */
+    --purple-soft: rgba(168, 85, 247, 0.25);       /* لون الفواصل الداخلية لسمة البنفسجي */
+    --purple-card: #120f29;                        /* لون البطاقات في سمة البنفسجي */
+    --purple-header: #1c133a;                      /* لون رأس الجدول في سمة البنفسجي */
+    --purple-active: #2a154d;                      /* لون الضغط على الصف في سمة البنفسجي */
+    --purple-focus-border: #ec4899;                /* لون التركيز الوردي في سمة البنفسجي */
+
+    /* --- ألوان الظلال والتعتيم والطباعة --- */
+    --overlay-bg: rgba(0, 0, 0, 0.9);              /* لون الخلفية المعتمة وراء النوافذ المنبثقة */
+    --shadow-dark: rgba(0, 0, 0, 0.85);            /* لون الظل الداكن للقوائم المنسدلة */
+    --shadow-inset: rgba(0, 0, 0, 0.5);            /* لون الظل الداخلي لمربعات النص */
+    --transparent: transparent;                    /* متغير اللون الشفاف */
+    --print-bg: #ffffff;                           /* لون خلفية ورق الطباعة (أبيض) */
+    --print-text: #000000;                         /* لون نص وحدود الطباعة (أسود) */
+    --print-th-bg: #eeeeee;                        /* لون خلفية ترويسة جدول طباعة القوائم */
 }
 
-/* سمة اللون البنفسجي النيون (عند اختيارها من الإعدادات) */
+/* --- هذا الكود مسؤول عن تفعيل سمة البنفسجي النيون عند اختيارها من الخزينة --- */
 body.theme-purple {
-    --neon-border: #a855f7;
-    --neon-glow: rgba(168, 85, 247, 0.4);
-    --card-bg-solid: #120f29;
+    --neon-border: var(--purple-border);           /* تحويل الإطار الأساسي إلى البنفسجي النيون */
+    --neon-glow: var(--purple-glow);               /* تحويل التوهج الأساسي إلى توهج بنفسجي */
+    --neon-border-soft: var(--purple-soft);        /* تحويل الفواصل الداخلية إلى بنفسجي خفيف */
+    --card-bg: var(--purple-card);                 /* تحويل لون البطاقات إلى الكحلي البنفسجي */
+    --table-header-bg: var(--purple-header);       /* تحويل لون ترويسة الجداول إلى البنفسجي الداكن */
+    --row-active-bg: var(--purple-active);         /* تحويل لون تفاعل الصفوف إلى البنفسجي */
+    --input-focus-border: var(--purple-focus-border); /* تحويل إطار التركيز إلى الوردي النيون */
 }
 
-/* سمة الأزرق الفضائي (الافتراضية) */
+/* --- هذا الكود مسؤول عن تفعيل سمة الأزرق الفضائي الافتراضية صراحةً --- */
 body.theme-space-blue {
-    --neon-border: #3bcaf6;
-    --neon-glow: rgba(59, 130, 246, 0.4);
-    --card-bg-solid: #0f172a;
+    --neon-border: #3b82f6;                        /* تثبيت الإطار على الأزرق الفضائي */
+    --neon-glow: rgba(59, 130, 246, 0.4);          /* تثبيت التوهج على الأزرق الفضائي */
 }
 
-/* --- 2. الإعدادات العامة للشاشة (ألوان صلبة) --- */
-html, body { 
-    font-family: 'Segoe UI', Tahoma, sans-serif; 
-    background-color: var(--bg-dark-solid); /* لون صلب بدل الجراديانت */
-    color: var(--text-white); 
-    margin: 0; padding: 0; 
-    user-select: none; overflow-x: hidden; 
-    -webkit-tap-highlight-color: transparent;
-    min-height: 100vh;
-    overscroll-behavior-y: none !important;
-}
-.view-section { display: none; }
-.active-view { display: block; animation: fadeIn 0.3s ease; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* --- 3. الرأس العلوية (Header) - صلبة بدون Blur --- */
-.header { 
-    background-color: #0b0d1e; /* لون صلب معتم 100% */
-    color: var(--text-white); padding: 15px 20px; 
-    display: flex; align-items: center; justify-content: space-between; 
-    font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; 
-    border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);
-}
-.header-back-btn, .header-history-btn {
-    background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px;
-    color: var(--text-white); cursor: pointer; display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;
-}
-.header-back-btn { padding: 0 15px; height: 45px; flex-direction: column; }
-.header-history-btn { font-size: 16px; font-weight: bold; gap: 6px; padding: 6px 14px; background-color: var(--card-bg-solid); border-color: var(--neon-border); box-shadow: 0 0 12px var(--neon-glow); }
-.header-back-btn:active, .header-history-btn:active { transform: scale(0.95); filter: brightness(1.2); }
-.header-back-btn .arrow { font-size: 15px; line-height: 1; }
-.header-back-btn .text { font-size: 10px; font-weight: bold; letter-spacing: 0.5px; }
-.header-camera-btn { background-color: #1a153a; border: 1px solid var(--neon-border); border-radius: 12px; color: var(--text-white); font-size: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px 14px; box-shadow: 0 0 12px var(--neon-glow); transition: all 0.2s;}
-.header-camera-btn:active { transform: scale(0.95); filter: brightness(1.3); }
+/* ========================================================================== */
+/* 2. الإعدادات العامة للهيكل والرأس العلوية والتفرقة الوظيفية للصفحات         */
+/* ========================================================================== */
 
-/* --- 4. شريط البحث والأزرار الخاصة (إضافة، ميكروفون) --- */
-.search-container { position: relative; margin-bottom: 10px; display: flex; gap: 8px; align-items: center; width: 100%; box-sizing: border-box;}
-.search-box { display: flex; align-items: center; border: 2px solid var(--neon-border); border-radius: 14px; padding: 4px 15px; background-color: var(--card-bg-solid); margin-bottom: 8px; box-shadow: 0 4px 15px var(--neon-glow); position: sticky; top: 60px; z-index: 45; }
-.search-input, .search-box input { flex: 1; padding: 14px; border: 2px solid var(--neon-border); border-radius: 16px; font-size: 18px; box-sizing: border-box; background-color: #0b0d1e; box-shadow: 0 0 15px var(--neon-glow); outline: none; color: var(--text-white); font-weight: bold; transition: all 0.3s;}
-.search-box input { padding: 4px 0; border: none; box-shadow: none; font-size: 17px; background: transparent; }
-.search-input:focus { box-shadow: 0 0 30px var(--neon-glow); background-color: #1a153a; }
-
-/* الزرار الأخضر الكبير والمايكروفون */
-.quick-add-btn { background-color: #051a0d; color: #00ff66; border: 2px solid #00ff66; border-radius: 16px; width: 55px; height: 55px; font-size: 26px; font-weight: bold; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 15px rgba(0, 255, 102, 0.4); transition: all 0.2s; flex-shrink: 0;}
-.quick-add-btn:active { transform: scale(0.95); box-shadow: 0 0 25px rgba(0, 255, 102, 0.8); background-color: #0a331a; }
-.mic-btn-search { background: #2563eb; color: white; border: 2px solid #3b82f6; border-radius: 16px; width: 55px; height: 55px; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 15px rgba(37, 99, 235, 0.5); transition: all 0.2s; flex-shrink: 0;}
-
-/* --- 5. القوائم المنسدلة (الطباعة والبحث) --- */
-.dropdown-list { position: absolute; top: 100%; left: 0; right: 0; background-color: var(--card-bg-solid); border: 2px solid var(--neon-border); border-radius: 0 0 16px 16px; max-height: 70vh; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 35px rgb(0, 0, 0);}
-.dropdown-item { padding: 12px 15px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: var(--text-white); font-weight: bold; font-size: 16px;}
-.dropdown-item:active { background-color: #2a154d; }
-
-.dropdown-menu, .print-dropdown-menu { 
-    position: absolute; bottom: 110%; background-color: var(--card-bg-solid); border: 2px solid var(--neon-border); 
-    border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.9); display: none; z-index: 1000; 
-    overflow: hidden; width: 220px; text-align: right; 
-    left: 50%; transform: translateX(-50%); 
-}
-.bottom-print-bar .print-dropdown-menu { bottom: 65px; left: auto; transform: none; }
-.dropdown-menu-item, .print-dropdown-item { padding: 12px 15px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 15px; color: var(--text-white); transition: background 0.2s; display: flex; justify-content: space-between;}
-.dropdown-menu-item:active, .print-dropdown-item:active { background-color: #2a154d; }
-
-/* --- 6. الجداول (صلبة بدون Blur) --- */
-.table-wrapper { 
-    max-height: calc(100vh - 240px); 
-    overflow-y: auto; border-radius: 16px; border: 2px solid var(--neon-border); box-shadow: 0 0 20px var(--neon-glow); 
-    background-color: var(--card-bg-solid); margin-bottom: 15px; 
-}
-table { width: 100%; border-collapse: collapse; text-align: center; border: none; }
-
-table th { 
-    background-color: #1c133a; padding: 14px 8px; border-bottom: 2px solid var(--neon-border); 
-    color: var(--text-white); font-weight: bold; font-size: 16px; text-shadow: 0 0 8px rgba(255, 255, 255, 0.5); 
-    position: sticky; top: 0; z-index: 10; white-space: nowrap;
+/* هذا الكود مسؤول عن ضبط الشاشة الكلية ومنع الارتداد وتحديد الخط والخلفية الصلبة */
+html, body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;   /* خط النظام الأساسي واضح وسريع القراءة */
+    background-color: var(--bg-dark-solid);        /* تطبيق لون الخلفية الأساسي الصلب */
+    color: var(--text-white);                      /* تطبيق لون النص الأبيض على كافة العناصر */
+    margin: 0;                                     /* إلغاء الهوامش الخارجية الافتراضية للمتصفح */
+    padding: 0;                                    /* إلغاء الهوامش الداخلية الافتراضية للمتصفح */
+    user-select: none;                             /* منع تحديد النصوص العشوائي أثناء اللمس السريع */
+    overflow-x: hidden;                            /* منع انزلاق الشاشة يميناً ويساراً */
+    -webkit-tap-highlight-color: var(--transparent); /* إخفاء وميض اللمس الافتراضي في الأندرويد */
+    min-height: 100vh;                             /* ضمان تغطية الخلفية لكامل طول الشاشة */
+    overscroll-behavior-y: none !important;        /* منع سحب الصفحة لأسفل لعمل تحديث بالخطأ */
 }
 
-table td { 
-    padding: 12px 6px; 
-    border-bottom: 1px solid rgba(168, 85, 247, 0.3); 
-    cursor: pointer; touch-action: pan-y; color: var(--text-white); 
-    font-weight: bold; font-size: 15px; vertical-align: middle; 
+/* هذا الكود مسؤول عن إخفاء الأقسام الفرعية غير النشطة داخل الصفحة الواحدة */
+.view-section, .seraj-view-section {
+    display: none;                                 /* إخفاء القسم حتى يتم استدعاؤه */
 }
-table tr { border-bottom: none; }
-table tr:last-child td { border-bottom: none; }
 
-.swipe-row { transition: transform 0.15s ease-out, background 0.2s; background-color: var(--card-bg-solid); touch-action: pan-y; position: relative; }
-table tr:active { background-color: #2a154d; }
-
-/* --- 7. السجلات والكروت --- */
-.invoice-card { background-color: #171436; border-radius: 12px; margin-bottom: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 0 10px rgba(168, 85, 247, 0.15); border: 1px solid var(--neon-border); cursor: pointer; transition: 0.2s;}
-.invoice-card:active { background-color: #2a154d; box-shadow: 0 0 20px var(--neon-glow); }
-.inv-info { text-align: right; }
-.inv-customer, .inv-supplier { font-size: 16px; font-weight: bold; color: var(--text-white); margin-bottom: 3px; text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);}
-.inv-meta { font-size: 13px; color: #cbd5e1; line-height: 1.4; font-weight: bold;}
-.inv-amount { font-size: 20px; font-weight: bold; transition: color 0.3s; }
-
-/* --- 8. الألوان والدلالات الحسابية --- */
-.val-red, .color-red-val, .text-danger { color: var(--accent-red) !important; font-weight: bold; text-shadow: 0 0 12px rgba(255, 26, 64, 0.6); }
-.val-green, .color-green-val, .text-success { color: var(--accent-green) !important; font-weight: bold; text-shadow: 0 0 12px rgba(0, 255, 102, 0.6); }
-.stock-badge { background: #9333ea; color: white; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: bold; box-shadow: 0 0 10px rgba(147, 51, 234, 0.5);}
-
-/* --- 9. النوافذ المنبثقة (Modals) الصلبة --- */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.9); display: none; justify-content: center; align-items: center; z-index: 300;}
-.compact-modal { background-color: #0b0d1e; padding: 20px; border-radius: 20px; width: 92%; max-width: 440px; box-shadow: 0 0 45px var(--neon-glow); max-height: 90vh; overflow-y: auto; border: 2px solid var(--neon-border); box-sizing: border-box;}
-.compact-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid rgba(168, 85, 247, 0.3); padding-bottom: 12px; margin-bottom: 15px;}
-.compact-header h3 { margin: 0; font-size: 18px; color: var(--text-white); text-shadow: 0 0 12px rgba(255, 255, 255, 0.8);}
-
-.compact-row, .form-row, .input-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap:8px;}
-.compact-row label, .form-row label, .input-group label { font-size: 15px; font-weight: bold; color: var(--text-white); flex: 1; text-align: right; text-shadow: 0 0 8px rgba(255, 255, 255, 0.5); margin: 0; white-space: nowrap;}
-.compact-row input, .compact-row select, .compact-row textarea, .form-row input, .form-row select, .input-group input, .input-group select { width: 100%; padding: 10px; font-size: 16px; text-align: center; border: 2px solid var(--neon-border); border-radius: 12px; font-weight: bold; outline: none; background-color: var(--card-bg-solid); color: var(--text-white); box-shadow: inset 0 0 10px rgb(0, 0, 0); flex: 2; box-sizing: border-box;}
-.compact-row input:focus, .compact-row select:focus, .form-row input:focus, .form-row select:focus { box-shadow: 0 0 25px var(--neon-glow); border-color: #ec4899; }
-
-.compact-btns, .btn-group { display: flex; gap: 12px; margin-top: 20px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 15px;}
-.btn-save-ai, .confirm-btn { flex: 1; font-size: 16px; font-weight: bold; cursor: pointer; padding: 12px; border-radius: 14px; transition: all 0.2s; background-color: #0b0d1e !important; border: 2px solid var(--neon-border) !important; color: var(--text-white) !important; box-shadow: 0 0 15px var(--neon-glow) !important;}
-.btn-close-ai, .cancel-btn { flex: 1; font-size: 16px; font-weight: bold; cursor: pointer; padding: 12px; border-radius: 14px; transition: all 0.2s; background-color: var(--card-bg-solid) !important; border: 2px solid var(--neon-border) !important; color: var(--text-white) !important; box-shadow: 0 0 12px var(--neon-glow) !important;}
-.btn-save-ai:active, .confirm-btn:active, .btn-close-ai:active, .cancel-btn:active { transform: scale(0.96); }
-
-/* --- 10. شريط التحكم السفلي --- */
-.bottom-dashboard, .unified-bottom-bar, .edit-fixed-bottom-bar { 
-    position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 15px; background-color: #0b0d1e; 
-    border-top: 1px solid var(--neon-border); display: flex; 
-    justify-content: space-between; align-items: center; z-index: 200; box-shadow: 0 -4px 25px var(--neon-glow); gap: 10px; box-sizing: border-box;
+/* هذا الكود مسؤول عن إظهار القسم النشط حالياً بحركة انسيابية خفيفة */
+.active-view, .seraj-active-view {
+    display: block;                                /* إظهار القسم النشط */
+    animation: fadeIn 0.25s ease;                  /* تشغيل حركة الظهور التدريجي السريع */
 }
-.dashboard-right { display: flex; align-items: center; gap: 8px; flex: 1; }
-.dashboard-left { display: flex; align-items: center; gap: 8px; }
-.bottom-back-btn { background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0; }
-.bottom-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
-.bottom-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
-.bottom-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
 
-.save-btn { display: none; flex: 1; align-items: center; justify-content: center; background-color: #0b0d1e; color: var(--text-white); border: 1px solid var(--neon-border); height: 45px; font-size: 16px; border-radius: 12px; cursor: pointer; font-weight: bold; box-shadow: 0 0 10px var(--neon-glow); transition: all 0.2s; }
-.save-btn:active { transform: scale(0.96); box-shadow: 0 0 20px var(--neon-glow); background-color: #2a154d; }
-.floating-total { display: none; flex-direction: column; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; color: var(--text-white); padding: 4px 15px; background-color: var(--card-bg-solid); border: 1px solid var(--neon-border); border-radius: 12px; text-align: center; box-shadow: 0 0 10px var(--neon-glow); line-height: 1.2; height: 45px; box-sizing: border-box; }
-.floating-total span.total-label { font-size: 12px; color: var(--text-white); font-weight: normal; }
-.floating-total .total-val { color: var(--accent-red); text-shadow: 0 0 10px rgba(255, 26, 64, 0.9); font-size: 18px; }
+/* هذا الكود مسؤول عن تعريف حركة الظهور التدريجي للأقسام */
+@keyframes fadeIn {
+    from { opacity: 0; }                           /* بداية الحركة بشفافية كاملة */
+    to { opacity: 1; }                             /* نهاية الحركة بظهور كامل */
+}
 
-.fab-container { position: fixed; bottom: 80px; left: 22px; z-index: 200; }
-.fab-btn { background-color: #0b0d1e; color: var(--text-white); border: 2px solid var(--neon-border); border-radius: 50%; width: 60px; height: 60px; font-size: 30px; display: flex; justify-content: center; align-items: center; box-shadow: 0 0 20px var(--neon-glow); cursor: pointer; transition: all 0.2s;}
-.fab-btn:active { transform: scale(0.95); }
+/* هذا الكود مسؤول عن تصميم الشريط العلوي (Header) الثابت في أعلى كل الصفحات */
+.header, .seraj-header {
+    background-color: var(--bg-dark-2);            /* خلفية داكنة صلبة معتمة 100% */
+    color: var(--text-white);                      /* لون عنوان الصفحة أبيض */
+    padding: 15px 20px;                            /* مسافات داخلية مريحة حول العنوان والأزرار */
+    display: flex;                                 /* ترتيب عناصر الرأس في صف واحد مرن */
+    align-items: center;                           /* محاذاة العناصر عمودياً في المنتصف */
+    justify-content: space-between;                /* توزيع العنوان والأزرار على الأطراف */
+    font-size: 22px;                               /* حجم خط كبير وواضح لعنوان الصفحة */
+    font-weight: bold;                             /* خط عريض للعنوان */
+    position: sticky;                              /* تثبيت الرأس في أعلى الشاشة عند التمرير */
+    top: 0;                                        /* لصق الرأس في نقطة الصفر أعلى الشاشة */
+    z-index: 50;                                   /* رفع طبقة الرأس فوق الجداول والمحتوى */
+    border-bottom: 2px solid var(--neon-border);   /* خط سفلي مضيء بلون النظام */
+    box-shadow: 0 0 25px var(--neon-glow);         /* توهج ضوئي أسفل الشريط العلوي */
+}
 
-/* --- 11. إعدادات الطباعة (لم يتم المساس بها) --- */
-#printReceiptArea, #printListArea { display: none; }
+/* --- التفرقة اللونية الوظيفية لرؤوس الصفحات (لتمييز كل قسم بصرياً) --- */
+
+/* هذا الكود مسؤول عن تمييز رأس صفحة المبيعات باللمسة الزرقاء السماوية */
+body.page-sales .header, .header.header-sales, .seraj-header-sales {
+    border-bottom-color: var(--page-sales-accent); /* إطار علوي خاص بصفحة المبيعات */
+    box-shadow: 0 0 25px var(--page-sales-glow);   /* توهج علوي خاص بصفحة المبيعات */
+}
+
+/* هذا الكود مسؤول عن تمييز رأس صفحة المشتريات باللمسة البرتقالية */
+body.page-purchases .header, .header.header-purchases, .seraj-header-purchases {
+    border-bottom-color: var(--page-purchases-accent); /* إطار علوي برتقالي للمشتريات */
+    box-shadow: 0 0 25px var(--page-purchases-glow);   /* توهج علوي برتقالي للمشتريات */
+}
+
+/* هذا الكود مسؤول عن تمييز رأس صفحة المخزن باللمسة البنفسجية النيلية */
+body.page-inventory .header, .header.header-inventory, .seraj-header-inventory {
+    border-bottom-color: var(--page-inventory-accent); /* إطار علوي خاص بالمخزن */
+    box-shadow: 0 0 25px var(--page-inventory-glow);   /* توهج علوي خاص بالمخزن */
+}
+
+/* هذا الكود مسؤول عن تمييز رأس صفحة الخزينة باللمسة الخضراء الزمردية */
+body.page-treasury .header, .header.header-treasury, .seraj-header-treasury {
+    border-bottom-color: var(--page-treasury-accent);  /* إطار علوي أخضر زمردي للخزينة */
+    box-shadow: 0 0 25px var(--page-treasury-glow);    /* توهج علوي أخضر زمردي للخزينة */
+}
+
+/* هذا الكود مسؤول عن تمييز رأس صفحة السجلات باللمسة الذهبية */
+body.page-records .header, .header.header-records, .seraj-header-records {
+    border-bottom-color: var(--page-records-accent);   /* إطار علوي ذهبي للسجلات */
+    box-shadow: 0 0 25px var(--page-records-glow);     /* توهج علوي ذهبي للسجلات */
+}
+
+
+/* ========================================================================== */
+/* 3. أكواد مربعات البحث والقوائم المنسدلة للبحث (Search Boxes & Dropdowns)   */
+/* ========================================================================== */
+
+/* هذا الكود مسؤول عن الحاوية الخارجية لشريط البحث والأزرار المجاورة له */
+.search-container, .seraj-search-container {
+    position: relative;                            /* تحديد المرجعية لظهور القائمة المنسدلة أسفله مباشرة */
+    margin-bottom: 10px;                           /* مسافة سفلية تفصل البحث عن الجدول */
+    display: flex;                                 /* رص مربع البحث مع زر الإضافة والميكروفون أفقياً */
+    gap: 8px;                                      /* مسافة فاصلة بين حقل البحث والأزرار */
+    align-items: center;                           /* توسيط الحقل والأزرار عمودياً */
+    width: 100%;                                   /* عرض كامل يغطي الشاشة */
+    box-sizing: border-box;                        /* احتساب الحواف ضمن العرض الكلي */
+}
+
+/* هذا الكود مسؤول عن صندوق البحث المدمج المثبت أسفل الرأس العلوي */
+.search-box, .seraj-search-box {
+    display: flex;                                 /* ترتيب أيقونة البحث مع الحقل بمرونة */
+    align-items: center;                           /* محاذاة عمودية في المنتصف */
+    border: 2px solid var(--neon-border);          /* إطار نيون مضيء حول صندوق البحث */
+    border-radius: 14px;                           /* حواف دائرية انسيابية للصندوق */
+    padding: 4px 15px;                             /* هوامش داخلية للصندوق */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة بلون البطاقات */
+    margin-bottom: 8px;                            /* هامش سفلي خفيف */
+    box-shadow: 0 4px 15px var(--neon-glow);       /* ظل متوهج حول صندوق البحث */
+    position: sticky;                              /* تثبيت صندوق البحث أثناء التمرير */
+    top: 60px;                                     /* تثبيته أسفل الشريط العلوي مباشرة */
+    z-index: 45;                                   /* رفعه فوق الجداول وأسفل الرأس العلوي */
+}
+
+/* هذا الكود مسؤول عن حقل إدخال نص البحث الرئيسي في كافة الصفحات */
+.search-input, .search-box input, .seraj-search-input {
+    flex: 1;                                       /* تمديد الحقل ليأخذ كامل المساحة المتبقية */
+    padding: 14px;                                 /* مسافة داخلية مريحة للكتابة باللمس */
+    border: 2px solid var(--neon-border);          /* إطار نيون واضح حول الحقل */
+    border-radius: 16px;                           /* زوايا دائرية للحقل */
+    font-size: 18px;                               /* حجم خط كبير وواضح للبحث */
+    box-sizing: border-box;                        /* الحفاظ على مقاس الحقل مع الهوامش */
+    background-color: var(--bg-dark-2);            /* خلفية داكنة صلبة للحقل */
+    box-shadow: 0 0 15px var(--neon-glow);         /* توهج حول حقل البحث */
+    outline: none;                                 /* إلغاء الإطار الافتراضي للمتصفح */
+    color: var(--text-white);                      /* لون كتابة أبيض واضح */
+    font-weight: bold;                             /* خط عريض للنص المكتوب */
+    transition: all 0.25s;                         /* نعومة عند الانتقال لحالة التركيز */
+}
+
+/* هذا الكود مسؤول عن ضبط الحقل الداخلي إذا كان داخل حاوية search-box */
+.search-box input, .seraj-search-box input {
+    padding: 4px 0;                                /* تقليل الحشو ليتناسب مع الصندوق الأب */
+    border: none;                                  /* إزالة الإطار المزدوج والاكتفاء بإطار الصندوق */
+    box-shadow: none;                              /* إزالة التوهج المزدوج */
+    font-size: 17px;                               /* حجم خط متناسق */
+    background: var(--transparent);                /* خلفية شفافة تأخذ لون الصندوق الأب */
+}
+
+/* هذا الكود مسؤول عن تغيير توهج وخلفية حقل البحث عند الوقوف والكتابة فيه */
+.search-input:focus, .seraj-search-input:focus {
+    box-shadow: 0 0 30px var(--neon-glow);         /* زيادة التوهج عند الكتابة */
+    background-color: var(--input-focus-bg);       /* تفتيح خفيف للخلفية لتنبيه المستخدم */
+    border-color: var(--input-focus-border);       /* تمييز لون الإطار أثناء الكتابة */
+}
+
+/* هذا الكود مسؤول عن القائمة المنسدلة لنتائج البحث السريع عن الأصناف أو العملاء */
+.dropdown-list, .seraj-dropdown-list {
+    position: absolute;                            /* تعويم القائمة أسفل شريط البحث مباشرة */
+    top: 100%;                                     /* بدء القائمة من نهاية حقل البحث */
+    left: 0;                                       /* محاذاة من أقصى اليسار */
+    right: 0;                                      /* محاذاة من أقصى اليمين */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة داكنة للقائمة */
+    border: 2px solid var(--neon-border);          /* إطار نيون يحيط بالقائمة */
+    border-radius: 0 0 16px 16px;                  /* تدوير الزوايا السفلية للقائمة */
+    max-height: 70vh;                              /* أقصى ارتفاع 70% من الشاشة مع إمكانية التمرير */
+    overflow-y: auto;                              /* تفعيل شريط التمرير العمودي عند كثرة النتائج */
+    z-index: 100;                                  /* رفع القائمة فوق الجداول */
+    display: none;                                 /* إخفاء القائمة افتراضياً حتى يبدأ البحث */
+    box-shadow: 0 15px 35px var(--shadow-dark);    /* ظل قوي لفصل القائمة عن الجدول خلفها */
+}
+
+/* هذا الكود مسؤول عن تصميم كل سطر (نتيجة) داخل القائمة المنسدلة للبحث */
+.dropdown-item, .seraj-dropdown-item {
+    padding: 12px 15px;                            /* مسافة داخلية مريحة للضغط بالإصبع */
+    border-bottom: 1px solid var(--neon-border-soft); /* خط فاصل خفيف بين كل نتيجة وأخرى */
+    cursor: pointer;                               /* تحويل المؤشر ليد عند المرور */
+    display: flex;                                 /* عرض اسم الصنف وسعره/رصيده على طرفي السطر */
+    justify-content: space-between;                /* فصل الاسم في اليمين والسعر في اليسار */
+    align-items: center;                           /* محاذاة عمودية في المنتصف */
+    color: var(--text-white);                      /* لون النص أبيض */
+    font-weight: bold;                             /* خط عريض وواضح */
+    font-size: 16px;                               /* حجم خط متوسط ومقروء */
+}
+
+/* هذا الكود مسؤول عن تلوين عنصر القائمة المنسدلة لحظة الضغط عليه */
+.dropdown-item:active, .seraj-dropdown-item:active {
+    background-color: var(--row-active-bg);        /* تغيير لون الخلفية عند الاختيار */
+}
+
+
+/* ========================================================================== */
+/* 4. أكواد الأزرار الموحدة (حفظ، إلغاء، إضافة، تنقل، مايك، كاميرا، عائم)     */
+/* ========================================================================== */
+
+/* هذا الكود مسؤول عن أزرار الحفظ والتأكيد الموحدة في كل النوافذ والصفحات (أخضر) */
+.btn-save-ai, .confirm-btn, .seraj-btn-save {
+    flex: 1;                                       /* أخذ مساحة متساوية داخل شريط الأزرار */
+    font-size: 16px;                               /* حجم خط واضح */
+    font-weight: bold;                             /* خط عريض */
+    cursor: pointer;                               /* مؤشر نقر */
+    padding: 12px;                                 /* حشو داخلي مريح */
+    border-radius: 14px;                           /* حواف دائرية */
+    transition: all 0.2s;                          /* استجابة بصرية سريعة */
+    background-color: var(--btn-save-bg) !important; /* خلفية خضراء داكنة صلبة لتمييز الحفظ */
+    border: 2px solid var(--btn-save-border) !important; /* إطار أخضر نيون */
+    color: var(--text-white) !important;           /* نص أبيض ناصع */
+    box-shadow: 0 0 15px var(--btn-save-glow) !important; /* توهج أخضر حول زر الحفظ */
+}
+
+/* هذا الكود مسؤول عن أزرار الإلغاء والإغلاق والحذف الموحدة في كل النوافذ (أحمر) */
+.btn-close-ai, .cancel-btn, .seraj-btn-cancel, .seraj-btn-delete {
+    flex: 1;                                       /* أخذ مساحة متساوية داخل شريط الأزرار */
+    font-size: 16px;                               /* حجم خط واضح */
+    font-weight: bold;                             /* خط عريض */
+    cursor: pointer;                               /* مؤشر نقر */
+    padding: 12px;                                 /* حشو داخلي مريح */
+    border-radius: 14px;                           /* حواف دائرية */
+    transition: all 0.2s;                          /* استجابة بصرية سريعة */
+    background-color: var(--btn-cancel-bg) !important; /* خلفية حمراء داكنة صلبة لتمييز الإلغاء */
+    border: 2px solid var(--btn-cancel-border) !important; /* إطار أحمر نيون */
+    color: var(--text-white) !important;           /* نص أبيض ناصع */
+    box-shadow: 0 0 12px var(--btn-cancel-glow) !important; /* توهج أحمر حول زر الإلغاء */
+}
+
+/* هذا الكود مسؤول عن حركة الضغط على أزرار الحفظ والإلغاء */
+.btn-save-ai:active, .confirm-btn:active, .seraj-btn-save:active,
+.btn-close-ai:active, .cancel-btn:active, .seraj-btn-cancel:active, .seraj-btn-delete:active {
+    transform: scale(0.96);                        /* تصغير طفيف يعطي إحساس الضغطة الحقيقية */
+    filter: brightness(1.2);                       /* زيادة سطوع الزر لحظة اللمس */
+}
+
+/* هذا الكود مسؤول عن الزر الأخضر المربع للإضافة السريعة بجوار شريط البحث (+) */
+.quick-add-btn, .seraj-btn-add {
+    background-color: var(--btn-save-bg);          /* خلفية خضراء داكنة صلبة */
+    color: var(--accent-green);                    /* علامة الزائد باللون الأخضر النيون */
+    border: 2px solid var(--btn-save-border);      /* إطار أخضر نيون */
+    border-radius: 16px;                           /* حواف دائرية متناسقة مع مربع البحث */
+    width: 55px;                                   /* عرض ثابت ومربع */
+    height: 55px;                                  /* ارتفاع ثابت ومربع */
+    font-size: 26px;                               /* حجم كبير لعلامة الإضافة */
+    font-weight: bold;                             /* سمك عريض للأيقونة */
+    display: flex;                                 /* استخدام التخطيط المرن للتوسيط */
+    justify-content: center;                       /* توسيط أفقي */
+    align-items: center;                           /* توسيط عمودي */
+    cursor: pointer;                               /* مؤشر اليد */
+    box-shadow: 0 0 15px var(--btn-save-glow);     /* توهج أخضر حول الزر */
+    transition: all 0.2s;                          /* نعومة الاستجابة */
+    flex-shrink: 0;                                /* منع انكماش الزر في الشاشات الصغيرة */
+}
+
+/* هذا الكود مسؤول عن تأثير الضغط على زر الإضافة السريعة */
+.quick-add-btn:active, .seraj-btn-add:active {
+    transform: scale(0.95);                        /* تصغير بسيط عند اللمس */
+    background-color: var(--btn-save-active);      /* تفتيح الخلفية الخضراء */
+}
+
+/* هذا الكود مسؤول عن زر البحث الصوتي (الميكروفون) بجوار شريط البحث */
+.mic-btn-search, .seraj-btn-mic {
+    background-color: var(--btn-nav-bg);           /* خلفية زرقاء صلبة */
+    color: var(--text-white);                      /* لون الأيقونة أبيض */
+    border: 2px solid var(--btn-nav-border);       /* إطار أزرق فاتح */
+    border-radius: 16px;                           /* حواف دائرية متناسقة مع البحث */
+    width: 55px;                                   /* عرض مربع ثابت */
+    height: 55px;                                  /* ارتفاع مربع ثابت */
+    font-size: 24px;                               /* حجم أيقونة الميكروفون */
+    display: flex;                                 /* تخطيط مرن للتوسيط */
+    align-items: center;                           /* توسيط عمودي */
+    justify-content: center;                       /* توسيط أفقي */
+    cursor: pointer;                               /* مؤشر نقر */
+    box-shadow: 0 0 15px var(--btn-nav-glow);      /* توهج أزرق حول الزر */
+    transition: all 0.2s;                          /* انتقال سلس */
+    flex-shrink: 0;                                /* منع انكماش الزر */
+}
+
+/* هذا الكود مسؤول عن أزرار الرجوع والسجل في الشريط العلوي والسفلي */
+.header-back-btn, .header-history-btn, .bottom-back-btn, .seraj-btn-back, .seraj-btn-history {
+    background-color: var(--btn-nav-bg);           /* خلفية زرقاء موحدة لأزرار التنقل */
+    border: 2px solid var(--btn-nav-border);       /* إطار أزرق مضيء */
+    border-radius: 12px;                           /* حواف دائرية متوسطة */
+    color: var(--text-white);                      /* نص وأسهم باللون الأبيض */
+    cursor: pointer;                               /* مؤشر نقر */
+    display: flex;                                 /* تخطيط مرن لمحتوى الزر */
+    align-items: center;                           /* توسيط عمودي */
+    justify-content: center;                       /* توسيط أفقي */
+    box-shadow: 0 0 12px var(--btn-nav-glow);      /* توهج أزرق */
+    transition: all 0.2s;                          /* استجابة سريعة للمس */
+    flex-shrink: 0;                                /* الحفاظ على حجم الزر */
+}
+
+/* هذا الكود مسؤول عن أبعاد زر الرجوع العلوي والسفلي وترتيب السهم فوق كلمة BACK */
+.header-back-btn, .bottom-back-btn, .seraj-btn-back {
+    padding: 0 15px;                               /* حشو جانبي مناسب */
+    height: 45px;                                  /* ارتفاع موحد قياسي */
+    flex-direction: column;                        /* وضع السهم فوق النص عمودياً */
+}
+
+/* هذا الكود مسؤول عن تنسيق زر السجل (History) في الشريط العلوي */
+.header-history-btn, .seraj-btn-history {
+    font-size: 16px;                               /* حجم خط واضح */
+    font-weight: bold;                             /* خط عريض */
+    gap: 6px;                                      /* مسافة بين الأيقونة والنص */
+    padding: 6px 14px;                             /* حشو داخلي */
+    background-color: var(--card-bg-solid);        /* خلفية بلون البطاقات */
+    border-color: var(--neon-border);              /* إطار بلون النظام */
+    box-shadow: 0 0 12px var(--neon-glow);         /* توهج بلون النظام */
+}
+
+/* هذا الكود مسؤول عن تأثير اللمس لأزرار الرجوع والسجل */
+.header-back-btn:active, .header-history-btn:active, .bottom-back-btn:active, .seraj-btn-back:active {
+    transform: scale(0.95);                        /* تصغير خفيف عند النقر */
+    filter: brightness(1.2);                       /* إضاءة الزر عند النقر */
+}
+
+/* هذا الكود مسؤول عن شكل السهم داخل زر الرجوع */
+.header-back-btn .arrow, .bottom-back-btn .arrow, .seraj-btn-back .arrow {
+    color: var(--text-white);                      /* لون السهم أبيض */
+    font-size: 15px;                               /* حجم السهم */
+    line-height: 1;                                /* ضبط ارتفاع السطر لمنع التباعد */
+}
+
+/* هذا الكود مسؤول عن كلمة BACK أسفل السهم داخل زر الرجوع */
+.header-back-btn .text, .bottom-back-btn .text, .seraj-btn-back .text {
+    color: var(--text-white);                      /* لون الكلمة أبيض */
+    font-size: 10px;                               /* خط صغير متناسق تحت السهم */
+    font-weight: bold;                             /* خط عريض */
+    letter-spacing: 0.5px;                         /* تباعد خفيف بين الحروف الإنجليزية */
+}
+
+/* هذا الكود مسؤول عن زر الكاميرا قارئ الباركود في الرأس العلوي */
+.header-camera-btn, .seraj-btn-camera {
+    background-color: var(--btn-cam-bg);           /* خلفية كحلية داكنة صلبة */
+    border: 1px solid var(--neon-border);          /* إطار نيون رفيع */
+    border-radius: 12px;                           /* زوايا دائرية */
+    color: var(--text-white);                      /* لون الأيقونة أبيض */
+    font-size: 22px;                               /* حجم أيقونة الكاميرا */
+    cursor: pointer;                               /* مؤشر نقر */
+    display: flex;                                 /* تخطيط مرن */
+    align-items: center;                           /* توسيط عمودي */
+    justify-content: center;                       /* توسيط أفقي */
+    padding: 4px 14px;                             /* حشو داخلي */
+    box-shadow: 0 0 12px var(--neon-glow);         /* توهج نيون */
+    transition: all 0.2s;                          /* استجابة سريعة */
+}
+
+/* هذا الكود مسؤول عن تأثير الضغط على زر الكاميرا */
+.header-camera-btn:active, .seraj-btn-camera:active {
+    transform: scale(0.95);                        /* تصغير عند الضغط */
+    filter: brightness(1.3);                       /* زيادة السطوع */
+}
+
+/* هذا الكود مسؤول عن حاوية الزر العائم الدائري (FAB) أسفل يسار الشاشة */
+/* هذا الكود مسؤول عن الزر العائم الدائري (سواء الإضافة أو القائمة) */
+.fab-btn, .seraj-fab-btn, .seraj-btn-add-floating {
+    position: fixed;
+    bottom: 150px;
+    left: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--bg-dark-2);
+    color: var(--text-white);
+    border: 2px solid var(--neon-border);
+    font-size: 30px;
+    box-shadow: 0 0 20px var(--neon-glow);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.fab-btn:active, .seraj-fab-btn:active, .seraj-btn-add-floating:active {
+    transform: scale(0.95);
+}
+
+/* هذا الكود مسؤول عن تصميم الزر العائم الدائري نفسه */
+.fab-btn, .seraj-fab-btn {
+    background-color: var(--bg-dark-2);            /* خلفية داكنة صلبة */
+    color: var(--text-white);                      /* لون الأيقونة أبيض */
+    border: 2px solid var(--neon-border);          /* إطار نيون مضيء */
+    border-radius: 50%;                            /* شكل دائري كامل */
+    width: 60px;                                   /* عرض الدائرة */
+    height: 60px;                                  /* ارتفاع الدائرة */
+    font-size: 30px;                               /* حجم كبير للأيقونة الداخلية */
+    display: flex;                                 /* تخطيط مرن للتوسيط */
+    justify-content: center;                       /* توسيط أفقي */
+    align-items: center;                           /* توسيط عمودي */
+    box-shadow: 0 0 20px var(--neon-glow);         /* توهج نيون قوي */
+    cursor: pointer;                               /* مؤشر نقر */
+    transition: all 0.2s;                          /* انتقال سلس */
+}
+
+/* هذا الكود مسؤول عن تأثير لمس الزر العائم */
+.fab-btn:active, .seraj-fab-btn:active {
+    transform: scale(0.95);                        /* تصغير بسيط عند الضغط */
+}
+
+/* ========================================================================== */
+/* 8. أكواد الأزرار الفرعية (عرض التفاصيل، تعديل الصورة، الخيارات الإضافية)   */
+/* ========================================================================== */
+
+/* هذا الكود مسؤول عن الأزرار الفرعية المتقطعة داخل النوافذ المنبثقة */
+.details-toggle-btn, .seraj-btn-secondary {
+    background-color: var(--card-bg-alt);          /* خلفية صلبة داكنة بدلاً من الشفافية لضمان سرعة الأداء */
+    color: var(--text-white);                      /* لون النص الأبيض الثابت */
+    border: 2px dashed var(--neon-border);         /* إطار متقطع يأخذ لون النظام (سواء أزرق فضائي أو بنفسجي) */
+    width: 100%;                                   /* عرض كامل داخل النافذة */
+    padding: 10px;                                 /* حشو داخلي مريح للضغط */
+    border-radius: 12px;                           /* حواف دائرية متناسقة */
+    font-weight: bold;                             /* خط عريض */
+    font-size: 15px;                               /* حجم خط واضح */
+    cursor: pointer;                               /* مؤشر اليد عند المرور */
+    margin-bottom: 15px;                           /* مسافة سفلية قبل العناصر التالية */
+    box-shadow: 0 0 10px var(--neon-glow);         /* توهج خفيف بلون النظام */
+    transition: all 0.2s;                          /* استجابة سلسة للحركة */
+    text-align: center;                            /* توسيط النص داخل الزر */
+    display: block;                                /* عرض كعنصر مستقل */
+}
+
+/* تأثير اللمس والضغط على الزر الفرعي */
+.details-toggle-btn:active, .seraj-btn-secondary:active {
+    transform: scale(0.95);                        /* تصغير الزر بنسبة 5% عند الضغط */
+    background-color: var(--row-active-bg);        /* تفتيح لون الخلفية عند التفاعل */
+}
+
+/* ========================================================================== */
+/* 5. أكواد الجداول الموحدة والسجلات والكروت والدلالات الحسابية               */
+/* ========================================================================== */
+
+/* هذا الكود مسؤول عن الحاوية الخارجية للجداول مع التمرير الداخلي والإطار المضيء */
+.table-wrapper, .seraj-table-wrapper {
+    max-height: calc(100vh - 240px);               /* تحديد أقصى ارتفاع لترك مساحة للرأس والشريط السفلي */
+    overflow-y: auto;                              /* السماح بالتمرير العمودي داخل الجدول فقط */
+    border-radius: 16px;                           /* زوايا دائرية لحاوية الجدول */
+    border: 2px solid var(--neon-border);          /* إطار نيون موحد حول الجدول */
+    box-shadow: 0 0 20px var(--neon-glow);         /* توهج خارجي حول الجدول */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة موحدة لكل الجداول */
+    margin-bottom: 15px;                           /* مسافة سفلية */
+}
+
+/* هذا الكود مسؤول عن ضبط عرض الجدول ودمج حدود الخلايا */
+table, .seraj-table {
+    width: 100%;                                   /* عرض الجدول 100% من الحاوية */
+    border-collapse: collapse;                     /* دمج حدود الخلايا معاً بدون فراغات */
+    text-align: center;                            /* توسيط النصوص والأرقام في كل الخلايا */
+    border: none;                                  /* إزالة الحدود الخارجية الافتراضية */
+}
+
+/* هذا الكود مسؤول عن تصميم خلايا ترويسة الجدول العلوية (th) وتثبيتها عند التمرير */
+table th, .seraj-table th {
+    background-color: var(--table-header-bg);      /* خلفية مميزة صلبة لرأس الجدول */
+    padding: 14px 8px;                             /* مسافة داخلية مريحة لعناوين الأعمدة */
+    border-bottom: 2px solid var(--neon-border);   /* خط فاصل قوي أسفل عناوين الأعمدة */
+    color: var(--text-white);                      /* لون العناوين أبيض */
+    font-weight: bold;                             /* خط عريض للعناوين */
+    font-size: 16px;                               /* حجم خط واضح */
+    text-shadow: 0 0 8px var(--text-glow);         /* توهج نصي خفيف لعناوين الأعمدة */
+    position: sticky;                              /* تثبيت عناوين الأعمدة أثناء نزول الجدول */
+    top: 0;                                        /* تثبيتها في أعلى حاوية الجدول */
+    z-index: 10;                                   /* رفعها فوق صفوف البيانات أثناء التمرير */
+    white-space: nowrap;                           /* منع انكسار عنوان العمود في سطرين */
+}
+
+/* هذا الكود مسؤول عن تصميم خلايا البيانات (td) داخل كافة الجداول */
+table td, .seraj-table td {
+    padding: 12px 6px;                             /* حشو داخلي متوازن للبيانات */
+    border-bottom: 1px solid var(--neon-border-soft); /* خط فاصل خفيف بين كل صف والذي يليه */
+    cursor: pointer;                               /* إمكانية النقر على الصف لتعديله */
+    touch-action: pan-y;                           /* السماح بالتمرير العمودي السلس باللمس */
+    color: var(--text-white);                      /* لون البيانات أبيض */
+    font-weight: bold;                             /* خط عريض واضح للأصناف والأرقام */
+    font-size: 15px;                               /* حجم خط مناسب للبيانات */
+    vertical-align: middle;                        /* محاذاة المحتوى في منتصف الخلية عمودياً */
+}
+
+/* هذا الكود مسؤول عن إزالة الحدود الزائدة من الصفوف والصف الأخير */
+table tr, .seraj-table tr {
+    border-bottom: none;                           /* الاعتماد على حدود الخلايا فقط */
+}
+table tr:last-child td, .seraj-table tr:last-child td {
+    border-bottom: none;                           /* إزالة الخط السفلي من آخر صف في الجدول */
+}
+
+/* هذا الكود مسؤول عن الصفوف القابلة للسحب يميناً ويساراً (Swipe Rows) */
+.swipe-row, .seraj-swipe-row {
+    transition: transform 0.15s ease-out, background 0.2s; /* نعومة حركة السحب وتغيير الخلفية */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة للصف */
+    touch-action: pan-y;                           /* ضبط استجابة اللمس */
+    position: relative;                            /* تحديد موضع نسبي لحركة السحب */
+}
+
+/* هذا الكود مسؤول عن تلوين صف الجدول لحظة الضغط عليه */
+table tr:active, .seraj-table tr:active {
+    background-color: var(--row-active-bg);        /* تغيير لون الصف عند لمسه */
+}
+
+/* هذا الكود مسؤول عن تصميم كروت الفواتير والسجلات في شاشات السجل */
+.invoice-card, .seraj-card {
+    background-color: var(--card-bg-alt);          /* خلفية صلبة مميزة للكارت */
+    border-radius: 12px;                           /* حواف دائرية للكارت */
+    margin-bottom: 10px;                           /* مسافة فاصلة بين كل فاتورة وأخرى */
+    padding: 10px 14px;                            /* هوامش داخلية للكارت */
+    display: flex;                                 /* توزيع بيانات الفاتورة وإجماليها أفقياً */
+    justify-content: space-between;                /* وضع بيانات العميل يميناً والمبلغ يساراً */
+    align-items: center;                           /* محاذاة عمودية في المنتصف */
+    box-shadow: 0 0 10px var(--neon-glow);         /* توهج خفيف حول الكارت */
+    border: 1px solid var(--neon-border);          /* إطار نيون يحيط بالكارت */
+    cursor: pointer;                               /* قابلية النقر لفتح تفاصيل الفاتورة */
+    transition: 0.2s;                              /* نعومة الاستجابة عند اللمس */
+}
+
+/* هذا الكود مسؤول عن تأثير لمس كارت الفاتورة */
+.invoice-card:active, .seraj-card:active {
+    background-color: var(--row-active-bg);        /* تغيير الخلفية عند الضغط */
+    box-shadow: 0 0 20px var(--neon-glow);         /* زيادة التوهج عند الضغط */
+}
+
+/* هذا الكود مسؤول عن محاذاة القسم الأيمن من معلومات الكارت */
+.inv-info, .seraj-card-info {
+    text-align: right;                             /* محاذاة النصوص لليمين */
+}
+
+/* هذا الكود مسؤول عن اسم العميل أو المورد داخل الكارت */
+.inv-customer, .inv-supplier, .seraj-card-title {
+    font-size: 16px;                               /* حجم خط بارز للاسم */
+    font-weight: bold;                             /* خط عريض */
+    color: var(--text-white);                      /* لون أبيض ناصع */
+    margin-bottom: 3px;                            /* مسافة صغيرة فوق التفاصيل */
+    text-shadow: 0 0 8px var(--text-glow);         /* إضاءة خفيفة للاسم */
+}
+
+/* هذا الكود مسؤول عن التاريخ ورقم الفاتورة والتفاصيل الفرعية داخل الكارت */
+.inv-meta, .seraj-card-meta {
+    font-size: 13px;                               /* خط أصغر للتفاصيل الفرعية */
+    color: var(--text-muted);                      /* لون رمادي فاتح مريح للعين */
+    line-height: 1.4;                              /* تباعد سطور مناسب */
+    font-weight: bold;                             /* خط واضح */
+}
+
+/* هذا الكود مسؤول عن عرض المبلغ الإجمالي الكبير داخل كارت الفاتورة */
+.inv-amount, .seraj-card-amount {
+    font-size: 20px;                               /* خط كبير وبارز للمبلغ */
+    font-weight: bold;                             /* خط عريض */
+    transition: color 0.3s;                        /* سلاسة تغيير اللون حسب الحالة */
+}
+
+/* --- الألوان والدلالات الحسابية (مديونية / رصيد موجب / شارات) --- */
+
+/* هذا الكود مسؤول عن تلوين المبالغ السالبة أو الديون أو النواقص باللون الأحمر المضيء */
+.val-red, .color-red-val, .text-danger, .seraj-val-red {
+    color: var(--accent-red) !important;           /* لون أحمر نيون صريح */
+    font-weight: bold;                             /* خط عريض */
+    text-shadow: 0 0 12px var(--btn-cancel-glow);  /* توهج أحمر حول الرقم */
+}
+
+/* هذا الكود مسؤول عن تلوين المبالغ الموجبة أو المحصلة أو الأرباح باللون الأخضر المضيء */
+.val-green, .color-green-val, .text-success, .seraj-val-green {
+    color: var(--accent-green) !important;         /* لون أخضر نيون صريح */
+    font-weight: bold;                             /* خط عريض */
+    text-shadow: 0 0 12px var(--btn-save-glow);    /* توهج أخضر حول الرقم */
+}
+
+/* هذا الكود مسؤول عن شارة عرض الكمية المتبقية في المخزن (Stock Badge) */
+.stock-badge, .seraj-badge {
+    background-color: var(--badge-bg);             /* خلفية زرقاء مميزة للشارة */
+    color: var(--text-white);                      /* رقم الكمية باللون الأبيض */
+    padding: 4px 10px;                             /* حشو داخلي للكبسولة */
+    border-radius: 12px;                           /* شكل كبسولة دائرية */
+    font-size: 13px;                               /* حجم خط متناسق */
+    font-weight: bold;                             /* خط عريض */
+    box-shadow: 0 0 10px var(--badge-glow);        /* توهج حول الشارة */
+}
+
+
+/* ========================================================================== */
+/* 6. أكواد النوافذ المنبثقة الموحدة (Modals & Forms)                         */
+/* ========================================================================== */
+
+/* هذا الكود مسؤول عن طبقة التعتيم الخلفية التي تغطي الشاشة عند فتح نافذة منبثقة */
+.modal-overlay, .seraj-modal-overlay {
+    position: fixed;                               /* تثبيت فوق كامل الشاشة */
+    top: 0;                                        /* من أعلى الشاشة */
+    left: 0;                                       /* من أقصى اليسار */
+    right: 0;                                      /* إلى أقصى اليمين */
+    bottom: 0;                                     /* إلى أسفل الشاشة */
+    background-color: var(--overlay-bg);           /* خلفية سوداء شبه معتمة بدون Blur لتسريع الأداء */
+    display: none;                                 /* مخفية افتراضياً حتى يتم استدعاؤها */
+    justify-content: center;                       /* توسيط النافذة أفقياً */
+    align-items: center;                           /* توسيط النافذة عمودياً */
+    z-index: 300;                                  /* أعلى طبقة فوق كل عناصر الصفحة */
+}
+
+/* هذا الكود مسؤول عن صندوق النافذة المنبثقة نفسه في جميع الصفحات */
+.compact-modal, .seraj-modal {
+    background-color: var(--bg-dark-2);            /* خلفية داكنة صلبة موحدة لكل النوافذ */
+    padding: 20px;                                 /* مسافة داخلية حول محتويات النافذة */
+    border-radius: 20px;                           /* زوايا دائرية أنيقة للنافذة */
+    width: 92%;                                    /* عرض 92% في شاشات الموبايل */
+    max-width: 440px;                              /* أقصى عرض في الشاشات الكبيرة والكمبيوتر */
+    box-shadow: 0 0 45px var(--neon-glow);         /* توهج نيون قوي حول النافذة */
+    max-height: 90vh;                              /* أقصى ارتفاع 90% من الشاشة */
+    overflow-y: auto;                              /* السماح بالتمرير إذا زادت الحقول */
+    border: 2px solid var(--neon-border);          /* إطار نيون موحد حول النافذة */
+    box-sizing: border-box;                        /* الحفاظ على الأبعاد مع الحشو */
+}
+
+/* هذا الكود مسؤول عن شريط عنوان النافذة المنبثقة */
+.compact-header, .seraj-modal-header {
+    display: flex;                                 /* ترتيب العنوان وزر الإغلاق في صف */
+    justify-content: space-between;                /* توزيع العنوان يميناً والإغلاق يساراً */
+    align-items: center;                           /* توسيط عمودي */
+    border-bottom: 2px solid var(--neon-border-soft); /* خط فاصل أسفل عنوان النافذة */
+    padding-bottom: 12px;                          /* مسافة سفلية قبل خط الفصل */
+    margin-bottom: 15px;                           /* مسافة خارجية قبل بدء الحقول */
+}
+
+/* هذا الكود مسؤول عن نص العنوان داخل النافذة المنبثقة */
+.compact-header h3, .seraj-modal-header h3 {
+    margin: 0;                                     /* إزالة الهوامش الافتراضية */
+    font-size: 18px;                               /* حجم خط واضح للعنوان */
+    color: var(--text-white);                      /* لون أبيض */
+    text-shadow: 0 0 12px var(--text-glow);        /* إضاءة خفيفة للعنوان */
+}
+
+/* هذا الكود مسؤول عن تنسيق كل صف يحتوي على (اسم الحقل + مربع الإدخال) داخل النوافذ */
+.compact-row, .form-row, .input-group, .seraj-form-row {
+    display: flex;                                 /* وضع اسم الحقل بجوار مربع الإدخال */
+    justify-content: space-between;                /* توزيع متناسق */
+    align-items: center;                           /* محاذاة عمودية في المنتصف */
+    margin-bottom: 12px;                           /* مسافة فاصلة بين كل حقل والذي يليه */
+    gap: 8px;                                      /* مسافة بين التسمية ومربع النص */
+}
+
+/* هذا الكود مسؤول عن تسمية الحقل (Label) داخل النوافذ المنبثقة */
+.compact-row label, .form-row label, .input-group label, .seraj-form-row label {
+    font-size: 15px;                               /* حجم خط واضح للتسمية */
+    font-weight: bold;                             /* خط عريض */
+    color: var(--text-white);                      /* لون أبيض */
+    flex: 1;                                       /* أخذ ثلث المساحة تقريباً */
+    text-align: right;                             /* محاذاة لليمين */
+    text-shadow: 0 0 8px var(--text-glow);         /* توهج خفيف للنص */
+    margin: 0;                                     /* بدون هوامش زائدة */
+    white-space: nowrap;                           /* منع انكسار اسم الحقل في سطرين */
+}
+
+/* هذا الكود مسؤول عن مربعات الإدخال والقوائم المنسدلة داخل النوافذ المنبثقة */
+.compact-row input, .compact-row select, .compact-row textarea,
+.form-row input, .form-row select, .input-group input, .input-group select,
+.seraj-form-row input, .seraj-form-row select, .seraj-form-row textarea, .seraj-input {
+    width: 100%;                                   /* عرض كامل داخل المساحة المخصصة */
+    padding: 10px;                                 /* حشو داخلي مريح للكتابة */
+    font-size: 16px;                               /* حجم خط واضح للأرقام والنصوص */
+    text-align: center;                            /* توسيط الكلام والأرقام داخل المربع */
+    border: 2px solid var(--neon-border);          /* إطار نيون حول الحقل */
+    border-radius: 12px;                           /* زوايا دائرية للحقل */
+    font-weight: bold;                             /* خط عريض */
+    outline: none;                                 /* إلغاء الإطار الافتراضي للمتصفح */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة داكنة للحقل */
+    color: var(--text-white);                      /* لون كتابة أبيض */
+    box-shadow: inset 0 0 10px var(--shadow-inset);/* ظل داخلي يعطي عمقاً للحقل */
+    flex: 2;                                       /* أخذ ثلثي المساحة مقابل التسمية */
+    box-sizing: border-box;                        /* ضبط المقاس مع الحواف */
+}
+
+/* هذا الكود مسؤول عن تمييز الحقل داخل النافذة عند الوقوف والكتابة فيه */
+.compact-row input:focus, .compact-row select:focus,
+.form-row input:focus, .form-row select:focus,
+.seraj-form-row input:focus, .seraj-form-row select:focus, .seraj-input:focus {
+    box-shadow: 0 0 25px var(--neon-glow);         /* توهج خارجي واضح عند التركيز */
+    border-color: var(--input-focus-border);       /* تغيير لون الإطار لتنبيه المستخدم */
+}
+
+/* هذا الكود مسؤول عن حاوية أزرار الحفظ والإلغاء أسفل النافذة المنبثقة */
+.compact-btns, .btn-group, .seraj-modal-btns {
+    display: flex;                                 /* رص زر الحفظ بجانب زر الإلغاء */
+    gap: 12px;                                     /* مسافة فاصلة بين الزرين */
+    margin-top: 20px;                              /* مسافة علوية تفصل الأزرار عن الحقول */
+    border-top: 2px solid var(--neon-border-soft); /* خط فاصل أعلى الأزرار */
+    padding-top: 15px;                             /* مسافة داخلية أعلى الأزرار */
+}
+
+
+/* ========================================================================== */
+/* 7. أكواد شريط التحكم السفلي والقوائم المنسدلة للطباعة وإعدادات الطباعة     */
+/* ========================================================================== */
+
+/* هذا الكود مسؤول عن طابور المشتريات والمبيعات المخفي */
+.queue-container, .seraj-queue-container {
+    display: none; /* يظهر برمجياً باستخدام flex */
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+/* هذا الكود مسؤول عن شريط الطباعة العائم أعلى شريط الأكشن */
+.bottom-print-bar, .seraj-print-bar {
+    position: fixed;
+    bottom: 70px;
+    left: 0;
+    right: 0;
+    z-index: 150;
+    display: flex;
+    justify-content: center;
+}
+
+/* ========================================================================== */
+/* إضافات لضبط محاذاة الأسعار وإخفاء الطباعة الافتراضية                        */
+/* ========================================================================== */
+
+/* 1. إجبار الأسعار في القائمة المنسدلة على أن تكون في خط مستقيم واحد (محاذاة صارمة) */
+.dropdown-item, .seraj-dropdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px; /* مسافة ثابتة بين الاسم والسعر */
+}
+
+/* تخصيص اسم الصنف ليأخذ المساحة الأكبر ويتم قصه بنقط إذا كان طويلاً جداً */
+.dropdown-item span:first-child, .seraj-dropdown-item span:first-child {
+    flex: 1;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; 
+}
+
+/* تخصيص السعر ليأخذ مساحة ثابتة ويكون على خط مستقيم واحد في أقصى اليسار */
+.dropdown-item span:last-child, .seraj-dropdown-item span:last-child {
+    min-width: 80px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+/* 2. إخفاء شريط الطباعة والتصدير افتراضياً (يظهر فقط برمجياً بعد الحفظ) */
+.bottom-print-bar, .print-actions, .seraj-print-bar {
+    display: none; /* الجافاسكريبت هو من سيقوم بتحويله إلى flex بعد الحفظ */
+}
+
+/* هذا الكود مسؤول عن شريط التحكم السفلي الثابت في أسفل الشاشة */
+.bottom-dashboard, .unified-bottom-bar, .edit-fixed-bottom-bar, .seraj-bottom-bar {
+    position: fixed;                               /* تثبيت الشريط في أسفل الشاشة دائماً */
+    bottom: 0;                                     /* لصق في نقطة الصفر سفلياً */
+    left: 0;                                       /* امتداد من أقصى اليسار */
+    right: 0;                                      /* امتداد إلى أقصى اليمين */
+    padding: 10px 15px;                            /* حشو داخلي متوازن */
+    background-color: var(--bg-dark-2);            /* خلفية داكنة صلبة معتمة */
+    border-top: 1px solid var(--neon-border);      /* خط علوي مضيء يفصل الشريط عن الصفحة */
+    display: flex;                                 /* ترتيب عناصر الشريط السفلي في صف */
+    justify-content: space-between;                /* توزيع العناصر بين اليمين واليسار */
+    align-items: center;                           /* محاذاة عمودية في المنتصف */
+    z-index: 200;                                  /* طبقة علوية فوق الجداول */
+    box-shadow: 0 -4px 25px var(--neon-glow);      /* توهج ضوئي للأعلى */
+    gap: 10px;                                     /* مسافة بين الأزرار داخل الشريط */
+    box-sizing: border-box;                        /* احتساب الحشو ضمن العرض */
+}
+
+/* هذا الكود مسؤول عن القسم الأيمن من الشريط السفلي (زر الحفظ والإجمالي) */
+.dashboard-right, .seraj-bar-right {
+    display: flex;                                 /* تخطيط مرن */
+    align-items: center;                           /* توسيط عمودي */
+    gap: 8px;                                      /* مسافة فاصلة */
+    flex: 1;                                       /* التمدد في المساحة المتاحة */
+}
+
+/* هذا الكود مسؤول عن القسم الأيسر من الشريط السفلي (زر الرجوع والطباعة) */
+.dashboard-left, .seraj-bar-left {
+    display: flex;                                 /* تخطيط مرن */
+    align-items: center;                           /* توسيط عمودي */
+    gap: 8px;                                      /* مسافة فاصلة */
+}
+
+/* هذا الكود مسؤول عن زر حفظ الفاتورة الكبير داخل الشريط السفلي */
+.save-btn, .seraj-bottom-save-btn {
+    display: none;                                 /* يظهر برمجياً عند وجود أصناف في الفاتورة */
+    flex: 1;                                       /* التمدد ليملأ مساحة الشريط السفلي */
+    align-items: center;                           /* توسيط عمودي */
+    justify-content: center;                       /* توسيط أفقي */
+    background-color: var(--btn-save-bg);          /* خلفية خضراء داكنة موحدة للحفظ */
+    color: var(--text-white);                      /* نص أبيض */
+    border: 1px solid var(--btn-save-border);      /* إطار أخضر نيون */
+    height: 45px;                                  /* ارتفاع قياسي موحد مع باقي أزرار الشريط */
+    font-size: 16px;                               /* حجم خط واضح */
+    border-radius: 12px;                           /* زوايا دائرية */
+    cursor: pointer;                               /* مؤشر نقر */
+    font-weight: bold;                             /* خط عريض */
+    box-shadow: 0 0 10px var(--btn-save-glow);     /* توهج أخضر */
+    transition: all 0.2s;                          /* سلاسة الاستجابة */
+}
+
+/* هذا الكود مسؤول عن تأثير لمس زر حفظ الفاتورة السفلي */
+.save-btn:active, .seraj-bottom-save-btn:active {
+    transform: scale(0.96);                        /* تصغير طفيف عند الضغط */
+    box-shadow: 0 0 20px var(--btn-save-glow);     /* زيادة التوهج */
+    background-color: var(--btn-save-active);      /* تفتيح الخلفية الخضراء */
+}
+
+/* هذا الكود مسؤول عن مربع عرض إجمالي الفاتورة العائم داخل الشريط السفلي */
+.floating-total, .seraj-floating-total {
+    display: none;                                 /* يظهر برمجياً عند بدء الفاتورة */
+    flex-direction: column;                        /* وضع كلمة الإجمالي فوق الرقم */
+    align-items: center;                           /* توسيط أفقي */
+    justify-content: center;                       /* توسيط عمودي */
+    font-size: 14px;                               /* حجم الخط الأساسي */
+    font-weight: bold;                             /* خط عريض */
+    color: var(--text-white);                      /* لون أبيض */
+    padding: 4px 15px;                             /* حشو داخلي */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة بلون البطاقات */
+    border: 1px solid var(--neon-border);          /* إطار نيون */
+    border-radius: 12px;                           /* حواف دائرية */
+    text-align: center;                            /* محاذاة النص في المنتصف */
+    box-shadow: 0 0 10px var(--neon-glow);         /* توهج نيون */
+    line-height: 1.2;                              /* تقارب السطرين */
+    height: 45px;                                  /* ارتفاع قياسي 45 بكسل */
+    box-sizing: border-box;                        /* ضبط الأبعاد */
+}
+
+/* هذا الكود مسؤول عن عنوان كلمة "الإجمالي" الصغيرة داخل المربع السفلي */
+.floating-total span.total-label, .seraj-floating-total .total-label {
+    font-size: 12px;                               /* خط صغير للتسمية */
+    color: var(--text-white);                      /* لون أبيض */
+    font-weight: normal;                           /* سمك عادي لتمييز الرقم تحته */
+}
+
+/* هذا الكود مسؤول عن رقم الإجمالي النهائي البارز داخل المربع السفلي */
+.floating-total .total-val, .seraj-floating-total .total-val {
+    color: var(--accent-red);                      /* لون أحمر بارز للإجمالي */
+    text-shadow: 0 0 10px var(--btn-cancel-glow);  /* توهج أحمر حول الرقم */
+    font-size: 18px;                               /* حجم كبير وواضح للرقم */
+}
+
+/* هذا الكود مسؤول عن القوائم المنسدلة للطباعة أو الخيارات الإضافية من الشريط السفلي */
+.dropdown-menu, .print-dropdown-menu, .seraj-print-menu {
+    position: absolute;                            /* تعويم فوق الشريط السفلي */
+    bottom: 110%;                                  /* الظهور أعلى الزر مباشرة */
+    background-color: var(--card-bg-solid);        /* خلفية صلبة داكنة */
+    border: 2px solid var(--neon-border);          /* إطار نيون */
+    border-radius: 14px;                           /* زوايا دائرية */
+    box-shadow: 0 15px 35px var(--shadow-dark);    /* ظل داكن قوي */
+    display: none;                                 /* مخفية حتى النقر على زر الطباعة */
+    z-index: 1000;                                 /* أعلى طبقة فوق الشريط */
+    overflow: hidden;                              /* قص الحواف الزائدة */
+    width: 220px;                                  /* عرض مناسب لخيارات الطباعة */
+    text-align: right;                             /* محاذاة الخيارات لليمين */
+    left: 50%;                                     /* نقطة ارتكاز في المنتصف */
+    transform: translateX(-50%);                   /* توسيط القائمة فوق الزر */
+}
+
+/* هذا الكود مسؤول عن ضبط موضع قائمة الطباعة داخل شريط الطباعة السفلي */
+.bottom-print-bar .print-dropdown-menu {
+    bottom: 65px;                                  /* ارتفاع ثابت فوق الشريط */
+    left: auto;                                    /* إلغاء التوسيط التلقائي */
+    transform: none;                               /* إلغاء الإزاحة */
+}
+
+/* هذا الكود مسؤول عن كل خيار داخل قائمة الطباعة المنسدلة */
+.dropdown-menu-item, .print-dropdown-item, .seraj-print-item {
+    padding: 12px 15px;                            /* مسافة داخلية مريحة للضغط */
+    border-bottom: 1px solid var(--neon-border-soft); /* خط فاصل بين خيارات الطباعة */
+    cursor: pointer;                               /* مؤشر نقر */
+    font-weight: bold;                             /* خط عريض */
+    font-size: 15px;                               /* حجم خط واضح */
+    color: var(--text-white);                      /* نص أبيض */
+    transition: background 0.2s;                   /* نعومة الاستجابة */
+    display: flex;                                 /* توزيع النص والأيقونة */
+    justify-content: space-between;                /* النص في طرف والأيقونة في الطرف الآخر */
+}
+
+/* هذا الكود مسؤول عن تلوين خيار الطباعة عند لمسه */
+.dropdown-menu-item:active, .print-dropdown-item:active, .seraj-print-item:active {
+    background-color: var(--row-active-bg);        /* تلوين الخلفية عند الضغط */
+}
+
+/* --- إعدادات الطباعة الحرارية (80mm) وطباعة القوائم (A4) --- */
+
+/* هذا الكود مسؤول عن إخفاء مناطق الطباعة عن الشاشة العادية وإظهارها للطابعة فقط */
+#printReceiptArea, #printListArea {
+    display: none;                                 /* مخفية أثناء الاستخدام العادي للبرنامج */
+}
+
+/* ========================================================================== */
+/* 9. إضافات صفحة المبيعات (قائمة الزر العائم، الرسائل، وأعمدة البحث الثلاثة) */
+/* ========================================================================== */
+
+/* 1. قائمة الزر العائم المنبثقة (.fab-menu) في المبيعات */
+.fab-menu {
+    position: fixed;
+    bottom: 150px;
+    left: 22px;
+    background-color: var(--card-bg-alt); /* استخدام الخلفية الصلبة الداكنة الموحدة */
+    border: 2px solid var(--neon-border);
+    border-radius: 14px;
+    display: none; /* مخفية افتراضياً حتى الضغط على الزر العائم */
+    flex-direction: column;
+    width: 190px;
+    box-shadow: 0 15px 35px var(--shadow-dark);
+    z-index: 250;
+    overflow: hidden;
+}
+
+.fab-menu button {
+    padding: 14px;
+    border: none;
+    background-color: transparent !important;
+    text-align: right;
+    width: 100%;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: bold;
+    border-bottom: 1px solid var(--neon-border-soft);
+    color: var(--text-white);
+    transition: background 0.2s;
+}
+
+.fab-menu button:active {
+    background-color: var(--row-active-bg) !important;
+}
+
+/* 2. إخفاء رسائل التنبيه الإشعارات، الطابور، ومنطقة الطباعة افتراضياً */
+.toast-msg, .toast-warning, #printReceiptArea, .queue-container, .seraj-queue-container, .bottom-print-bar {
+    display: none !important;
+}
+
+/* 3. تنسيق ومحاذاة نتائج البحث في 3 أعمدة (اسم - سعر بالمنتصف - رصيد باليسار) */
+.dropdown-item, .seraj-dropdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.search-col-name {
+    flex: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: right;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.search-item-img {
+    width: 35px;
+    height: 35px;
+    border-radius: 6px;
+    border: 1px solid var(--neon-border);
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.search-col-price {
+    flex: 1;
+    text-align: center;
+    font-weight: bold;
+    font-size: 17px;
+}
+
+.search-col-stock {
+    flex: 1;
+    text-align: left;
+}
+
+/* هذا الكود مسؤول عن تنسيق الورق عند إعطاء أمر الطباعة الفعلي */
 @media print {
-    @page { margin: 0; size: 80mm; }
-    body { margin: 0; padding: 0; background: #fff !important; color: #000 !important; }
-    body > *:not(#printReceiptArea):not(#printListArea) { display: none !important; }
-    
-    body.thermal-print-mode #printReceiptArea { display: block !important; width: 72mm; margin: 0 auto; padding: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; direction: rtl; color: #000; }
-    body.thermal-print-mode .print-header { font-size: 20px; font-weight: bold; text-align: center; margin-bottom: 5px; }
-    body.thermal-print-mode .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px; font-weight: normal; }
-    body.thermal-print-mode .print-table th { border-bottom: 1px solid #000; border-top: 1px solid #000; padding: 4px 2px; text-align: center; font-weight: bold; }
-    body.thermal-print-mode .print-table td { padding: 4px 2px; border-bottom: 1px dashed #000; text-align: center; }
-    body.thermal-print-mode .print-table th:first-child, body.thermal-print-mode .print-table td:first-child { text-align: right; width: 45%; }
-    
-    body:not(.thermal-print-mode) #printListArea { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif; }
-    .list-print-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; }
-    .list-print-table th { background-color: #eee; padding: 10px; border: 1px solid #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .list-print-table td { padding: 8px; border: 1px solid #000; }
+    /* ضبط مقاس ورق الكاشير الحراري 80 مم بدون هوامش */
+    @page {
+        margin: 0;                                 /* إلغاء هوامش الصفحة في الطابعة */
+        size: 80mm;                                /* عرض رول الكاشير القياسي */
+    }
+
+    /* تحويل الخلفية للأبيض والنص للأسود لتوفير الحبر ووضوح الطباعة */
+    body {
+        margin: 0;                                 /* بدون هوامش */
+        padding: 0;                                /* بدون حشو */
+        background: var(--print-bg) !important;    /* خلفية بيضاء للورقة */
+        color: var(--print-text) !important;       /* نص أسود خالص */
+    }
+
+    /* إخفاء كل عناصر البرنامج ما عدا منطقة الفاتورة أو القائمة المراد طباعتها */
+    body > *:not(#printReceiptArea):not(#printListArea) {
+        display: none !important;                  /* عدم طباعة الأزرار والشاشات */
+    }
+
+    /* إظهار وضبط مقاس إيصال الطباعة الحرارية 72 مم صافي */
+    body.thermal-print-mode #printReceiptArea {
+        display: block !important;                 /* إظهار منطقة الإيصال الحراري */
+        width: 72mm;                               /* العرض الفعلي للطباعة داخل رول 80 مم */
+        margin: 0 auto;                            /* توسيط الإيصال في الرول */
+        padding: 0;                                /* بدون حشو زائد */
+        font-family: 'Segoe UI', Tahoma, Arial, sans-serif; /* خط واضح للطباعة الحرارية */
+        direction: rtl;                            /* اتجاه من اليمين لليسار */
+        color: var(--print-text);                  /* لون أسود صريح */
+    }
+
+    /* تنسيق عنوان المحل في أعلى الإيصال الحراري */
+    body.thermal-print-mode .print-header {
+        font-size: 20px;                           /* خط كبير لاسم المحل */
+        font-weight: bold;                         /* خط عريض */
+        text-align: center;                        /* في منتصف الإيصال */
+        margin-bottom: 5px;                        /* مسافة سفلية */
+    }
+
+    /* تنسيق جدول الأصناف داخل الإيصال الحراري */
+    body.thermal-print-mode .print-table {
+        width: 100%;                               /* عرض كامل الإيصال */
+        border-collapse: collapse;                 /* دمج الحدود */
+        margin-bottom: 8px;                        /* مسافة سفلية */
+        font-size: 13px;                           /* حجم خط مناسب لعرض الإيصال */
+        font-weight: normal;                       /* سمك قياسي */
+    }
+
+    /* تنسيق ترويسة جدول الأصناف في الإيصال الحراري */
+    body.thermal-print-mode .print-table th {
+        border-bottom: 1px solid var(--print-text);/* خط سفلي أسود */
+        border-top: 1px solid var(--print-text);   /* خط علوي أسود */
+        padding: 4px 2px;                          /* حشو مضغوط */
+        text-align: center;                        /* توسيط العناوين */
+        font-weight: bold;                         /* خط عريض */
+    }
+
+    /* تنسيق خلايا الأصناف في الإيصال الحراري */
+    body.thermal-print-mode .print-table td {
+        padding: 4px 2px;                          /* حشو مضغوط */
+        border-bottom: 1px dashed var(--print-text); /* خط متقطع بين الأصناف */
+        text-align: center;                        /* توسيط الأرقام */
+    }
+
+    /* تخصيص العمود الأول (اسم الصنف) ليكون محاذياً لليمين وبعرض 45% */
+    body.thermal-print-mode .print-table th:first-child,
+    body.thermal-print-mode .print-table td:first-child {
+        text-align: right;                         /* محاذاة اسم الصنف لليمين */
+        width: 45%;                                /* تخصيص قرابة نصف العرض لاسم الصنف */
+    }
+
+    /* إظهار منطقة طباعة القوائم والتقارير العادية (غير الحرارية) */
+    body:not(.thermal-print-mode) #printListArea {
+        display: block !important;                 /* إظهار جدول التقرير */
+        width: 100%;                               /* عرض كامل الورقة */
+        direction: rtl;                            /* اتجاه عربي */
+        font-family: Arial, sans-serif;            /* خط رسمي للتقارير */
+    }
+
+    /* تنسيق جدول طباعة القوائم والتقارير */
+    .list-print-table {
+        width: 100%;                               /* عرض كامل */
+        border-collapse: collapse;                 /* حدود مدمجة */
+        margin-top: 20px;                          /* مسافة من أعلى الورقة */
+        font-size: 14px;                           /* حجم خط التقرير */
+        text-align: center;                        /* توسيط البيانات */
+    }
+
+    /* تنسيق ترويسة جدول التقارير المطبوعة */
+    .list-print-table th {
+        background-color: var(--print-th-bg);      /* خلفية رمادية فاتحة للعناوين */
+        padding: 10px;                             /* حشو مريح */
+        border: 1px solid var(--print-text);       /* إطار أسود صريح */
+        -webkit-print-color-adjust: exact;         /* إجبار المتصفح على طباعة اللون الرمادي */
+        print-color-adjust: exact;                 /* مطابقة ألوان الطباعة */
+    }
+
+    /* تنسيق خلايا جدول التقارير المطبوعة */
+    .list-print-table td {
+        padding: 8px;                              /* حشو داخلي للخلايا */
+        border: 1px solid var(--print-text);       /* حدود سوداء واضحة */
+    }
+
+/* ========================================================================== */
+/* 10. تنسيقات نافذة الحفظ (حقل العميل، القائمة المنسدلة، ورصيد العميل)      */
+/* ========================================================================== */
+
+/* 1. حقل إدخال اسم العميل (#customerSearchInput) */
+#customerSearchInput {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 14px 16px;
+    font-size: 20px;
+    font-weight: bold;
+    background-color: var(--card-bg-alt); /* خلفية داكنة صلبة متوافقة مع النظام */
+    color: var(--text-white);
+    border: 2px solid var(--neon-border);
+    border-radius: 14px;
+    outline: none;
+    box-shadow: 0 0 10px var(--neon-glow);
+    transition: all 0.25s;
+}
+
+#customerSearchInput:focus {
+    border-color: var(--input-focus-border);
+    box-shadow: 0 0 25px var(--neon-glow);
+}
+
+/* 2. حاوية نتائج بحث العملاء (#customerResults.dropdown-list) */
+#customerResults.dropdown-list, .seraj-customer-results {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    background-color: var(--card-bg-solid); /* خلفية صلبة متناسقة */
+    border: 2px solid var(--neon-border);
+    border-radius: 0 0 16px 16px;
+    box-shadow: 0 15px 35px var(--shadow-dark);
+    display: none; /* مخفية حتى يتم البحث */
+}
+
+/* عناصر القائمة المنسدلة للعملاء */
+#customerResults .dropdown-item, .seraj-customer-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--neon-border-soft);
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-white);
+    font-weight: bold;
+    font-size: 16px;
+}
+
+#customerResults .dropdown-item:active, .seraj-customer-item:active {
+    background-color: var(--row-active-bg);
+}
+
+/* 3. نص رصيد العميل اللحظي (#liveCustomerBalance) */
+#liveCustomerBalance {
+    text-align: center;
+    margin-bottom: 20px;
+    font-weight: bold;
+    font-size: 16px;
+    min-height: 25px;
+    color: var(--text-white);
+    text-shadow: 0 0 8px var(--text-glow);
+}
+
 }
