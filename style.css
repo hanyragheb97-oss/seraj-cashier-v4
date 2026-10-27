@@ -124,10 +124,16 @@ html, body {
     display: none;                                 /* إخفاء القسم حتى يتم استدعاؤه */
 }
 
-/* هذا الكود مسؤول عن إظهار القسم النشط حالياً بحركة انسيابية خفيفة */
+/* إظهار القسم النشط مع تفعيل التمرير العمودي السلس لفك التجميد */
 .active-view, .seraj-active-view {
-    display: block;                                /* إظهار القسم النشط */
-    animation: fadeIn 0.25s ease;                  /* تشغيل حركة الظهور التدريجي السريع */
+    display: flex !important; 
+    flex-direction: column; 
+    height: 100vh !important; 
+    overflow-y: auto !important; 
+    -webkit-overflow-scrolling: touch !important; 
+    padding-bottom: 90px; 
+    box-sizing: border-box; 
+    animation: fadeIn 0.25s ease; /* تم الحفاظ على حركة الظهور السريعة */
 }
 
 /* هذا الكود مسؤول عن تعريف حركة الظهور التدريجي للأقسام */
@@ -1227,4 +1233,107 @@ table tr:active, .seraj-table tr:active {
     text-shadow: 0 0 8px var(--text-glow);
 }
 
+
+
+}
+
+/* ========================================================================== */
+/* 11. كلاسات صفحات السجلات والتعديل الشامل (History & Edit Views)            */
+/* ========================================================================== */
+
+/* --- الهيكل العام وحاوية السجل --- */
+.history-container { max-width: 800px; margin: 0 auto; width: 100%; flex: 1; box-sizing: border-box; }
+
+/* --- منطقة الفلترة والبحث المتقدم --- */
+.filter-section { background-color: var(--card-bg-alt); padding: 8px 15px; border-bottom: 1px solid var(--neon-border); position: sticky; top: 60px; z-index: 40; }
+.filter-header-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.search-toggle-btn { background-color: var(--card-bg-alt); color: var(--text-white); border: 1px solid var(--neon-border); border-radius: 12px; padding: 8px 15px; font-size: 18px; display: flex; justify-content: center; align-items: center; cursor: pointer; flex: 1; font-weight: bold; }
+.full-search-area { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--neon-border); }
+.radio-group { display: flex; justify-content: space-around; font-size: 14px; font-weight: bold; color: var(--text-white); margin-top: 10px; }
+.radio-group label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
+/* --- قوائم البحث والمايكروفون --- */
+.list-search-item { padding: 12px 15px; border-bottom: 1px solid var(--neon-border-soft); cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: space-between; color: var(--text-white); }
+.mic-btn { background-color: var(--card-bg-alt); border: 2px solid var(--neon-border); color: var(--text-white); border-radius: 12px; padding: 0 14px; height: 46px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* --- القائمة السياقية (Context Menu) المثبتة فوق العناصر --- */
+.context-menu {
+    position: fixed !important;
+    background-color: var(--card-bg-alt);
+    border: 2px solid var(--neon-border);
+    border-radius: 16px;
+    width: 210px;
+    z-index: 99999 !important;
+    display: none;
+    overflow: hidden;
+    padding: 5px 0;
+    box-shadow: 0 10px 30px var(--shadow-dark);
+}
+.context-menu div { padding: 14px; font-size: 16px; color: var(--text-white); cursor: pointer; text-align: right; font-weight: bold; border-bottom: 1px solid var(--neon-border-soft); }
+.context-menu div:last-child { border-bottom: none; }
+.context-menu div:active { background-color: var(--row-active-bg); }
+
+
+/* --- شريط التعديل السفلي (مثبت أعلى الشريط الموحد مباشرة) --- */
+.edit-fixed-bottom-bar {
+    position: fixed !important;
+    bottom: 65px !important; 
+    left: 0 !important;
+    right: 0 !important;
+    background-color: var(--card-bg-alt) !important;
+    padding: 8px 10px !important;
+    display: flex !important;
+    gap: 8px !important;
+    z-index: 950 !important;
+    border-top: 2px solid var(--neon-border) !important;
+    box-sizing: border-box;
+    box-shadow: 0 -4px 15px var(--shadow-dark);
+}
+.edit-fixed-bottom-bar > * { flex: 1; height: 45px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: bold; box-sizing: border-box; text-align: center; }
+
+/* أزرار التعديل والاستعادة والإجمالي */
+.save-edit-btn { background-color: var(--btn-nav-bg) !important; color: var(--text-white) !important; border: 1px solid var(--btn-nav-border) !important; cursor: pointer; }
+.save-edit-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+.restore-btn { background-color: var(--bg-dark-solid) !important; color: #facc15 !important; border: 1px solid #eab308 !important; cursor: pointer; }
+.restore-btn:active { transform: scale(0.95); background-color: #3f3f00 !important; }
+.details-total { background-color: var(--bg-dark-solid) !important; color: var(--text-white) !important; border: 1px solid var(--neon-border) !important; display: flex !important; flex-direction: row !important; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; }
+
+/* --- تفاصيل الدفعات وصندوق الهيدر داخل شاشة التعديل --- */
+.invoice-header-box { background-color: var(--card-bg-alt); padding: 12px 15px; border-bottom: 1px solid var(--neon-border); margin-bottom: 10px; font-weight: bold; line-height: 1.6; }
+.hidden-details { display: none; background-color: var(--bg-dark-solid); padding: 10px; border-radius: 12px; margin-bottom: 15px; border: 1px solid var(--neon-border); color: var(--text-white); }
+.batches-slider { display: flex; overflow-x: auto; gap: 10px; padding-bottom: 10px; }
+.batch-card { min-width: 140px; background-color: var(--card-bg-alt); border: 1px solid var(--neon-border); border-radius: 10px; padding: 10px; font-size: 13px; text-align: right; line-height: 1.6; flex-shrink: 0; color: var(--text-white); font-weight: bold; }
+
+/* --- الشريط السفلي الموحد والكبسولات الفرعية --- */
+.unified-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background-color: var(--card-bg-alt); border-top: 1px solid var(--neon-border); display: flex; padding: 10px 15px; justify-content: space-between; align-items: center; z-index: 100; }
+.bottom-capsules { display: flex; gap: 8px; flex: 1; margin-right: 10px; }
+.capsule { flex: 1; height: 45px; background-color: var(--bg-dark-solid); border: 1px solid var(--neon-border); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--text-white); font-weight: bold; font-size: 14px; cursor: pointer; position: relative; }
+.capsule:active { background-color: var(--row-active-bg); }
+.sub-accordion-content { display: none; background-color: var(--bg-dark-solid); padding: 0; }
+.sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid var(--neon-border-soft); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-white); text-align: right; border-right: 2px solid var(--neon-border); }
+
+/* ========================================================================== */
+/* 12. إصلاحات شاشة التعديل (الشفافية والتمرير لقائمة البحث وجدول الفاتورة)   */
+/* ========================================================================== */
+
+/* علاج الشفافية وفك قفشة التمرير في القائمة المنسدلة للبحث */
+.dropdown-list, .seraj-dropdown-list, #edit-search-results {
+    background-color: var(--bg-dark-1) !important; /* خلفية سوداء صلبة 100% لمنع الشفافية */
+    z-index: 9999 !important; /* رفع القائمة فوق كل عناصر الشاشة */
+    max-height: 250px !important;
+    overflow-y: auto !important; /* إجبار السماح بالتمرير العمودي */
+    -webkit-overflow-scrolling: touch !important; /* نعومة التمرير في الموبايل */
+}
+
+/* فك قفشة شاشة التعديل بالكامل لتسمح بالنزول والطلوع */
+#full-edit-view.active-view, #invoice-details-view.active-view {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+/* ضمان تمرير جدول الفاتورة الداخلي في شاشة التعديل بحرية */
+#full-edit-view .table-wrapper {
+    overflow-y: auto !important;
+    max-height: calc(100vh - 300px) !important; /* مساحة مناسبة للرأس والشريط السفلي */
+    -webkit-overflow-scrolling: touch !important;
 }
