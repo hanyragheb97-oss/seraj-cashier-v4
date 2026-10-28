@@ -12,47 +12,44 @@
 <!-- ملاحظة هندسية: يرجى تحميل هذه المكتبتين ووضعهما في فولدر المشروع واستدعائهما محلياً لضمان عمل التطبيق (Offline) 100% -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-
 </head>
 <body onclick="closeAllMenus(event)">
 
 <!-- الشاشة 1: قائمة الموردين الرئيسية -->
 <div id="suppliers-list-view" class="view-section active-view">
-<div class="header">
-<span id="mainPageTitle">الموردين</span>
-</div>
+    <div class="header">
+        <span id="mainPageTitle">الموردين</span>
+    </div>
 
-<div class="suppliers-container">
-<div class="search-box">
-<span style="font-size:20px; color:var(--neon-border); margin-left:16px;">≡</span>
-<input type="text" id="supplierSearch" placeholder="ابحث باسم المورد واضغط Enter..." oninput="renderSuppliersList()" onkeydown="handleSearchKey(event)">
-</div>
-<table>
-<thead>
-<tr>
-<th style="width: 40%; text-align: right; color: white !important;" onclick="sortSuppliers('name')">المورد ↕</th>
-<th style="width: 30%; color: white !important;" onclick="sortSuppliers('balance')">الرصيد ↕</th>
-<th style="width: 30%; color: white !important;" onclick="sortSuppliers('date')">آخر معاملة ↕</th>
-</tr>
-</thead>
-<tbody id="suppliersTableBody"></tbody>
-</table>
-</div>
+    <div class="main-container suppliers-container">
+        <div class="search-box">
+            <span>≡</span>
+            <input type="text" id="supplierSearch" placeholder="ابحث باسم المورد واضغط Enter..." oninput="renderSuppliersList()" onkeydown="handleSearchKey(event)">
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="sortSuppliers('name')">المورد ↕</th>
+                        <th onclick="sortSuppliers('balance')">الرصيد ↕</th>
+                        <th onclick="sortSuppliers('date')">آخر معاملة ↕</th>
+                    </tr>
+                </thead>
+                <tbody id="suppliersTableBody"></tbody>
+            </table>
+        </div>
+    </div>
 
-<button type="button" class="seraj-btn-add-floating" id="addBtn" onclick="openAddSupplierModal()">+</button>
+    <button type="button" class="seraj-btn-add-floating" id="addBtn" onclick="openAddSupplierModal()">+</button>
 </div>
 
 <!-- الشاشة 2: تفاصيل حساب المورد -->
 <div id="supplier-account-view" class="view-section">
-    <!-- توسيط العنوان -->
-    <div class="header" style="display: flex; justify-content: center; align-items: center; width: 100%; padding: 12px 20px;">
-        <span id="accountHeaderTitle" style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">حسابات المورد</span>
+    <div class="header">
+        <span id="accountHeaderTitle">حسابات المورد</span>
     </div>
 
-    <!-- الحاوية المركزية المطلوبة لضبط المقاسات -->
     <div class="main-container">
-        
         <!-- كارت الرصيد العلوي القياسي -->
         <div class="summary-box">
             <div class="summary-grid-2col">
@@ -68,15 +65,15 @@
             <div class="summary-total-row val-green" id="summaryNetBalance">0.00</div>
         </div>
 
-        <!-- صف الأزرار القياسي (تم تبديل الأماكن) -->
+        <!-- صف الأزرار القياسي -->
         <div class="dual-action-row">
             <button type="button" class="capsule-btn" onclick="openAddTransactionModalDirect(event)">إضافة سند: <span class="val-red">تسديد</span> / <span class="val-green">مديونية</span></button>
             <button type="button" class="capsule-btn" onclick="openStatementView()">📋 كشف حساب</button>
         </div>
 
         <!-- الفلتر -->
-        <div class="filter-section" style="background: transparent; border: none; margin-bottom: 15px;">
-            <select class="filter-select-box" style="width: 100%; height: 55px; padding: 10px 15px; font-size: 16px; border-radius: 12px;" onchange="setAccountFilter(this.value, event)">
+        <div class="filter-section">
+            <select class="filter-select-box" onchange="setAccountFilter(this.value, event)">
                 <option value="deferred">📑 الفواتير الآجلة ولم تسدد</option>
                 <option value="all_invoices">📦 جميع الفواتير</option>
                 <option value="vouchers">💵 المبالغ المسددة له وعليه</option>
@@ -85,119 +82,115 @@
 
         <!-- قائمة كروت الفواتير -->
         <div id="accountTransactionsTableBody" class="invoice-list"></div>
-        
-    </div> <!-- إغلاق main-container -->
-</div> <!-- إغلاق view-section -->
-            <!-- يتم توليد الكروت هنا بواسطة الـ JS -->
-        </div>
-
     </div>
 </div>
 
 <!-- الشاشة 3: واجهة كشف الحساب -->
 <div id="supplier-statement-view" class="view-section">
-<div class="header">
-<span id="statementHeaderTitle">كشف حساب المورد</span>
-</div>
+    <div class="header">
+        <span id="statementHeaderTitle">كشف حساب المورد</span>
+    </div>
 
-<div class="statement-container">
-<table id="printableStatementTable">
-<thead>
-<tr>
-<th style="text-align: right;">البيان</th>
-<th style="color: #00ff66;">له (مديونية)</th>
-<th style="color: #ff1a40;">لنا (تسديد)</th>
-</tr>
-</thead>
-<tbody id="statementTableBody"></tbody>
-</table>
-</div>
+    <div class="main-container statement-container">
+        <div class="table-wrapper">
+            <table id="printableStatementTable">
+                <thead>
+                    <tr>
+                        <th>البيان</th>
+                        <th class="val-green">له (مديونية)</th>
+                        <th class="val-red">لنا (تسديد)</th>
+                    </tr>
+                </thead>
+                <tbody id="statementTableBody"></tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <!-- ======== شريط التحكم السفلي الموحد ======== -->
 <div class="unified-bottom-bar" onclick="event.stopPropagation()">
-<button class="header-back-btn" onclick="goBackSmart(event)">
-<span class="arrow">⬅</span>
-<span class="text">BACK</span>
-</button>
+    <button class="header-back-btn" onclick="goBackSmart(event)">
+        <span class="arrow">⬅</span>
+        <span class="text">BACK</span>
+    </button>
 
-<div class="bottom-capsules">
-<div class="capsule" onclick="toggleDurationMenu(event)">
-📅 <span id="currentDurationLabelOutside" style="margin-right: 5px;">اخر 30 يوم</span>
-<div class="dropdown-menu" id="durationDropdownOutside">
-<div class="dropdown-item" onclick="filterByDate('اليوم', 'today')" style="padding: 14px;">اليوم</div>
-<div class="dropdown-item" onclick="filterByDate('أمس', 'yesterday')" style="padding: 14px;">أمس</div>
-<div class="dropdown-item" onclick="filterByDate('اخر 7 ايام', '7days')" style="padding: 14px;">آخر 7 أيام</div>
-<div class="dropdown-item" onclick="filterByDate('هذا الشهر', 'thisMonth')" style="padding: 14px;">هذا الشهر</div>
-<div class="dropdown-item" onclick="filterByDate('اخر 30 يوم', '30days')" style="padding: 14px;">آخر 30 يوم</div>
-<div class="dropdown-item" onclick="filterByDate('الشهر الماضى', 'lastMonth')" style="padding: 14px;">الشهر الماضي</div>
-<div class="dropdown-item" onclick="filterByDate('مدى العمل', 'allTime')" style="padding: 14px;">مدى العمل (الكل)</div>
-<div class="dropdown-item" onclick="openCustomDateModal(event)" style="padding: 14px;">📅 تاريخ مخصص...</div>
-</div>
+    <div class="bottom-capsules">
+        <div class="capsule" onclick="toggleDurationMenu(event)">
+            📅 <span id="currentDurationLabelOutside">اخر 30 يوم</span>
+            <div class="dropdown-menu" id="durationDropdownOutside">
+                <div class="dropdown-item" onclick="filterByDate('اليوم', 'today')">اليوم</div>
+                <div class="dropdown-item" onclick="filterByDate('أمس', 'yesterday')">أمس</div>
+                <div class="dropdown-item" onclick="filterByDate('اخر 7 ايام', '7days')">آخر 7 أيام</div>
+                <div class="dropdown-item" onclick="filterByDate('هذا الشهر', 'thisMonth')">هذا الشهر</div>
+                <div class="dropdown-item" onclick="filterByDate('اخر 30 يوم', '30days')">آخر 30 يوم</div>
+                <div class="dropdown-item" onclick="filterByDate('الشهر الماضى', 'lastMonth')">الشهر الماضي</div>
+                <div class="dropdown-item" onclick="filterByDate('مدى العمل', 'allTime')">مدى العمل (الكل)</div>
+                <div class="dropdown-item" onclick="openCustomDateModal(event)">📅 تاريخ مخصص...</div>
+            </div>
+        </div>
+
+        <div class="capsule print-btn" onclick="togglePrintOptions(event)">
+            🖨️ خيارات
+            <div class="dropdown-menu" id="floatingPrintMenu">
+                <div class="dropdown-item" onclick="handlePrintAction('thermal'); event.stopPropagation();">🖨️ طابعة حرارية / A4</div>
+                <div class="dropdown-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')"><span>📊 إكسيل</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="excelSubOptionsList" onclick="event.stopPropagation();">
+                    <div class="sub-dropdown-item" onclick="exportExcel()">📤 تصدير بيانات</div>
+                    <div class="sub-dropdown-item" onclick="document.getElementById('excelImportInput').click()">📥 استيراد بيانات</div>
+                </div>
+                <div class="dropdown-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')"><span>📄 PDF</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="pdfSubOptionsList" onclick="event.stopPropagation();">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<div class="capsule print-btn" onclick="togglePrintOptions(event)">
-🖨️ خيارات
-<div class="dropdown-menu" id="floatingPrintMenu">
-<div class="dropdown-item" onclick="handlePrintAction('thermal'); event.stopPropagation();" style="padding: 14px;">🖨️ طابعة حرارية / A4</div>
-<div class="dropdown-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')" style="padding: 14px;"><span>📊 إكسيل</span> <span>▼</span></div>
-<div class="sub-accordion-content" id="excelSubOptionsList" onclick="event.stopPropagation();">
-<div class="sub-dropdown-item" onclick="exportExcel()">📤 تصدير بيانات</div>
-<div class="sub-dropdown-item" onclick="document.getElementById('excelImportInput').click()">📥 استيراد بيانات</div>
-</div>
-<div class="dropdown-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')" style="padding: 14px;"><span>📄 PDF</span> <span>▼</span></div>
-<div class="sub-accordion-content" id="pdfSubOptionsList" onclick="event.stopPropagation();">
-<div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
-</div>
-</div>
-</div>
-</div>
-</div>
-
-<input type="file" id="excelImportInput" style="display:none;" accept=".xlsx, .xls" onchange="importSuppliersExcel(event)">
+<input type="file" id="excelImportInput" hidden accept=".xlsx, .xls" onchange="importSuppliersExcel(event)">
 
 <!-- النوافذ والموديلات -->
 <div class="modal-overlay" id="customDateModal" onclick="this.style.display='none'">
-<div class="compact-modal" onclick="event.stopPropagation()">
-<div class="compact-header"><h3>تحديد فترة مخصصة</h3></div>
-<div class="compact-row"><label>من تاريخ:</label><input type="date" id="startDateInput"></div>
-<div class="compact-row"><label>إلى تاريخ:</label><input type="date" id="endDateInput"></div>
-<div class="compact-btns">
-<button type="button" class="btn-close-ai" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
-<button type="button" class="btn-save-ai" onclick="applyCustomDateRange(event)">تطبيق البحث</button>
-</div>
-</div>
+    <div class="compact-modal" onclick="event.stopPropagation()">
+        <div class="compact-header"><h3>تحديد فترة مخصصة</h3></div>
+        <div class="compact-row"><label>من تاريخ:</label><input type="date" id="startDateInput"></div>
+        <div class="compact-row"><label>إلى تاريخ:</label><input type="date" id="endDateInput"></div>
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+            <button type="button" class="btn-save-ai" onclick="applyCustomDateRange(event)">تطبيق البحث</button>
+        </div>
+    </div>
 </div>
 
 <div class="modal-overlay" id="editSupplierModal" onclick="closeModals(event)">
-<div class="compact-modal" onclick="event.stopPropagation()">
-<div class="compact-header"><h3>تعديل بيانات المورد</h3></div>
-<input type="hidden" id="editSuppId">
-<div class="compact-row"><label>اسم المورد:</label><input type="text" id="editSuppName"></div>
-<div class="compact-row"><label>رقم الموبايل:</label><input type="text" id="editSuppPhone"></div>
-<div class="compact-row"><label>ملاحظات إضافية:</label><input type="text" id="editSuppNotes"></div>
+    <div class="compact-modal" onclick="event.stopPropagation()">
+        <div class="compact-header"><h3>تعديل بيانات المورد</h3></div>
+        <input type="hidden" id="editSuppId">
+        <div class="compact-row"><label>اسم المورد:</label><input type="text" id="editSuppName"></div>
+        <div class="compact-row"><label>رقم الموبايل:</label><input type="text" id="editSuppPhone"></div>
+        <div class="compact-row"><label>ملاحظات إضافية:</label><input type="text" id="editSuppNotes"></div>
 
-<div style="margin-top: 15px;">
-<button type="button" class="btn-close-ai" style="width:100%; color:#ff1a40 !important; border-color:#ff1a40 !important;" onclick="deleteSupplier(event)">🗑️ حذف المورد نهائياً</button>
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="deleteSupplier(event)">🗑️ حذف المورد نهائياً</button>
+        </div>
+
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
+            <button type="button" class="btn-save-ai" onclick="saveEditedSupplier(event)">حفظ التعديلات</button>
+        </div>
+    </div>
 </div>
 
-<div class="compact-btns">
-<button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
-<button type="button" class="btn-save-ai" onclick="saveEditedSupplier(event)">حفظ التعديلات</button>
-</div>
-</div>
-</div>
-
-<div class="modal-overlay" id="addTransactionModal" style="align-items: flex-start !important; padding-top: 240px !important;" onclick="closeModals(event)">
+<div class="modal-overlay" id="addTransactionModal" onclick="closeModals(event)">
     <div class="compact-modal" onclick="event.stopPropagation()">
         <div class="compact-header"><h3>إضافة سند مورد جديد</h3></div>
         
         <!-- هيكل دوائر الاختيار (تسديد / مديونية) -->
-        <div style="display:flex; justify-content:space-around; margin-bottom:15px; font-weight:bold;">
-            <label style="color:#ff1a40; cursor:pointer; text-shadow:0 0 8px rgba(255,26,64,0.6);">
+        <div class="radio-group">
+            <label class="val-red">
                 <input type="radio" name="transType" value="payment" checked> دفع نقدية (تسديد)
             </label>
-            <label style="color:#00ff66; cursor:pointer; text-shadow:0 0 8px rgba(0,255,102,0.6);">
+            <label class="val-green">
                 <input type="radio" name="transType" value="receipt"> إضافة مديونية
             </label>
         </div>
@@ -222,108 +215,98 @@
     </div>
 </div>
 
+<div class="modal-overlay" id="invoicePaymentModal" onclick="closeModals(event)">
+    <div class="compact-modal" onclick="event.stopPropagation()">
+        <div class="compact-header"><h3 id="payModalHeaderTitle">سداد مبالغ متبقية لفاتورة</h3></div>
+        <div class="summary-total-row val-red">
+            المبلغ المتبقي: <span id="payModalRemainingText" class="badge-unpaid">0.00</span> جنيه
+        </div>
+        <div class="compact-row"><label>المدفوع (تسديد):</label><input type="number" id="payModalAmountInput" value="0" onclick="this.select()" min="0" step="any"></div>
+        <div class="compact-row"><label>ملاحظات:</label><input type="text" id="payModalNotesInput" placeholder="إضافة ملاحظات السداد..."></div>
+        <div class="compact-row"><label>التاريخ:</label><input type="date" id="payModalDateInput"></div>
+        <div class="compact-row">
+            <label>الخزينة المسحوب منها:</label>
+            <select id="payModalTreasurySelect">
+                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
+                <option value="insta">إنستا (InstaPay)</option>
+                <option value="wallet">المحفظة الإلكترونية</option>
+            </select>
+        </div>
+        <button type="button" class="details-toggle-btn" onclick="openViewModalFromOpt(event)">📄 عرض الفاتورة وأصنافها</button>
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
+            <button type="button" class="btn-save-ai" onclick="confirmInvoicePayment(event)">تأكيد السداد</button>
+        </div>
+    </div>
+</div>
+
 <div class="modal-overlay" id="addSupplierModal" onclick="closeModals(event)">
-<div class="compact-modal" onclick="event.stopPropagation()">
-<div class="compact-header"><h3>إضافة مورد جديد</h3></div>
-<div class="compact-row"><label>اسم المورد:</label><input type="text" id="newSuppName"></div>
-<div class="compact-row"><label>رقم الموبايل:</label><input type="text" id="newSuppPhone"></div>
-<div class="compact-btns">
-<button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
-<button type="button" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick){ window.Utils.preventDoubleClick(this, () => saveNewSupplier(event)); } else { saveNewSupplier(event); }">حفظ</button>
-</div>
-</div>
-</div>
-
-<div class="modal-overlay" id="addTransactionModal" onclick="closeModals(event)">
-<div class="compact-modal" onclick="event.stopPropagation()">
-<div class="compact-header"><h3>إضافة سند مورد جديد</h3></div>
-
-<div style="display:flex; justify-content:space-around; margin-bottom:15px; font-weight:bold;">
-<label style="color:#ff1a40; cursor:pointer; text-shadow:0 0 8px rgba(255,26,64,0.6);">
-<input type="radio" name="transType" value="payment" checked> دفع نقدية (تسديد)
-</label>
-<label style="color:#00ff66; cursor:pointer; text-shadow:0 0 8px rgba(0,255,102,0.6);">
-<input type="radio" name="transType" value="receipt"> إضافة مديونية
-</label>
-</div>
-
-<div class="compact-row"><label>المبلغ:</label><input type="number" id="transAmount" value="0" onclick="this.select()" min="0" step="any"></div>
-<div class="compact-row"><label>الملاحظات / البيان:</label><input type="text" id="transNotes" placeholder="اكتب الملاحظات..."></div>
-<div class="compact-row"><label>التاريخ:</label><input type="date" id="transDate"></div>
-<div class="compact-row">
-<label>الخزينة (التأثير):</label>
-<select id="transTreasurySelect">
-<option value="main" selected>الخزينة الرئيسية (كاش)</option>
-<option value="insta">إنستا (InstaPay)</option>
-<option value="wallet">المحفظة الإلكترونية</option>
-</select>
-</div>
-<div class="compact-btns">
-<button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
-<button type="button" class="btn-save-ai" onclick="saveTransaction(event)">تأكيد العملية</button>
-</div>
-</div>
+    <div class="compact-modal" onclick="event.stopPropagation()">
+        <div class="compact-header"><h3>إضافة مورد جديد</h3></div>
+        <div class="compact-row"><label>اسم المورد:</label><input type="text" id="newSuppName"></div>
+        <div class="compact-row"><label>رقم الموبايل:</label><input type="text" id="newSuppPhone"></div>
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
+            <button type="button" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick){ window.Utils.preventDoubleClick(this, () => saveNewSupplier(event)); } else { saveNewSupplier(event); }">حفظ</button>
+        </div>
+    </div>
 </div>
 
 <div class="modal-overlay" id="editVoucherModal" onclick="closeModals(event)">
-<div class="compact-modal" onclick="event.stopPropagation()">
-<div class="compact-header"><h3>تعديل سند مورد</h3></div>
+    <div class="compact-modal" onclick="event.stopPropagation()">
+        <div class="compact-header"><h3>تعديل سند مورد</h3></div>
 
-<div style="display:flex; justify-content:space-around; margin-bottom:15px; font-weight:bold;">
-<label style="color:#ff1a40; cursor:pointer; text-shadow:0 0 8px rgba(255,26,64,0.6);">
-<input type="radio" name="editTransType" value="payment" checked> دفع نقدية (تسديد)
-</label>
-<label style="color:#00ff66; cursor:pointer; text-shadow:0 0 8px rgba(0,255,102,0.6);">
-<input type="radio" name="editTransType" value="receipt"> إضافة مديونية
-</label>
-</div>
+        <div class="radio-group">
+            <label class="val-red">
+                <input type="radio" name="editTransType" value="payment" checked> دفع نقدية (تسديد)
+            </label>
+            <label class="val-green">
+                <input type="radio" name="editTransType" value="receipt"> إضافة مديونية
+            </label>
+        </div>
 
-<div class="compact-row"><label>المبلغ:</label><input type="number" id="editTransAmount" value="0" onclick="this.select()" min="0" step="any"></div>
-<div class="compact-row"><label>الملاحظات / البيان:</label><input type="text" id="editTransNotes" placeholder="اكتب الملاحظات..."></div>
-<div class="compact-row"><label>التاريخ:</label><input type="date" id="editTransDate"></div>
-<div class="compact-row">
-<label>الخزينة المحولة:</label>
-<select id="editTransTreasurySelect">
-<option value="main" selected>الخزينة الرئيسية (كاش)</option>
-<option value="insta">إنستا (InstaPay)</option>
-<option value="wallet">المحفظة الإلكترونية</option>
-</select>
-</div>
-<div class="compact-btns">
-<button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
-<button type="button" class="btn-save-ai" onclick="saveEditedVoucher(event)">حفظ التعديل</button>
-</div>
-</div>
+        <div class="compact-row"><label>المبلغ:</label><input type="number" id="editTransAmount" value="0" onclick="this.select()" min="0" step="any"></div>
+        <div class="compact-row"><label>الملاحظات / البيان:</label><input type="text" id="editTransNotes" placeholder="اكتب الملاحظات..."></div>
+        <div class="compact-row"><label>التاريخ:</label><input type="date" id="editTransDate"></div>
+        <div class="compact-row">
+            <label>الخزينة المحولة:</label>
+            <select id="editTransTreasurySelect">
+                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
+                <option value="insta">إنستا (InstaPay)</option>
+                <option value="wallet">المحفظة الإلكترونية</option>
+            </select>
+        </div>
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
+            <button type="button" class="btn-save-ai" onclick="saveEditedVoucher(event)">حفظ التعديل</button>
+        </div>
+    </div>
 </div>
 
 <!-- 🌟 نافذة عرض الفاتورة 🌟 -->
-<div class="modal-overlay" id="invoiceViewModal" style="align-items: center !important; padding-top: 0 !important; background: rgba(0,0,0,0.7) !important; pointer-events: auto !important; z-index: 9999;" onclick="closeModals(event)">
-    <div class="compact-modal" style="max-width: 600px; margin: auto !important; max-height: 85vh; overflow-y: auto; pointer-events: auto !important;" onclick="event.stopPropagation()">
-    <div class="compact-header"><h3 id="viewModalTitle">تفاصيل الفاتورة</h3></div>
-    <div id="viewModalContent" style="font-size: 15px; margin-bottom: 20px; line-height: 1.6; text-align: right;"></div>
-    <div class="compact-btns">
-    <button type="button" class="btn-close-ai" style="width:100%" onclick="closeModals(event)">إغلاق</button>
+<div class="modal-overlay" id="invoiceViewModal" onclick="closeModals(event)">
+    <div class="compact-modal" onclick="event.stopPropagation()">
+        <div class="compact-header"><h3 id="viewModalTitle">تفاصيل الفاتورة</h3></div>
+        <div id="viewModalContent"></div>
+        <div class="compact-btns">
+            <button type="button" class="btn-close-ai" onclick="closeModals(event)">إغلاق</button>
+        </div>
     </div>
-    </div>
-</div> 
+</div>
 
 <!-- قالب الطباعة الحرارية المخفي -->
-<div id="thermalPrintArea" class="thermal-receipt">
-<div style="text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 5px;">سراج LED</div>
-<div style="text-align: center; font-size: 13px; margin-bottom: 10px;" id="printReceiptTitle">كشف حساب مورد</div>
-<div style="border-bottom: 1px dashed black; margin-bottom: 5px;"></div>
-<div id="printSupplierName" style="font-weight: bold; margin-bottom: 5px;"></div>
-<div id="printDate" style="font-size: 11px; margin-bottom: 10px;"></div>
-<div style="border-bottom: 1px dashed black; margin-bottom: 5px;"></div>
-<div id="printItemsContainer"></div>
-<div style="border-bottom: 1px dashed black; margin-top: 5px; margin-bottom: 5px;"></div>
-<div id="printTotalBalance" style="font-weight: bold; text-align: left; font-size: 14px;"></div>
-<div style="text-align: center; margin-top: 15px; font-size: 11px;">نظام الإدارة - سراج LED</div>
+<div id="thermalPrintArea" class="thermal-receipt" hidden>
+    <div class="print-header">سراج LED</div>
+    <div id="printReceiptTitle">كشف حساب مورد</div>
+    <div id="printSupplierName"></div>
+    <div id="printDate"></div>
+    <div id="printItemsContainer"></div>
+    <div id="printTotalBalance"></div>
+    <div>نظام الإدارة - سراج LED</div>
 </div>
 
 <script src="db.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-    <script src="print_manager.js"></script>
+<script src="print_manager.js"></script>
 
 <script>
 function applySavedTheme() {
@@ -579,10 +562,10 @@ addSmartTouchLogic(tr, s.id);
 let balBadge = '';
 let netVal = s.netBalanceVal || 0;
 if (netVal > 0) {
-if (s.isNetDebt) balBadge = `<span style="color:#00ff66; font-weight:bold; text-shadow:0 0 10px rgba(0,255,102,0.9);">${netVal.toFixed(2)}</span>`;
-else balBadge = `<span style="color:#ff1a40; font-weight:bold; text-shadow:0 0 10px rgba(255,26,64,0.9);">${netVal.toFixed(2)}</span>`;
+if (s.isNetDebt) balBadge = `<span class="val-green">${netVal.toFixed(2)}</span>`;
+else balBadge = `<span class="val-red">${netVal.toFixed(2)}</span>`;
 } else {
-balBadge = `<span style="color:#00ff66; font-weight:bold; text-shadow:0 0 10px rgba(0,255,102,0.9);">0.00</span>`;
+balBadge = `<span class="val-green">0.00</span>`;
 }
 
 let lastDate = 'لا يوجد';
@@ -608,7 +591,7 @@ lastDate = datesArray[0].toISOString().split('T')[0];
 }
 
 tr.innerHTML = `
-<td style="text-align: right;">${s.name}</td>
+<td style="text-align: right;"><span class="tag-supplier">${s.name}</span></td>
 <td>${balBadge}</td>
 <td><span style="font-weight:bold; color:white; font-size:14px; text-shadow:0 0 5px rgba(255,255,255,0.5);">${lastDate}</span></td>
 `;
@@ -720,7 +703,7 @@ function openSupplierAccount(id) {
 currentActiveSupplierId = id;
 const s = suppliersDB.find(x => x.id === id);
 if(!s) return;
-document.getElementById('accountHeaderTitle').innerText = `حسابات المورد: ${s.name}`;
+document.getElementById('accountHeaderTitle').innerHTML = `حسابات المورد: <span class="tag-supplier">${s.name}</span>`;
 if(!s.transactions) s.transactions = [];
 updateAccountSummary(s);
 renderAccountTransactions(s);
@@ -782,7 +765,7 @@ function openStatementView() {
 closeAllMenus();
 const s = suppliersDB.find(x => x.id === currentActiveSupplierId);
 if(!s) return;
-document.getElementById('statementHeaderTitle').innerText = `كشف حساب المورد: ${s.name}`;
+document.getElementById('statementHeaderTitle').innerHTML = `كشف حساب المورد: <span class="tag-supplier">${s.name}</span>`;
 renderStatementTable(s);
 switchView('supplier-statement-view');
 }
@@ -992,8 +975,8 @@ function renderAccountTransactions(supplier) {
                 let totalReq = parseFloat(inv.total) || 0;
                 displayList.push({
                     type: 'invoice_deferred', rawObj: inv, date: inv.date,
-                    customerTitle: `فاتورة آجل رقم: ${String(inv.id || '').slice(-6)}`,
-                    metaText: `المتبقي: ${parseFloat(rem).toFixed(2)}`,
+                    customerTitle: `فاتورة آجل رقم: <span class="invoice-number">${String(inv.id || '').slice(-6)}</span>`,
+                    metaText: `<span class="badge-unpaid">المتبقي: ${parseFloat(rem).toFixed(2)}</span>`,
                     metaColor: '#00ff66', amount: totalReq,
                     amountClass: 'text-white', color: 'var(--text-main)'
                 });
@@ -1006,8 +989,8 @@ function renderAccountTransactions(supplier) {
             let totalReq = parseFloat(inv.total) || 0;
             displayList.push({
                 type: isDef ? 'invoice_deferred' : 'invoice', rawObj: inv, date: inv.date,
-                customerTitle: `فاتورة رقم: ${String(inv.id || '').slice(-6)}`,
-                metaText: isDef ? `المتبقي: ${parseFloat(rem).toFixed(2)}` : `مسددة بالكامل`,
+                customerTitle: `فاتورة رقم: <span class="invoice-number">${String(inv.id || '').slice(-6)}</span>`,
+                metaText: isDef ? `<span class="badge-unpaid">المتبقي: ${parseFloat(rem).toFixed(2)}</span>` : `<span class="badge-paid">مسددة بالكامل</span>`,
                 metaColor: isDef ? '#00ff66' : '#ff1a40', amount: totalReq,
                 amountClass: isDef ? 'text-white' : 'val-red', color: isDef ? 'var(--text-main)' : '#ff1a40'
             });
@@ -1018,7 +1001,7 @@ function renderAccountTransactions(supplier) {
             let isReceipt = t.type === 'receipt' || t.type === 'supplier_receipt';
             displayList.push({
                 type: 'voucher', rawObj: t, date: t.date,
-                customerTitle: `${isReceipt ? 'سند مديونية للمورد' : 'سند تسديد نقدية'} رقم: ${String(t.id || '').slice(-6)}`,
+                customerTitle: `${isReceipt ? 'سند مديونية للمورد' : 'سند تسديد نقدية'} رقم: <span class="invoice-number">${String(t.id || '').slice(-6)}</span>`,
                 metaText: t.notes || '---', metaColor: '#a855f7',
                 amount: parseFloat(t.amount) || 0,
                 amountClass: isReceipt ? 'val-green' : 'val-red', color: isReceipt ? '#00ff66' : '#ff1a40'
@@ -1097,16 +1080,18 @@ function renderAccountTransactions(supplier) {
         let menuHtml = '';
         if (item.type === 'invoice_deferred') {
             menuHtml = `
-            <div id="${dropdownId}" class="inline-action-dropdown" onclick="event.stopPropagation()" style="background: rgba(19,17,44,0.95); position: absolute; z-index: 10; border: 1px solid var(--neon-border); border-radius: 8px; padding: 5px;">
-                <div class="inline-action-item" onclick="openPaymentModalFromInline(event)">💳 سداد الفاتورة</div>
-                <div class="inline-action-item" onclick="openViewModalFromOpt(event)">📄 عرض الفاتورة</div>
+            <div id="${dropdownId}" class="inline-action-dropdown" style="display: none;" onclick="event.stopPropagation()">
+            <div class="inline-action-item" onclick="window.openPaymentModalFromInline(event)">💳 سداد الفاتورة</div>
+            <div class="inline-action-item" onclick="openViewModalFromOpt(event)">📄 عرض الفاتورة</div>
             </div>
             `;
-        } else if (item.type === 'voucher') {
+        }
+        
+        else if (item.type === 'voucher') {
             menuHtml = `
-            <div id="${dropdownId}" class="inline-action-dropdown" onclick="event.stopPropagation()" style="background: rgba(19,17,44,0.95); position: absolute; z-index: 10; border: 1px solid var(--neon-border); border-radius: 8px; padding: 5px;">
-                <div class="inline-action-item" onclick="openEditVoucherModalFromInline(event)">✏️ تعديل</div>
-                <div class="inline-action-item" onclick="deleteVoucherFromInline(event)" style="color:#ff1a40;">🗑️ حذف</div>
+            <div id="${dropdownId}" class="inline-action-dropdown" style="display: none;" onclick="event.stopPropagation()">
+            <div class="inline-action-item" onclick="openEditVoucherModalFromInline(event)">✏️ تعديل</div>
+            <div class="inline-action-item" onclick="deleteVoucherFromInline(event)" style="color:#ff1a40;">🗑️ حذف</div>
             </div>
             `;
         }
@@ -1228,21 +1213,6 @@ window.print();
 }
 }
 
-function openPaymentModalFromInline(e) {
-if(e) { e.preventDefault(); e.stopPropagation(); }
-closeAllMenus();
-if(!activeSelectedInvoice) return;
-let inv = activeSelectedInvoice.rawObj;
-let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining;
-
-document.getElementById('payModalHeaderTitle').innerText = `سداد مبالغ متبقية لفاتورة رقم: ${inv.id.toString().slice(-6)}`;
-document.getElementById('payModalRemainingText').innerText = rem.toFixed(2);
-document.getElementById('payModalAmountInput').value = rem.toFixed(2);
-document.getElementById('payModalNotesInput').value = '';
-document.getElementById('payModalDateInput').value = new Date().toISOString().split('T')[0];
-
-document.getElementById('invoicePaymentModal').style.display = 'flex';
-}
 
 function generateSmartVoucherId() {
 let deviceCode = localStorage.getItem('seraj_device_code');
@@ -1271,7 +1241,7 @@ let nextNumber = foundAny ? maxNum + 1 : 1;
 return parseInt(deviceCode.toString() + nextNumber.toString().padStart(5, '0'));
 }
 
-// استبدل الدالة بالكامل بهذا الكود
+
 function confirmInvoicePayment(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
     if(!activeSelectedInvoice) return;
@@ -1285,23 +1255,23 @@ function confirmInvoicePayment(e) {
 
     function executeInvoicePayment() {
         let inv = activeSelectedInvoice.rawObj;
-        let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining;
-        let maxRem = rem || inv.total;
+        // تأمين القيم كأرقام لمنع خطأ المطابقة
+        let rem = parseFloat(inv.computedRemaining !== undefined ? inv.computedRemaining : (inv.remaining || 0)) || 0;
+        let maxRem = rem || parseFloat(inv.total) || 0;
 
         let pAmount = Math.max(0, parseFloat(document.getElementById('payModalAmountInput').value) || 0);
         let customNotes = document.getElementById('payModalNotesInput').value.trim();
-        let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `سداد فاتورة مشتريات رقم ${inv.id.toString().slice(-6)}`;
+        let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `سداد فاتورة مشتريات رقم ${String(inv.id || '').slice(-6)}`;
         let date = document.getElementById('payModalDateInput').value;
         let treasuryKey = document.getElementById('payModalTreasurySelect').value;
 
-        if(pAmount <= 0 || pAmount > maxRem) {
+        if(pAmount <= 0 || pAmount > (maxRem + 0.05)) {
             return typeof SerajAlert === 'function' ? SerajAlert("أدخل مبلغ صحيح لا يتجاوز المتبقي!", "error") : alert("مبلغ غير صحيح!");
         }
 
         const s = suppliersDB.find(x => String(x.id) === String(currentActiveSupplierId));
         if(!s) return;
 
-        // 1. توليد رقم السند دائماً عبر SUP_REC
         let txId = window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId('SUP_REC') : 'SUP_REC_' + Date.now();
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
@@ -1314,10 +1284,8 @@ function confirmInvoicePayment(e) {
         s.transactions.push(newVoucher);
 
         if(typeof DB !== 'undefined') {
-            // 2. ترتيب الحفظ إجباري: حفظ المورد أولاً
             DB.saveSuppliers(suppliersDB);
 
-            // 3. تسجيل الحركة بالخزينة مع تمرير supplierId و supplier صراحةً
             if(typeof DB.recordTreasuryTransaction === 'function') {
                 DB.recordTreasuryTransaction({
                     id: txId,
@@ -1333,7 +1301,6 @@ function confirmInvoicePayment(e) {
                 });
             }
 
-            // تحديث الفاتورة
             let purchaseInvoices = DB.getPurchaseInvoices() || [];
             let invIndex = purchaseInvoices.findIndex(x => String(x.id) === String(inv.id));
             if(invIndex !== -1) {
@@ -1354,7 +1321,6 @@ function confirmInvoicePayment(e) {
         setTimeout(() => {
             if(typeof closeModals === 'function') closeModals();
             recalculateSupplierBalances();
-            // 4. سحب الأرصدة المعتمدة مباشرة
             suppliersDB = DB.getSuppliers() || [];
             openSupplierAccount(s.id);
             window.scrollTo(0, lastScroll);
@@ -1362,6 +1328,8 @@ function confirmInvoicePayment(e) {
         }, 300);
     }
 }
+
+
 
 function openViewModalFromOpt(e) {
 if(e) { e.preventDefault(); e.stopPropagation(); }
@@ -1379,7 +1347,7 @@ devHtml = `<div style="margin-top:10px; text-align:right; font-size:13px; color:
 </div>`;
 }
 
-document.getElementById('viewModalTitle').innerText = `تفاصيل السند رقم ${t.id}`;
+document.getElementById('viewModalTitle').innerHTML = `تفاصيل السند رقم <span class="invoice-number">${t.id}</span>`;
 document.getElementById('viewModalContent').innerHTML = `
 <div>نوع السند: <b>${t.type === 'receipt' ? 'إضافة مديونية للمورد' : 'دفع نقدية للمورد (تسديد)'}</b></div>
 <div>المبلغ: <span style="color:${item.color}; font-weight:bold;">${parseFloat(t.amount).toFixed(2)} جنيه</span></div>
@@ -1417,10 +1385,10 @@ deviceHtml = `<div style="margin-bottom:10px; text-align:right; font-size:13px; 
 </div>`;
 }
 
-document.getElementById('viewModalTitle').innerText = `عرض تفاصيل الفاتورة رقم ${inv.id.toString().slice(-6)}`;
+document.getElementById('viewModalTitle').innerHTML = `عرض تفاصيل الفاتورة رقم <span class="invoice-number">${inv.id.toString().slice(-6)}</span>`;
 document.getElementById('viewModalContent').innerHTML = `
 <div style="margin-bottom:10px; display:flex; justify-content:space-between;">
-<span>المورد: <b>${inv.supplier}</b></span>
+<span>المورد: <span class="tag-supplier">${inv.supplier}</span></span>
 <span>التاريخ: <b>${inv.date}</b></span>
 </div>
 ${deviceHtml}
@@ -1437,8 +1405,8 @@ ${deviceHtml}
 </table>
 <div style="text-align:left; font-size:16px; font-weight:bold;">
 <div>إجمالي الفاتورة: <span style="color:#38bdf8;">${(inv.total || 0).toFixed(2)}</span></div>
-<div>المدفوع: <span style="color:#00ff66;">${(inv.paid || 0).toFixed(2)}</span></div>
-<div>المتبقي (الآجل): <span style="color:#ff1a40;">${(inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining || 0).toFixed(2)}</span></div>
+<div>المدفوع: <span class="badge-paid">${(inv.paid || 0).toFixed(2)}</span></div>
+<div>المتبقي (الآجل): <span class="badge-unpaid">${(inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining || 0).toFixed(2)}</span></div>
 </div>
 `;
 }
@@ -1610,19 +1578,24 @@ async function saveEditedVoucher(e) {
 }
 
 function openAddTransactionModalDirect(e) {
-if(e) e.stopPropagation();
-closeAllMenus();
-document.getElementById('transAmount').value = '';
-document.getElementById('transNotes').value = '';
-document.getElementById('transDate').value = new Date().toISOString().split('T')[0];
+    if(e) e.stopPropagation();
+    if(typeof closeAllMenus === 'function') closeAllMenus();
+    document.getElementById('transAmount').value = '';
+    document.getElementById('transNotes').value = '';
+    document.getElementById('transDate').value = new Date().toISOString().split('T')[0];
 
-let radios = document.getElementsByName('transType');
-radios.forEach(r => {
-if(r.value === 'payment') r.checked = true;
-});
+    // إجبار المتصفح على اختيار زر "تسديد" (الأحمر) بشكل افتراضي وصارم
+    let paymentRadio = document.querySelector('input[name="transType"][value="payment"]');
+    if (paymentRadio) paymentRadio.checked = true;
 
-document.getElementById('addTransactionModal').style.display = 'flex';
-setTimeout(() => document.getElementById('transAmount').focus(), 100);
+    // 🚀 فرض الشفافية التامة برمجياً لكسر سيطرة ملف style.css المركزي
+    let modal = document.getElementById('addTransactionModal');
+    modal.style.setProperty('background', 'transparent', 'important');
+    modal.style.setProperty('backdrop-filter', 'none', 'important');
+    modal.style.setProperty('-webkit-backdrop-filter', 'none', 'important');
+    modal.style.display = 'flex';
+
+    setTimeout(() => document.getElementById('transAmount').focus(), 100);
 }
 
 // استبدل الدالة بالكامل بهذا الكود
@@ -1691,7 +1664,48 @@ function saveTransaction(e) {
             typeof SerajAlert === 'function' ? SerajAlert(`تم الحفظ وتحديث الخزينة! \n رقم السند: ${String(txId).slice(-6)}`, "success") : alert("تم الحفظ!");
         }, 300);
     }
-}
+} 
+
+window.openPaymentModalFromInline = function(e) {
+    try {
+        if(e) { e.preventDefault(); e.stopPropagation(); }
+        if(typeof closeAllMenus === 'function') closeAllMenus();
+        
+        if(!activeSelectedInvoice || !activeSelectedInvoice.rawObj) {
+            alert("تنبيه: لم يتم التقاط بيانات الفاتورة بشكل صحيح.");
+            return;
+        }
+        
+        let inv = activeSelectedInvoice.rawObj;
+        let rem = parseFloat(inv.computedRemaining !== undefined ? inv.computedRemaining : (inv.remaining || 0)) || 0;
+        let safeId = String(inv.id || '').slice(-6);
+
+        let titleEl = document.getElementById('payModalHeaderTitle');
+        if(titleEl) titleEl.innerHTML = `سداد مبالغ متبقية لفاتورة رقم: <span class="invoice-number">${safeId}</span>`;
+        
+        let textEl = document.getElementById('payModalRemainingText');
+        if(textEl) textEl.innerText = rem.toFixed(2);
+        
+        let inputEl = document.getElementById('payModalAmountInput');
+        if(inputEl) inputEl.value = rem.toFixed(2);
+        
+        let notesEl = document.getElementById('payModalNotesInput');
+        if(notesEl) notesEl.value = '';
+        
+        let dateEl = document.getElementById('payModalDateInput');
+        if(dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+
+        let modalEl = document.getElementById('invoicePaymentModal');
+        if(modalEl) {
+            modalEl.style.display = 'flex';
+        } else {
+            alert("خطأ: نافذة السداد تم حذفها من أكواد الـ HTML بالخطأ!");
+        }
+    } catch(err) {
+        // لو في أي كراش صامت هيطلعلك رسالة يقولك الخطأ فين بالظبط!
+        alert("خطأ برمجي يمنع فتح النافذة: " + err.message);
+    }
+};
 
 window.onload = () => {
 if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme();

@@ -1902,7 +1902,101 @@ table tr:active, .seraj-table tr:active {
         padding: 8px;
         border: 1px solid var(--print-text);
     } 
-   
-    
-    
+/* ========================================================================== */
+/* 🏷️ التمييز اللوني للكيانات (العملاء، الموردين، الأجهزة، الحركات المالية) */
+/* ========================================================================== */
+
+/* 1. الفلوس اللي داخلة (موجب / إيراد / تحصيل من عميل) */
+.val-in, .val-green {
+    color: var(--accent-green, #00ff66) !important;
+    font-weight: bold !important;
+    text-shadow: 0 0 8px rgba(0, 255, 102, 0.4) !important;
+    direction: ltr;
+}
+
+/* 2. الفلوس اللي خارجة (سالب / مصروف / سداد لمورد) */
+.val-out, .val-red {
+    color: var(--accent-red, #ff1a40) !important;
+    font-weight: bold !important;
+    text-shadow: 0 0 8px rgba(255, 26, 64, 0.4) !important;
+    direction: ltr;
+}
+
+/* 3. اسم العميل (شارة باللون الأزرق السماوي) */
+.tag-customer {
+    color: #0ea5e9 !important; 
+    font-weight: bold !important;
+    background-color: rgba(14, 165, 233, 0.15) !important;
+    padding: 4px 10px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(14, 165, 233, 0.4) !important;
+    display: inline-block;
+}
+
+/* 4. اسم المورد (شارة باللون البرتقالي) */
+.tag-supplier {
+    color: #f97316 !important; 
+    font-weight: bold !important;
+    background-color: rgba(249, 115, 22, 0.15) !important;
+    padding: 4px 10px !important;
+    border-radius: 8px !important;
+    border: 1px solid rgba(249, 115, 22, 0.4) !important;
+    display: inline-block;
+}
+
+/* 5. اسم المستخدم أو الجهاز (شارة صغيرة باللون البنفسجي الهادئ) */
+.tag-device, .tag-user {
+    color: #a855f7 !important; 
+    font-size: 13px !important;
+    font-weight: bold !important;
+    background-color: rgba(168, 85, 247, 0.1) !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    border: 1px dashed rgba(168, 85, 247, 0.4) !important;
+    display: inline-block;
+}
+
+/* ========================================================================== */
+/* 🔢 تمييز أرقام الفواتير وحالات السندات                                     */
+/* ========================================================================== */
+
+/* تمييز رقم الفاتورة بلون سماوي نيون بارز */
+.invoice-number, .inv-num {
+    color: #38bdf8 !important;
+    font-weight: bold !important;
+    text-shadow: 0 0 8px rgba(56, 189, 248, 0.4) !important;
+    font-family: monospace, Tahoma !important;
+}
+
+/* حالة مسدد بالكامل (أخضر هادئ بخلفية خفيفة) */
+.badge-paid, .status-paid {
+    color: #00ff66 !important;
+    background-color: rgba(0, 255, 102, 0.12) !important;
+    border: 1px solid rgba(0, 255, 102, 0.3) !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: bold !important;
+}
+
+/* حالة متبقي / آجل (أحمر تنبيهي بخلفية خفيفة) */
+.badge-unpaid, .status-unpaid, .badge-partial {
+    color: #ff1a40 !important;
+    background-color: rgba(255, 26, 64, 0.12) !important;
+    border: 1px solid rgba(255, 26, 64, 0.3) !important;
+    padding: 2px 8px !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: bold !important;
+}
+
+/* ملء الشاشة بالعرض ومنع صغر حجم الصندوق */
+.main-container, .customers-container, .suppliers-container {
+    width: 100% !important;
+    max-width: 900px !important; /* توسيع العرض قليلاً */
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+    box-sizing: border-box !important;
+}
+
 }
