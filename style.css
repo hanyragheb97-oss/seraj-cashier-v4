@@ -1999,4 +1999,129 @@ table tr:active, .seraj-table tr:active {
     box-sizing: border-box !important;
 }
 
+/* ========================================================================== */
+/* 📱 ضبط أحجام الكروت والأزرار العلوية لتناسب شاشات الموبايل                 */
+/* ========================================================================== */
+
+/* ضبط الكارت العلوي على كل الشاشات */
+.summary-box, .account-summary-card {
+    margin: 6px auto 10px auto !important;
+}
+
+.summary-top-row, .summary-val-row, .summary-grid-2col {
+    padding: 8px 10px !important; /* تقليل الارتفاع الداخلي */
+}
+
+.summary-total-row, .net-balance-box {
+    padding: 8px 10px !important;
+    font-size: 18px !important;
+}
+
+/* صف أزرار كشف الحساب والسند */
+.dual-action-row, .top-action-row {
+    gap: 8px !important;
+    margin-bottom: 10px !important;
+}
+
+.dual-action-row button, 
+.top-action-row button, 
+.capsule-btn {
+    padding: 8px 10px !important; /* تقليل حجم الزر ليكون ملموماً */
+    font-size: 14px !important;
+    min-height: 38px !important;
+}
+
+/* تخصيص دقيق لشاشات الهواتف فقط (أقل من 600 بكسل) */
+@media screen and (max-width: 600px) {
+    .summary-top-row > div, 
+    .summary-val-row > div, 
+    .summary-grid-2col > div {
+        font-size: 13px !important;
+        line-height: 1.2 !important;
+    }
+
+    .summary-box .text-muted {
+        font-size: 11px !important;
+        margin-bottom: 2px !important;
+    }
+
+    .summary-box .val-green, 
+    .summary-box .val-red {
+        font-size: 15px !important;
+    }
+
+    .summary-total-row, .net-balance-box {
+        font-size: 16px !important;
+        padding: 6px 10px !important;
+    }
+
+    .dual-action-row button, 
+    .capsule-btn {
+        padding: 7px 8px !important;
+        font-size: 13px !important;
+        border-radius: 10px !important;
+    }
+}
+
+/* ========================================================================== */
+/* 🎨 ضبط قوائم الفلترة والخيارات لتأخذ ألوان وثيم البرنامج بدلاً من ألوان الموبايل */
+/* ========================================================================== */
+
+/* 1. إجبار مربعات الاختيار والقوائم العلوية على أخذ ألوان البرنامج */
+select, 
+.filter-select-box, 
+.invoice-type-selector,
+.filter-dropdown-box select {
+    background-color: var(--card-bg-alt, #131c31) !important;
+    color: var(--text-white, #ffffff) !important;
+    border: 2px solid var(--neon-border, #3b82f6) !important;
+    border-radius: 12px !important;
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+    font-weight: bold !important;
+    outline: none !important;
+    box-shadow: 0 0 10px var(--neon-glow) !important;
+    cursor: pointer !important;
+    -webkit-appearance: none !important; /* إلغاء ستايل النظام الافتراضي في الموبايل */
+    -moz-appearance: none !important;
+    appearance: none !important;
+    text-align: center !important;
+    text-align-last: center !important;
+}
+
+/* 2. إجبار خيارات القائمة (options) على أخذ الخلفية الداكنة للبرنامج */
+select option {
+    background-color: var(--bg-dark-1, #070913) !important;
+    color: var(--text-white, #ffffff) !important;
+    font-weight: bold !important;
+    padding: 10px !important;
+}
+
+/* 3. القوائم المنسدلة المخصصة (إذا كانت مبنية بنظام div و dropdown-menu مثل العملاء) */
+.filter-dropdown-box, 
+.filter-header-row select {
+    background-color: var(--card-bg-alt, #131c31) !important;
+    color: var(--text-white, #ffffff) !important;
+    border: 2px solid var(--neon-border, #3b82f6) !important;
+    box-shadow: 0 0 12px var(--neon-glow) !important;
+}
+
+.dropdown-menu, 
+.filter-dropdown-box .dropdown-menu {
+    background-color: var(--bg-dark-1, #070913) !important;
+    border: 2px solid var(--neon-border, #3b82f6) !important;
+    box-shadow: 0 15px 35px var(--shadow-dark) !important;
+}
+
+.dropdown-item {
+    color: var(--text-white, #ffffff) !important;
+    border-bottom: 1px solid var(--neon-border-soft) !important;
+    background-color: transparent !important;
+}
+
+.dropdown-item:active {
+    background-color: var(--row-active-bg, #1e293b) !important;
+    color: var(--accent-green, #00ff66) !important;
+}
+
 }

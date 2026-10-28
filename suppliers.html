@@ -72,12 +72,16 @@
         </div>
 
         <!-- الفلتر -->
-        <div class="filter-section">
-            <select class="filter-select-box" onchange="setAccountFilter(this.value, event)">
-                <option value="deferred">📑 الفواتير الآجلة ولم تسدد</option>
-                <option value="all_invoices">📦 جميع الفواتير</option>
-                <option value="vouchers">💵 المبالغ المسددة له وعليه</option>
-            </select>
+        <div class="filter-section search-container">
+            <div class="filter-select-box capsule-btn" onclick="toggleAccountFilterMenu(event)">
+                <span id="currentFilterLabel">📑 الفواتير الآجلة ولم تسدد</span><span>▼</span>
+
+                <div class="dropdown-list" id="accountFilterDropdown">
+                    <div class="dropdown-item" onclick="setAccountFilter('deferred', event)">📑 الفواتير الآجلة ولم تسدد</div>
+                    <div class="dropdown-item" onclick="setAccountFilter('all_invoices', event)">📦 جميع الفواتير</div>
+                    <div class="dropdown-item" onclick="setAccountFilter('vouchers', event)">💵 المبالغ المسددة <span class="val-green">له</span> و <span class="val-red">عليه</span></div>
+                </div>
+            </div>
         </div>
 
         <!-- قائمة كروت الفواتير -->
@@ -757,6 +761,25 @@ netElem.style.textShadow = "0 0 10px rgba(0, 255, 102, 0.9)";
 function setAccountFilter(mode, e) {
     if(e && e.stopPropagation) { e.stopPropagation(); }
     currentFilterMode = mode;
+
+    // 1. تحديث النص المكتوب على القائمة بناءً على اختيارك
+    const labels = {
+        'deferred': '📑 الفواتير الآجلة ولم تسدد',
+        'all_invoices': '📦 جميع الفواتير',
+        'vouchers': '💵 المبالغ المسددة <span class="val-green">له</span> و <span class="val-red">عليه</span>'
+    };
+    const labelEl = document.getElementById('currentFilterLabel');
+    if(labelEl && labels[mode]) {
+        labelEl.innerHTML = labels[mode];
+    }
+
+    // 2. السطر المسؤول عن إغلاق القائمة فوراً
+    const dropdown = document.getElementById('accountFilterDropdown');
+    if(dropdown) {
+        dropdown.style.display = 'none';
+    }
+
+    // 3. كودك الأصلي للبحث وعرض فواتير المورد
     const s = suppliersDB.find(x => String(x.id) === String(currentActiveSupplierId));
     if(s) renderAccountTransactions(s);
 }
