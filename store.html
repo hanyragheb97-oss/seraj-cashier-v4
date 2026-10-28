@@ -16,381 +16,320 @@
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    
-    <style>
-        /* ضبط الجدول ليتناسب مع شاشة الموبايل دون تمدد أفقي */
-        table {
-            width: 100% !important;
-            table-layout: fixed !important;
-        }
-        table th, table td { 
-            border-bottom: 1px solid var(--neon-border) !important; 
-            padding: 8px 4px !important;
-            word-wrap: break-word;
-        }
-        table th:nth-child(1), table td:nth-child(1) { width: 44%; }
-        table th:nth-child(2), table td:nth-child(2) { width: 16%; text-align: center; }
-        table th:nth-child(3), table td:nth-child(3) { width: 20%; text-align: center; }
-        table th:nth-child(4), table td:nth-child(4) { width: 20%; text-align: center; }
-        
-        .lot-row-card { 
-            background: var(--bg-dark-2, rgb(2, 1, 18)); 
-            border-bottom: 1px solid var(--neon-border); 
-            padding: 14px 10px; 
-            display: flex; justify-content: space-around; align-items: center; 
-            text-align: center; cursor: pointer; border-radius: 12px; margin-top: 8px; 
-            border: 1px solid var(--neon-border); 
-            color: var(--text-main, #fff);
-            flex-wrap: wrap;
-        }
-        .lot-row-card:active { opacity: 0.7; }
-        .lot-row-card > div { flex: 1; }
-
-        .barcode-input-group { display: flex; flex: 2; gap: 5px; width: 100%; }
-        .barcode-input-group input { flex: 1; }
-        .barcode-input-group button { 
-            background: var(--bg-dark-1, rgba(7, 0, 23, 0.91)); border: 1px solid var(--neon-border); 
-            border-radius: 10px; color: var(--text-main, #fff); cursor: pointer; padding: 0 10px; 
-            font-size: 18px; display: flex; align-items: center; justify-content: center; 
-        }
-        
-        .sticky-headers-bar { 
-            background-color: var(--bg-dark-1, rgba(6, 1, 18, 0.912)); color: var(--text-main, #fff); 
-            border-radius: 12px; padding: 12px 10px; display: flex; justify-content: space-around; 
-            font-size: 16px; font-weight: bold; text-align: center; border: 1px solid var(--neon-border); 
-        }
-        
-        .inventory-scroll-container { flex: 1; overflow-y: auto; padding: 10px 10px 140px 10px; max-width: 800px; margin: 0 auto; width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
-        .details-scrollable-body { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 10px 100px 10px; width: 100%; box-sizing: border-box; -webkit-overflow-scrolling: touch; }
-
-        /* تسريع التمرير وتخفيف الحمل على معالج الهاتف GPU */
-        #inventoryTableBody tr, .lot-row-card {
-            content-visibility: auto;
-            contain-intrinsic-size: 55px;
-        }
-
-        /* شريط البحث والمايك الخفيف والطابور */
-        .search-container { position: relative; margin-bottom: 5px; display: flex; gap: 8px; align-items: center; }
-        .search-input { flex: 1; padding: 14px; border: 2px solid var(--neon-border); border-radius: 16px; font-size: 18px; box-sizing: border-box; background: var(--card-bg, rgba(1, 1, 7, 0.997)); box-shadow: 0 0 10px var(--neon-glow); outline: none; color: var(--text-main, #fff); font-weight: bold; transition: background-color 0.15s, border-color 0.15s; }
-        .search-input:focus { border-color: #fff; }
-        .mic-btn-search { background: #2563eb; color: white; border: 2px solid #3b82f6; border-radius: 16px; width: 55px; height: 55px; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; flex-shrink: 0; }
-        .mic-btn-search.recording { background: #dc2626; border-color: #ef4444; }
-        
-        .queue-container { display: none; align-items: center; justify-content: space-between; background: var(--card-bg, rgb(3, 2, 18)); border: 1px dashed var(--neon-border); border-radius: 12px; padding: 8px 15px; margin-top: 8px; }
-        .queue-text { font-size: 15px; color: #fde047; font-weight: bold; }
-        .queue-btn-next { background: #059669; color: white; border: none; padding: 8px 20px; border-radius: 10px; font-size: 15px; font-weight: bold; cursor: pointer; }
-        .queue-btn-next:active { transform: scale(0.95); }
-    </style>
 </head>
-<body>
-    <!-- الشاشة 1: قائمة المخزن -->
+<body class="page-inventory">
+
+    <!-- الشاشة 1: قائمة المخزن الرئيسية -->
     <div id="inventory-list-view" class="view-section active-view">
-        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; overflow: hidden; height: 100vh; z-index: 10;">
+        
+        <div class="header">
+            <span></span>
+            <span>المخزن</span>
+            <span onclick="openBulkUpdateModal()" title="التعديل الشامل للأسعار">📈</span>
+        </div>
+        
+        <div class="search-container">
+            <input type="text" id="inventorySearch" class="search-input" placeholder="ابحث بالاسم أو الباركود..." oninput="smartSearch()" onclick="event.stopPropagation()">
+            <button type="button" id="aiAssistantBtn" class="mic-btn-search" onclick="event.stopPropagation(); toggleDirectVoiceSearch()" title="بحث صوتي مباشر">🎙️</button>
+        </div>
+
+        <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()" hidden>
+            <div>
+                <span>طابور الجرد والبحث:</span><br>
+                <span id="queueStatusText" class="queue-text">--</span>
+            </div>
+            <div class="btn-group">
+                <button type="button" class="queue-btn-next" onclick="processNextInQueue()">التالي ⏭️</button>
+                <button type="button" class="cancel-btn" onclick="clearSearchQueue()" title="إلغاء الطابور">✖</button>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th onclick="sortInventory('name')">المنتج ↕</th>
+                        <th>الصورة</th>
+                        <th onclick="sortInventory('stock')">الرصيد ↕</th>
+                        <th onclick="sortInventory('price')">البيع ↕</th>
+                    </tr>
+                </thead>
+                <tbody id="inventoryTableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="unified-bottom-bar">
+            <button type="button" class="bottom-back-btn" onclick="goBackSmart(true)">
+                <span class="arrow">⬅</span><span class="text">BACK</span>
+            </button>
             
-            <div class="header">
-                <div style="width: 30px;"></div>
-                <span>المخزن</span>
-                <span onclick="openBulkUpdateModal()" style="font-size: 24px; cursor: pointer; transition: 0.2s;" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform='scale(1)'">📈</span>
-            </div>
-            
-            <div style="flex-shrink: 0; padding: 15px 15px 5px 15px; position: relative; max-width: 800px; margin: 0 auto; width: 100%; box-sizing: border-box; z-index: 50;">
-                <div class="search-container">
-                    <input type="text" id="inventorySearch" class="search-input" placeholder="ابحث بالاسم أو الباركود..." oninput="smartSearch()" onclick="event.stopPropagation()">
-                    <button type="button" id="aiAssistantBtn" class="mic-btn-search" onclick="event.stopPropagation(); toggleDirectVoiceSearch()" title="بحث صوتي مباشر">
-                        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width: 28px; height: 28px; fill: white;">
-                            <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zm5 9.5A1.5 1.5 0 0 1 18.5 13a6.5 6.5 0 0 1-13 0A1.5 1.5 0 0 1 7 11.5a1.5 1.5 0 0 1 1.5 1.5 3.5 3.5 0 0 0 7 0 1.5 1.5 0 0 1 1.5-1.5zm-5 8a1.5 1.5 0 0 1 1.5 1.5V23a1.5 1.5 0 0 1-3 0v-2A1.5 1.5 0 0 1 12 19.5z"/>
-                        </svg>
-                    </button>
-                </div>
-
-                <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
-                    <div>
-                        <span style="font-size: 12px; color: #0d0c0c;">طابور الجرد والبحث:</span><br>
-                        <span id="queueStatusText" class="queue-text">--</span>
-                    </div>
-                    <div style="display: flex; gap: 6px;">
-                        <button type="button" class="queue-btn-next" onclick="processNextInQueue()">التالي ⏭️</button>
-                        <button type="button" onclick="clearSearchQueue()" style="background: #dc2626; color: white; border: none; padding: 8px 12px; border-radius: 10px; font-weight: bold; cursor: pointer;" title="إلغاء الطابور">✖</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="inventory-scroll-container">
-                <div class="table-wrapper" style="max-height: none; border: none; background: transparent; box-shadow: none;">
-                    <table style="background: var(--card-bg, rgb(20, 20, 20)); border-radius: 16px; box-shadow: 0 0 20px var(--neon-glow); border: 2px solid var(--neon-border);">
-                        <thead>
-                            <tr>
-                                <th style="text-align: right;" onclick="sortInventory('name')">المنتج ↕</th>
-                                <th>الصورة</th>
-                                <th onclick="sortInventory('stock')">الرصيد ↕</th>
-                                <th onclick="sortInventory('price')">البيع ↕</th>
-                            </tr>
-                        </thead>
-                        <tbody id="inventoryTableBody"></tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="fab-container">
-                <button class="fab-btn" onclick="openAddProductModal()">➕</button>
-            </div>
-
-            <div class="unified-bottom-bar">
-                <button class="bottom-back-btn" onclick="goBackSmart(true)">
-                    <span class="arrow">⬅</span><span class="text">BACK</span>
+            <div>
+                <button type="button" class="bottom-print-btn bottom-bar-print-btn" onclick="togglePrintMenu(event)" style="background: rgba(19, 17, 44, 0.85); color: var(--text-main, #fff); border: 1px solid var(--neon-border); border-radius: 12px; padding: 8px 15px; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px var(--neon-glow);">
+                    🖨️ طباعة / تصدير ▼
                 </button>
-                
-                <div style="position: relative;">
-                    <button class="bottom-bar-print-btn" onclick="togglePrintMenu(event)" style="background: rgba(19, 17, 44, 0.85); color: var(--text-main, #fff); border: 1px solid var(--neon-border); border-radius: 12px; padding: 8px 15px; font-weight: bold; cursor: pointer; box-shadow: 0 0 10px var(--neon-glow);">
-                        🖨️ طباعة / تصدير ▼
-                    </button>
-                    <div class="dropdown-menu" id="printMenuDropdown" style="left: 0; transform: none; text-align: right; bottom: 100%;">
-                        <div class="dropdown-menu-item" onclick="window.print()">📄 طباعة / بي دي إف</div>
-                        <div class="dropdown-menu-item" onclick="toggleExcelSubMenu(event)">📊 إكسيل (Excel) ▶</div>
-                        <div id="excelSubMenu" style="display: none; background: var(--bg-dark-1, #1a1a1a); border-top: 1px solid var(--neon-border);">
-                            <div class="dropdown-menu-item" onclick="exportInventoryExcel()">📤 تصدير بيانات</div>
-                            <div class="dropdown-menu-item" onclick="triggerExcelImport()">📥 استيراد من ملف</div>
-                        </div>
+                <div class="dropdown-menu" id="printMenuDropdown" hidden>
+                    <div class="dropdown-menu-item" onclick="window.print()">📄 طباعة / بي دي إف</div>
+                    <div class="dropdown-menu-item" onclick="toggleExcelSubMenu(event)">📊 إكسيل (Excel) ▶</div>
+                    <div id="excelSubMenu" hidden>
+                        <div class="dropdown-menu-item" onclick="exportInventoryExcel()">📤 تصدير بيانات</div>
+                        <div class="dropdown-menu-item" onclick="triggerExcelImport()">📥 استيراد من ملف</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- الشاشة 2: تفاصيل المنتج -->
-    <div id="product-details-view" class="view-section">
-        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; overflow: hidden; height: 100vh; z-index: 100;">
-            
-            <div class="header" style="justify-content: center;">
-                <span>تفاصيل المنتج</span>
-            </div>
-            
-            <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; max-width: 800px; margin: 0 auto; width: 100%; box-sizing: border-box; position: relative;">
-                <div style="background: var(--card-bg, rgba(20, 20, 20, 0.95)); padding: 8px 10px; border-bottom: 1px solid var(--neon-border); box-shadow: 0 2px 10px var(--neon-glow); flex-shrink: 0; z-index: 10;">
-                    <div id="detProductName" style="font-size: 22px; font-weight: bold; color: var(--text-main, #fff); text-align: center; margin-bottom: 2px;">اسم المنتج</div>
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: bold; padding: 2px 5px 6px 5px;">
-                        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 5px; text-align: right;">
-                            <span id="detCategoryText" style="color: var(--text-main, #ccc);">الصنف: ---</span>
-                            <span id="detBarcodeText" style="color: var(--text-main, #ccc);">الكود: ---</span>
-                        </div>
-                        <span onclick="openEditProductModal()" style="color: #4ade80; cursor: pointer;">تعديل</span>
-                        <div>
-                            <img id="detProductImage" src="" style="width: 45px; height: 45px; border-radius: 8px; border: 1px solid var(--neon-border); cursor: pointer; object-fit: cover; display: none; box-shadow: 0 0 8px var(--neon-glow);" onclick="showFullImage(event, currentActiveProductId)">
-                        </div>
-                    </div>
-                    <div style="text-align: center; margin-bottom: 6px;">
-                        <button onclick="openAutoParentModal(event)" style="background: transparent; color: #e879f9; border: 1px solid var(--neon-border); border-radius: 8px; padding: 4px 12px; font-size: 13px; font-weight: bold; cursor: pointer;">🔗 ربط صنف رئيسي</button>
-                        <div id="currentParentDisplay" style="font-size: 12px; color: #00ff66; margin-top: 5px; display: none;"></div>
-                    </div>
-                    <div class="sticky-headers-bar">
-                        <div style="flex: 1;">رصيد المخزن</div><div style="flex: 1;">سعر الشراء</div><div style="flex: 1;">سعر البيع</div>
-                    </div>
-                </div>
+<!-- الشاشة 2: تفاصيل المنتج -->
+<div id="product-details-view" class="view-section">
+        
+    <div class="header">
+        <span></span>
+        <span>تفاصيل المنتج</span>
+        <span></span>
+    </div>
+    
+    <div class="product-details-header">
+        <!-- السطر الأول: اسم المنتج في المنتصف وبجواره زر القلم ومكتوب تعديل -->
+        <div class="prod-header-title-row">
+            <h2 id="detProductName">اسم المنتج</h2>
+            <button type="button" class="prod-inline-edit-btn" onclick="openEditProductModal()">✏️ تعديل</button>
+        </div>
 
-                <div id="detScrollableRows" class="details-scrollable-body"></div>
+        <!-- السطر الثاني: الصنف والكود يمين | ربط صنف رئيسي بالوسط | الصورة شمال -->
+        <div class="prod-header-body-row">
+            <div class="prod-header-meta-right">
+                <span id="detCategoryText">الصنف: ---</span>
+                <span id="detBarcodeText">الكود: ---</span>
             </div>
+            <div class="prod-header-link-center">
+                <button type="button" id="btn-link-parent" onclick="openAutoParentModal(event)">🔗 ربط صنف رئيسي</button>
+                <span id="currentParentDisplay" hidden></span>
+            </div>
+            <img id="detProductImage" class="product-thumb-img" src="" alt="صورة المنتج" onclick="showFullImage(event, currentActiveProductId)" hidden>
+        </div>
 
-            <div style="position: absolute; bottom: 0; left: 0; right: 0; background: var(--bg-dark-1, #000109); padding: 8px 10px; border-top: 1px solid var(--neon-border); z-index: 80;">
-                <div style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg, #000108); border: 1px solid var(--neon-border); border-radius: 15px; padding: 4px 15px; margin-bottom: 6px; max-width: 600px; margin-left: auto; margin-right: auto;">
-                    <span style="font-size: 14px; font-weight: bold; color: var(--text-main, #fff);">إجمالي المخزن</span>
-                    <span id="detTotalStockBadge" style="font-size: 18px; font-weight: bold; color: #00ff66;">0</span>
-                </div>
-                
-                <div style="display: flex; gap: 8px; max-width: 600px; margin: auto; align-items: center;">
-                    <button class="bottom-back-btn" onclick="goBackSmart(false)" style="height: 45px;">
-                        <span class="arrow">⬅</span><span class="text">BACK</span>
-                    </button>
-                    <div style="display: flex; flex: 1; background: var(--card-bg, #020008); border: 1px solid var(--neon-border); border-radius: 10px; overflow: hidden;">
-                        <button id="btnDeleteProd" onclick="deleteCurrentProduct(this)" style="background: transparent; color: var(--text-main, #fff); border: none; padding: 6px; flex: 1; display: flex; flex-direction: column; align-items: center; font-weight: bold; cursor: pointer; font-size: 13px;">🗑️<br>حذف</button>
-                        <button onclick="openAddLotModal()" style="background: transparent; color: var(--text-main, #fff); border: none; padding: 6px; flex: 1; display: flex; flex-direction: column; align-items: center; font-weight: bold; cursor: pointer; border-right: 1px solid var(--neon-border); border-left: 1px solid var(--neon-border); font-size: 13px;">➕<br>اضافة</button>
-                        <button onclick="openUpdatePriceModal()" style="background: transparent; color: var(--text-main, #fff); border: none; padding: 6px; flex: 1; display: flex; flex-direction: column; align-items: center; font-weight: bold; cursor: pointer; font-size: 13px;">✏️<br>سعر</button>
-                    </div>
-                </div>
+    </div>
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>رصيد المخزن</th>
+                    <th>سعر الشراء</th>
+                    <th>سعر البيع</th>
+                </tr>
+            </thead>
+            <tbody id="detScrollableRows"></tbody>
+        </table>
+    </div>
+
+    <!-- الشريط السفلي المدمج لتفاصيل المنتج (إجمالي المخزن + المربع الثلاثي بجوار BACK) -->
+    <div class="inv-details-bottom-bar" style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--bg-dark-1, #111); padding: 8px 10px; border-top: 1px solid var(--neon-border); z-index: 80;">
+        <div class="inv-total-stock-bar" style="display: flex; justify-content: space-between; align-items: center; background: var(--card-bg, #222); border: 1px solid var(--neon-border); border-radius: 15px; padding: 4px 15px; margin-bottom: 6px; max-width: 600px; margin-left: auto; margin-right: auto;">
+            <span style="font-size: 14px; font-weight: bold; color: var(--text-main, #fff);">إجمالي المخزن</span>
+            <span id="detTotalStockBadge" class="stock-badge">0.00</span>
+        </div>
+        
+        <div class="inv-actions-row" style="display: flex; gap: 8px; max-width: 600px; margin: auto; align-items: center;">
+            <button type="button" class="bottom-back-btn" onclick="goBackSmart(false)" style="height: 45px;">
+                <span class="arrow">⬅</span><span class="text">BACK</span>
+            </button>
+            <div class="inv-segmented-actions" style="display: flex; flex: 1; background: var(--card-bg, #222); border: 1px solid var(--neon-border); border-radius: 10px; overflow: hidden;">
+                <button type="button" id="btnDeleteProd" onclick="deleteCurrentProduct(this)" style="background: transparent; color: var(--text-main, #fff); border: none; padding: 6px; flex: 1; display: flex; flex-direction: column; align-items: center; font-weight: bold; cursor: pointer; font-size: 13px;">🗑️<br>حذف</button>
+                <button type="button" onclick="openAddLotModal()" style="background: transparent; color: var(--text-main, #fff); border: none; padding: 6px; flex: 1; display: flex; flex-direction: column; align-items: center; font-weight: bold; cursor: pointer; border-right: 1px solid var(--neon-border); border-left: 1px solid var(--neon-border); font-size: 13px;">➕<br>اضافة</button>
+                <button type="button" onclick="openUpdatePriceModal()" style="background: transparent; color: var(--text-main, #fff); border: none; padding: 6px; flex: 1; display: flex; flex-direction: column; align-items: center; font-weight: bold; cursor: pointer; font-size: 13px;">✏️<br>سعر</button>
             </div>
         </div>
     </div>
+</div>
+
+    <!-- زر إضافة صنف جديد العائم والمستقل في الـ body -->
+    <button type="button" class="seraj-btn-add-floating" onclick="openAddProductModal()" title="إضافة صنف جديد">➕</button>
 
     <!-- النوافذ المنبثقة Modals -->
-    <div class="modal-overlay" id="fullImageModal" onclick="this.style.display='none'" style="z-index: 9999;">
-        <div style="position: relative; max-width: 90vw; max-height: 90vh;" onclick="event.stopPropagation()">
-            <button onclick="document.getElementById('fullImageModal').style.display='none'" style="position: absolute; top: -15px; right: -15px; background: red; color: white; border: none; border-radius: 50%; width: 35px; height: 35px; font-size: 18px; font-weight: bold; cursor: pointer; z-index: 10001;">✖</button>
-            <img id="fullImageDisplay" src="" style="max-width: 100%; max-height: 90vh; border-radius: 12px; border: 3px solid var(--neon-border);">
+    <div class="modal-overlay" id="fullImageModal" onclick="closeModalById('fullImageModal')" hidden>
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header">
+                <h3>صورة المنتج</h3>
+                <button type="button" class="cancel-btn" onclick="closeModalById('fullImageModal')">✖</button>
+            </div>
+            <div class="compact-row">
+                <img id="fullImageDisplay" src="" alt="صورة مكبرة" style="max-width: 100%; max-height: 75vh; object-fit: contain; border-radius: 12px; display: block; margin: 0 auto;">
+            </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="autoParentModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="autoParentModal" onclick="closeModalById('autoParentModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3>🔗 ربط الصنف الرئيسي</h3></div>
-            <div class="form-row">
+            <div class="compact-row">
                 <label>بحث الصنف:</label>
                 <input type="text" id="parentSearchInput" placeholder="اكتب اسم الصنف..." oninput="filterParentDropdown()">
             </div>
-            <div class="form-row">
+            <div class="compact-row">
                 <label>اختر من النتائج:</label>
-                <select id="modalAutoParentSelect" style="width: 100%; height: 45px;"></select>
+                <select id="modalAutoParentSelect"></select>
             </div>
-            <div class="form-row">
+            <div class="compact-row">
                 <label>التحويل (قطعة للكرتونة):</label>
                 <input type="number" id="modalAutoConversionRate" value="50" min="1" step="any">
             </div>
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('autoParentModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnSaveParentLink" onclick="saveAutoParentLink(this)">حفظ الربط</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('autoParentModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnSaveParentLink" onclick="saveAutoParentLink(this)">حفظ الربط</button>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="addProductModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="addProductModal" onclick="closeModalById('addProductModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3>إضافة منتج جديد</h3></div>
-            <div class="form-row"><label>الاسم:</label><input type="text" id="addProdName"></div>
-            <div class="form-row"><label>الصنف:</label><input type="text" id="addProdCategory" placeholder="مثال: كهرباء..."></div>
+            <div class="compact-row"><label>الاسم:</label><input type="text" id="addProdName"></div>
+            <div class="compact-row"><label>الصنف:</label><input type="text" id="addProdCategory" placeholder="مثال: كهرباء..."></div>
             
-            <div class="form-row">
-                <label>الكود:</label>
-                <div class="barcode-input-group">
+            <div class="compact-row">
+                <label>الباركود / الكود:</label>
+                <div>
                     <input type="text" id="addProdBarcode" placeholder="تلقائي / صور الباركود">
                     <button type="button" onclick="startBarcodeScan('addProdBarcode')" title="تصوير الباركود">📷</button>
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="compact-row">
                 <label>صورة المنتج:</label>
-                <div class="barcode-input-group">
-                    <input type="file" id="addProdImageInput" accept="image/*" style="display:none;" onchange="previewSelectedImage('addProdImagePreview', this)">
-                    <button type="button" onclick="document.getElementById('addProdImageInput').click()" style="flex:1; background: transparent; font-size:15px; border-radius:12px; border: 1px solid var(--neon-border); color: var(--text-main);">📸 اختر</button>
-                    <img id="addProdImagePreview" src="" style="width: 45px; height: 45px; border-radius: 8px; border: 1px solid var(--neon-border); display:none; object-fit: cover;">
+                <div>
+                    <input type="file" id="addProdImageInput" accept="image/*" onchange="previewSelectedImage('addProdImagePreview', this)" hidden>
+                    <button type="button" onclick="document.getElementById('addProdImageInput').click()">📸 اختر</button>
+                    <img id="addProdImagePreview" class="product-thumb-img" src="" alt="معاينة" hidden>
                 </div>
             </div>
 
-            <div class="form-row"><label>سعر الشراء:</label><input type="number" id="addProdPurchase" value="0" min="0" step="any" onclick="this.select()"></div>
-            <div class="form-row"><label>سعر البيع:</label><input type="number" id="addProdPrice" value="0" min="0" step="any" onclick="this.select()"></div>
-            <div class="form-row"><label>الكمية الافتتاحية:</label><input type="number" id="addProdStock" value="0" min="0" step="any" onclick="this.select()"></div>
+            <div class="compact-row"><label>سعر الشراء:</label><input type="number" id="addProdPurchase" value="0" min="0" step="any" onclick="this.select()"></div>
+            <div class="compact-row"><label>سعر البيع:</label><input type="number" id="addProdPrice" value="0" min="0" step="any" onclick="this.select()"></div>
+            <div class="compact-row"><label>الكمية الافتتاحية:</label><input type="number" id="addProdStock" value="0" min="0" step="any" onclick="this.select()"></div>
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('addProductModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnConfirmAddProd" onclick="confirmAddProduct(this)">حفظ</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('addProductModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnConfirmAddProd" onclick="confirmAddProduct(this)">حفظ</button>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="editProductModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="editProductModal" onclick="closeModalById('editProductModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3>تعديل بيانات المنتج</h3></div>
-            <div class="form-row"><label>الاسم:</label><input type="text" id="editProdName"></div>
-            <div class="form-row"><label>الصنف:</label><input type="text" id="editProdCategory"></div>
+            <div class="compact-row"><label>الاسم:</label><input type="text" id="editProdName"></div>
+            <div class="compact-row"><label>الصنف:</label><input type="text" id="editProdCategory"></div>
             
-            <div style="margin-bottom: 15px;">
-                <label style="display: block; font-weight: bold; font-size: 15px; color: var(--text-main, #fff); margin-bottom: 8px;">الباركود / الكود:</label>
-                <div class="barcode-input-group" style="width: 100%;">
-                    <input type="text" id="editProdBarcode" placeholder="الكود الحالي أو صور" style="flex: 1; padding: 10px; border-radius: 12px; border: 2px solid var(--neon-border); background: var(--bg-dark-1, #333); color: var(--text-main, #fff);">
-                    <button type="button" onclick="startBarcodeScan('editProdBarcode')" title="تصوير الباركود" style="padding: 0 15px;">📷</button>
+            <div class="compact-row">
+                <label>الباركود / الكود:</label>
+                <div>
+                    <input type="text" id="editProdBarcode" placeholder="الكود الحالي أو صور">
+                    <button type="button" onclick="startBarcodeScan('editProdBarcode')" title="تصوير الباركود">📷</button>
                 </div>
             </div>
 
-            <div class="form-row">
+            <div class="compact-row">
                 <label>صورة المنتج:</label>
-                <div class="barcode-input-group">
-                    <input type="file" id="editProdImageInput" accept="image/*" style="display:none;" onchange="previewSelectedImage('editProdImagePreview', this)">
-                    <button type="button" onclick="document.getElementById('editProdImageInput').click()" style="flex:1; background: transparent; font-size:15px; border-radius:12px; border: 1px solid var(--neon-border); color: var(--text-main);">📸 تغيير</button>
-                    <img id="editProdImagePreview" src="" style="width: 45px; height: 45px; border-radius: 8px; border: 1px solid var(--neon-border); display:none; object-fit: cover;">
+                <div>
+                    <input type="file" id="editProdImageInput" accept="image/*" onchange="previewSelectedImage('editProdImagePreview', this)" hidden>
+                    <button type="button" onclick="document.getElementById('editProdImageInput').click()">📸 تغيير</button>
+                    <img id="editProdImagePreview" class="product-thumb-img" src="" alt="معاينة" hidden>
                 </div>
             </div>
 
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('editProductModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnConfirmEditProd" onclick="confirmEditProduct(this)">تحديث</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('editProductModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnConfirmEditProd" onclick="confirmEditProduct(this)">تحديث</button>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="addLotModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="addLotModal" onclick="closeModalById('addLotModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header">
                 <h3>إضافة دفعة (تسوية جردية)</h3>
-                <p style="font-size: 12px; color: var(--text-main, #ccc); margin: 0;">هذه العملية لا تؤثر على حسابات الموردين أو الخزينة.</p>
+                <p>هذه العملية لا تؤثر على حسابات الموردين أو الخزينة.</p>
             </div>
-            <div class="form-row"><label>البيان / المورد:</label><input type="text" id="lotSupplier" placeholder="رصيد افتتاحي..."></div>
-            <div class="form-row"><label>الكمية (لا تقبل السالب):</label><input type="number" id="lotStock" value="1" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
-            <div class="form-row"><label>سعر الشراء:</label><input type="number" id="lotPurchase" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
-            <div class="form-row"><label>سعر البيع:</label><input type="number" id="lotPrice" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
+            <div class="compact-row"><label>البيان / المورد:</label><input type="text" id="lotSupplier" placeholder="رصيد افتتاحي..."></div>
+            <div class="compact-row"><label>الكمية (لا تقبل السالب):</label><input type="number" id="lotStock" value="1" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
+            <div class="compact-row"><label>سعر الشراء:</label><input type="number" id="lotPurchase" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
+            <div class="compact-row"><label>سعر البيع:</label><input type="number" id="lotPrice" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('addLotModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnConfirmAddLot" onclick="confirmAddLot(this)">تأكيد وإضافة</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('addLotModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnConfirmAddLot" onclick="confirmAddLot(this)">تأكيد وإضافة</button>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="editLotModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="editLotModal" onclick="closeModalById('editLotModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3>تعديل حركة الجرد</h3></div>
             <input type="hidden" id="editLotIndex">
-            <div class="form-row"><label>الكمية (الرصيد - غير سالب):</label><input type="number" id="editLotStock" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
-            <div class="form-row"><label>سعر الشراء:</label><input type="number" id="editLotPurchase" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
-            <div class="form-row"><label>سعر البيع:</label><input type="number" id="editLotPrice" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
+            <div class="compact-row"><label>الكمية (الرصيد - غير سالب):</label><input type="number" id="editLotStock" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
+            <div class="compact-row"><label>سعر الشراء:</label><input type="number" id="editLotPurchase" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
+            <div class="compact-row"><label>سعر البيع:</label><input type="number" id="editLotPrice" min="0" step="any" onfocus="this.select()" onclick="this.select()"></div>
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('editLotModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnConfirmEditLot" onclick="saveEditedLot(this)">حفظ التعديل</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('editLotModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnConfirmEditLot" onclick="saveEditedLot(this)">حفظ التعديل</button>
             </div>
         </div>
     </div>
 
-    <!-- نافذة تعديل سعر البيع الموحد للصنف -->
-    <div class="modal-overlay" id="updatePriceModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="updatePriceModal" onclick="closeModalById('updatePriceModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3>✏️ تعديل سعر البيع للصنف</h3></div>
-            <div class="form-row">
+            <div class="compact-row">
                 <label>سعر البيع الجديد:</label>
                 <input type="number" id="newUnifiedPriceInput" min="0" step="any" onfocus="this.select()" onclick="this.select()">
             </div>
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('updatePriceModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnConfirmUpdatePrice" onclick="confirmUpdatePrice(this)">تحديث السعر</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('updatePriceModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnConfirmUpdatePrice" onclick="confirmUpdatePrice(this)">تحديث السعر</button>
             </div>
         </div>
     </div>
 
-    <div class="modal-overlay" id="bulkUpdateModal" onclick="this.style.display='none'">
+    <div class="modal-overlay" id="bulkUpdateModal" onclick="closeModalById('bulkUpdateModal')" hidden>
         <div class="compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header"><h3>📈 التعديل الشامل للأسعار</h3></div>
-            <div style="background: var(--bg-dark-1, #222); padding: 15px; border-radius: 14px; border: 1px dashed var(--neon-border); margin-bottom: 15px;">
-                <div style="margin-bottom: 10px; font-weight: bold; color: var(--text-main, #fff);">🎯 ماذا تريد أن تعدل؟</div>
-                <div style="display: flex; justify-content: space-around; margin-bottom: 15px;">
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;"><input type="radio" name="bulkTarget" value="sell" checked> سعر البيع</label>
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px;"><input type="radio" name="bulkTarget" value="purchase"> سعر الشراء</label>
-                </div>
-                <div style="margin-bottom: 10px; font-weight: bold; color: var(--text-main, #fff); border-top: 1px solid var(--neon-border); padding-top: 10px;">⚖️ نوع التعديل:</div>
-                <div style="display: flex; justify-content: space-around;">
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px; color: #00ff66;"><input type="radio" name="bulkOp" value="inc" checked> زيادة (+)</label>
-                    <label style="cursor: pointer; display: flex; align-items: center; gap: 5px; color: #ff1a40;"><input type="radio" name="bulkOp" value="dec"> نقصان (-)</label>
-                </div>
+            <div class="compact-row">
+                <label>المستهدف:</label>
+                <label><input type="radio" name="bulkTarget" value="sell" checked> سعر البيع</label>
+                <label><input type="radio" name="bulkTarget" value="purchase"> سعر الشراء</label>
             </div>
-            <div class="form-row">
+            <div class="compact-row">
+                <label>نوع التعديل:</label>
+                <label><input type="radio" name="bulkOp" value="inc" checked> زيادة (+)</label>
+                <label><input type="radio" name="bulkOp" value="dec"> نقصان (-)</label>
+            </div>
+            <div class="compact-row">
                 <label>التصنيف المستهدف:</label>
-                <select id="bulkCategorySelect" style="width: 100%;">
+                <select id="bulkCategorySelect">
                     <option value="all">جميع المنتجات (المخزن بالكامل)</option>
                 </select>
             </div>
-            <div class="form-row" style="position: relative;">
-                <label>قيمة التغيير:</label>
-                <input type="number" id="bulkPercentVal" placeholder="مثال: 10" min="0" step="any" style="padding-left: 45px;">
-                <span style="position: absolute; left: 15px; bottom: 12px; font-size: 20px; font-weight: bold; color: var(--neon-border);">%</span>
+            <div class="compact-row">
+                <label>قيمة التغيير (%):</label>
+                <input type="number" id="bulkPercentVal" placeholder="مثال: 10" min="0" step="any">
             </div>
             <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('bulkUpdateModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" id="btnConfirmBulkUpdate" onclick="applyBulkPriceUpdate(this)">تطبيق التعديل</button>
+                <button type="button" class="cancel-btn" onclick="closeModalById('bulkUpdateModal')">إلغاء</button>
+                <button type="button" class="confirm-btn" id="btnConfirmBulkUpdate" onclick="applyBulkPriceUpdate(this)">تطبيق التعديل</button>
             </div>
         </div>
     </div>
     
-    <div class="modal-overlay" id="scannerModal" style="display: none; z-index: 500;">
-        <div class="compact-modal" style="text-align: center; padding: 15px;">
-            <div class="compact-header"><h3 style="margin:0;">📷 توجيه الكاميرا للباركود</h3></div>
-            <div id="reader" style="width: 100%; border-radius: 10px; overflow: hidden; margin-top: 10px;"></div>
-            <button class="cancel-btn" style="width: 100%; margin-top: 15px; padding: 12px; font-weight: bold; border-radius: 10px;" onclick="stopBarcodeScan()">إغلاق الكاميرا</button>
+    <div class="modal-overlay" id="scannerModal" onclick="stopBarcodeScan()" hidden>
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>📷 توجيه الكاميرا للباركود</h3></div>
+            <div id="reader"></div>
+            <div class="btn-group">
+                <button type="button" class="cancel-btn" onclick="stopBarcodeScan()">إغلاق الكاميرا</button>
+            </div>
         </div>
     </div>
     
-    <input type="file" id="excelFileInput" style="display: none;" accept=".xlsx, .xls" onchange="handleExcelImport(event)">
+    <input type="file" id="excelFileInput" accept=".xlsx, .xls" onchange="handleExcelImport(event)" hidden>
 
     <!-- المحرك المركزي db.js V4 -->
     <script src="db.js"></script>
@@ -405,8 +344,24 @@
         let renderLimit = 50;
 
         // ==========================================
-        // أدوات الحماية والتنبيهات وتنظيف النصوص المركزية
+        // أدوات التحكم في النوافذ والتنبيهات والحماية المركزية
         // ==========================================
+        function openModalById(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.hidden = false;
+                el.style.display = 'flex';
+            }
+        }
+
+        function closeModalById(id) {
+            const el = document.getElementById(id);
+            if (el) {
+                el.style.display = 'none';
+                el.hidden = true;
+            }
+        }
+
         function notifyUser(msg, type = "info") {
             if (typeof window.SerajAlert === 'function') {
                 window.SerajAlert(msg, type);
@@ -504,7 +459,9 @@
                         })).filter(x => x.name);
 
                         if (searchQueue.length === 1) {
-                            document.getElementById('queueContainer').style.display = 'none';
+                            const qContainer = document.getElementById('queueContainer');
+                            qContainer.hidden = true;
+                            qContainer.style.display = 'none';
                             document.getElementById('inventorySearch').value = searchQueue[0].name;
                             searchQueue = [];
                             smartSearch();
@@ -515,7 +472,6 @@
                     }
                 }
 
-                // بديل سريع عبر peeler في حال عدم تطابق طابور كامل
                 let peeledText = transcript;
                 if (window.SmartVoice && typeof window.SmartVoice.peeler === 'function') {
                     const res = window.SmartVoice.peeler(transcript);
@@ -545,13 +501,15 @@
             const searchInput = document.getElementById('inventorySearch');
 
             if (searchQueue.length > 0) {
+                qContainer.hidden = false;
                 qContainer.style.display = 'flex';
                 const currentItem = searchQueue[0];
-                qText.innerHTML = `(${searchQueue.length}) متبقي | الصنف الحالي: <span style="color:#00ff66;">${currentItem.name}</span>`;
+                qText.textContent = `(${searchQueue.length}) متبقي | الصنف الحالي: ${currentItem.name}`;
                 searchInput.value = currentItem.name;
                 window.renderInventoryTable();
             } else {
                 qContainer.style.display = 'none';
+                qContainer.hidden = true;
                 searchInput.value = '';
                 window.renderInventoryTable();
             }
@@ -821,11 +779,17 @@
         });
 
         window.onload = () => {
+            window.renderLimit = 50;
             if (typeof DB !== 'undefined' && typeof DB.applySavedTheme === 'function') {
                 DB.applySavedTheme();
             }
             safeLoadProducts();
             window.renderInventoryTable();
+            // تأكيد إضافي لرسم الجدول في حال تأخر تحميل البيانات أجزاء من الثانية
+            setTimeout(() => {
+                if (!productsDB || productsDB.length === 0) safeLoadProducts();
+                window.renderInventoryTable();
+            }, 200);
             history.replaceState({ page: 'list' }, '', '');
         };
 
@@ -835,20 +799,38 @@
         function closeAllMenus() {
             ['printMenuDropdown', 'excelSubMenu'].forEach(id => {
                 let el = document.getElementById(id);
-                if (el) el.style.display = 'none';
+                if (el) {
+                    el.style.display = 'none';
+                    el.hidden = true;
+                }
             });
         }
 
         function switchView(viewId) {
+            const listView = document.getElementById('inventory-list-view');
+            if (viewId !== 'inventory-list-view' && listView) {
+                savedScrollPosition = listView.scrollTop || window.scrollY || 0;
+            }
+
             document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
-            document.getElementById(viewId).classList.add('active-view');
+            const targetView = document.getElementById(viewId);
+            if (targetView) targetView.classList.add('active-view');
             
+            // إخفاء حاسم لزر الإضافة العائم في شاشة تفاصيل المنتج وإظهاره في القائمة فقط
+            const addBtn = document.querySelector('.seraj-btn-add-floating');
+            if (addBtn) {
+                if (viewId === 'inventory-list-view') {
+                    addBtn.hidden = false;
+                    addBtn.style.display = 'flex';
+                } else {
+                    addBtn.hidden = true;
+                    addBtn.style.display = 'none';
+                }
+            }
+
             if (viewId === 'inventory-list-view') {
                 setTimeout(() => {
-                    let scrollContainer = document.querySelector('.inventory-scroll-container');
-                    if (scrollContainer) {
-                        scrollContainer.scrollTop = savedScrollPosition;
-                    }
+                    if (listView) listView.scrollTop = savedScrollPosition;
                 }, 10);
             }
         }
@@ -873,19 +855,27 @@
             e.stopPropagation();
             let m = document.getElementById('printMenuDropdown');
             let sub = document.getElementById('excelSubMenu');
-            if (m.style.display === 'block') {
-                m.style.display = 'none';
-                sub.style.display = 'none';
+            if (!m.hidden && m.style.display === 'block') {
+                closeAllMenus();
             } else {
                 closeAllMenus();
+                m.hidden = false;
                 m.style.display = 'block';
+                sub.hidden = true;
+                sub.style.display = 'none';
             }
         }
 
         function toggleExcelSubMenu(e) {
             e.stopPropagation();
             let sub = document.getElementById('excelSubMenu');
-            sub.style.display = sub.style.display === 'block' ? 'none' : 'block';
+            if (!sub.hidden && sub.style.display === 'block') {
+                sub.style.display = 'none';
+                sub.hidden = true;
+            } else {
+                sub.hidden = false;
+                sub.style.display = 'block';
+            }
         }
 
         function sortInventory(field) {
@@ -930,7 +920,8 @@
         }
 
         window.renderInventoryTable = function() {
-            productsDB = DB.getProducts() || [];
+            if (typeof window.renderLimit !== 'number' || window.renderLimit <= 0) window.renderLimit = 50;
+            if (typeof DB !== 'undefined') productsDB = DB.getProducts() || [];
 
             const rawQuery = String(document.getElementById('inventorySearch').value || '').trim().toLowerCase();
             const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
@@ -977,7 +968,7 @@
             });
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" style="color: var(--text-main, #ccc); padding:30px; font-weight:bold;">لا توجد منتجات مطابقة للبحث</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="4">لا توجد منتجات مطابقة للبحث</td></tr>`;
                 return;
             }
 
@@ -992,15 +983,14 @@
                 const totalStock = getProductStock(p);
                 const displayPrice = getProductPrice(p);
                 
-                const imgHtml = p.hasImage ? `<img id="img_thumb_${p.id}" loading="lazy" src="" style="width: 40px; height: 40px; border-radius: 6px; vertical-align: middle; border: 1px solid var(--neon-border); cursor: pointer; object-fit: cover;" onclick="showFullImage(event, '${p.id}')">` : '';
+                const imgHtml = p.hasImage ? `<img id="img_thumb_${p.id}" class="product-thumb-img" loading="lazy" src="" alt="صورة" onclick="showFullImage(event, '${p.id}')" hidden>` : '';
 
                 tr.innerHTML = `
-                    <td style="text-align: right; padding-right: 10px;">
-                        <strong style="color: var(--text-main, #fff);">${p.name}</strong><br>
-                        <span style="font-size:12px; color:var(--neon-border);">صنف: ${p.category || 'عام'} | كود: ${p.barcode || '---'}</span>
+                    <td class="inv-prod-name-cell" style="text-align: right; padding-right: 12px;">
+                        <strong>${p.name}</strong>
                     </td>
-                    <td style="text-align: center; vertical-align: middle;">${imgHtml}</td>
-                    <td><span class="${totalStock > 0 ? 'val-green' : (totalStock < 0 ? 'val-red' : '')}" style="${totalStock === 0 ? 'color:#facc15;' : ''}">${totalStock.toFixed(2)}</span></td>
+                    <td>${imgHtml}</td>
+                    <td><span class="stock-badge">${totalStock.toFixed(2)}</span></td>
                     <td class="val-green">${displayPrice.toFixed(2)}</td>
                 `;
                 fragment.appendChild(tr);
@@ -1010,8 +1000,8 @@
                 const moreTr = document.createElement('tr');
                 const remaining = filtered.length - renderLimit;
                 moreTr.innerHTML = `
-                    <td colspan="4" style="text-align: center; padding: 12px;">
-                        <button type="button" onclick="loadMoreInventory()" style="background: var(--bg-dark-1, #2563eb); color: var(--text-main, #fff); border: 1px solid var(--neon-border); padding: 10px 25px; border-radius: 12px; font-weight: bold; cursor: pointer; width: 90%;">
+                    <td colspan="4">
+                        <button type="button" class="confirm-btn" onclick="loadMoreInventory()">
                             عرض المزيد (+50) — متبقي ${remaining} صنف ⬇️
                         </button>
                     </td>
@@ -1029,7 +1019,7 @@
                                 let imgEl = document.getElementById(`img_thumb_${item.product.id}`);
                                 if (imgEl) {
                                     imgEl.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
-                                    imgEl.style.display = 'inline-block';
+                                    imgEl.hidden = false;
                                 }
                             }
                         });
@@ -1048,11 +1038,9 @@
             clearTimeout(searchTimer);
             searchTimer = setTimeout(() => {
                 renderLimit = 50;
-                let scrollContainer = document.querySelector('.inventory-scroll-container');
-                if (scrollContainer) {
-                    scrollContainer.scrollTop = 0;
-                    savedScrollPosition = 0;
-                }
+                const listView = document.getElementById('inventory-list-view');
+                if (listView) listView.scrollTop = 0;
+                savedScrollPosition = 0;
                 window.renderInventoryTable();
             }, 150);
         }
@@ -1083,11 +1071,11 @@
             
             document.getElementById('addProdImageInput').value = '';
             let addPreview = document.getElementById('addProdImagePreview');
-            addPreview.style.display = 'none';
+            addPreview.hidden = true;
             addPreview.src = '';
             document.getElementById('btnConfirmAddProd').disabled = false;
 
-            document.getElementById('addProductModal').style.display = 'flex';
+            openModalById('addProductModal');
         }
 
         function confirmAddProduct(btn) {
@@ -1113,7 +1101,6 @@
                     return notifyUser("تنبيه: سعر البيع لا يمكن أن يكون أقل من سعر الشراء!", "error");
                 }
 
-                // فحص التكرار عبر window.Utils.normalizeName
                 const normName = getNormalizedName(name);
                 const isDuplicate = productsDB.some(p => {
                     if (p.isDeleted || p.isArchived) return false;
@@ -1176,7 +1163,7 @@
                     productsDB.push(newProd);
                     DB.saveProducts(productsDB);
 
-                    document.getElementById('addProductModal').style.display = 'none';
+                    closeModalById('addProductModal');
                     window.renderInventoryTable();
                     notifyUser("✅ تم إضافة الصنف بنجاح!", "success");
                 };
@@ -1192,11 +1179,6 @@
         }
 
         function openProductDetails(id) {
-            let scrollContainer = document.querySelector('.inventory-scroll-container');
-            if (scrollContainer) {
-                savedScrollPosition = scrollContainer.scrollTop;
-            }
-
             productsDB = DB.getProducts() || [];
             currentActiveProductId = id;
             const p = productsDB.find(x => String(x.id) === String(id));
@@ -1216,11 +1198,11 @@
                 window.ImagesDB.getImage(p.id).then(blob => {
                     if (blob) {
                         detImg.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
-                        detImg.style.display = 'block';
+                        detImg.hidden = false;
                     }
                 });
             } else {
-                detImg.style.display = 'none';
+                detImg.hidden = true;
                 detImg.src = '';
             }
 
@@ -1229,12 +1211,12 @@
                 let parentP = productsDB.find(x => String(x.id) === String(p.autoParentId));
                 if (parentP) {
                     parentDisp.innerText = `مربوط بـ: ${parentP.name} (يسحب ${p.autoConversionRate} قطعة)`;
-                    parentDisp.style.display = 'block';
+                    parentDisp.hidden = false;
                 } else {
-                    parentDisp.style.display = 'none';
+                    parentDisp.hidden = true;
                 }
             } else {
-                parentDisp.style.display = 'none';
+                parentDisp.hidden = true;
             }
 
             history.pushState({ page: 'details' }, '', '');
@@ -1253,7 +1235,7 @@
             
             document.getElementById('modalAutoConversionRate').value = p.autoConversionRate || 50;
             filterParentDropdown();
-            document.getElementById('autoParentModal').style.display = 'flex';
+            openModalById('autoParentModal');
         }
 
         function filterParentDropdown() {
@@ -1291,13 +1273,13 @@
                 if (p.autoParentId) {
                     let parentP = productsDB.find(x => String(x.id) === String(p.autoParentId));
                     parentDisp.innerText = `مربوط بـ: ${parentP ? parentP.name : '---'} (يسحب ${rate} قطعة)`;
-                    parentDisp.style.display = 'block';
+                    parentDisp.hidden = false;
                 } else {
-                    parentDisp.style.display = 'none';
+                    parentDisp.hidden = true;
                 }
 
                 DB.saveProducts(productsDB);
-                document.getElementById('autoParentModal').style.display = 'none';
+                closeModalById('autoParentModal');
                 notifyUser("✅ تم حفظ ربط الصنف الرئيسي بنجاح!", "success");
             });
         }
@@ -1320,38 +1302,34 @@
             p.lots.forEach((lot, index) => {
                 const currentLotStock = parseFloat(lot.stock) || 0;
                 totalStockSum += currentLotStock;
-                const rowCard = document.createElement('div');
-                
-                rowCard.className = "lot-row-card";
-                rowCard.onclick = () => openEditLotModal(index);
+                const tr = document.createElement('tr');
+                tr.onclick = () => openEditLotModal(index);
                 
                 const dateStr = lot.date || '';
                 const supplierStr = lot.supplier || '';
-                const stockColor = currentLotStock > 0 ? '#00ff66' : (currentLotStock < 0 ? '#ff1a40' : '#facc15');
 
                 let devHtml = '';
                 if (lot._device) {
-                    let editTag = (lot._lastModifiedBy && lot._lastModifiedBy !== lot._device) ? `✏️ تعديل: ${lot._lastModifiedBy}` : '';
-                    devHtml = `<div style="font-size:10px; color:#38bdf8; margin-top:4px; width: 100%; flex-basis: 100%;">💻 ${lot._device} ${editTag}</div>`;
+                    let editTag = (lot._lastModifiedBy && lot._lastModifiedBy !== lot._device) ? ` | ✏️ ${lot._lastModifiedBy}` : '';
+                    devHtml = `<br><small>💻 ${lot._device}${editTag}</small>`;
                 }
 
-                rowCard.innerHTML = `
-                    <div style="flex:1; text-align: right; min-width: 40%;">
-                        <div style="font-size: 20px; font-weight: bold; color:${stockColor};">${currentLotStock.toFixed(2)}</div>
-                        <div style="font-size: 10px; color: #cbd5e1; margin-top: 2px;">${supplierStr}<br>${dateStr}</div>
-                    </div>
-                    <div style="flex:1; font-size: 18px; font-weight: bold; color: var(--text-main, #fff);">${(parseFloat(lot.purchasePrice) || 0).toFixed(2)}</div>
-                    <div style="flex:1; font-size: 18px; font-weight: bold; color: var(--text-main, #fff);">${(parseFloat(lot.price) || 0).toFixed(2)}</div>
-                    ${devHtml}
+                tr.innerHTML = `
+                    <td>
+                        <span class="stock-badge">${currentLotStock.toFixed(2)}</span><br>
+                        <small>${supplierStr} (${dateStr})</small>
+                        ${devHtml}
+                    </td>
+                    <td>${(parseFloat(lot.purchasePrice) || 0).toFixed(2)}</td>
+                    <td class="val-green">${(parseFloat(lot.price) || 0).toFixed(2)}</td>
                 `;
-                lotsFragment.appendChild(rowCard);
+                lotsFragment.appendChild(tr);
             });
 
             scrollableContainer.appendChild(lotsFragment);
 
             const badge = document.getElementById('detTotalStockBadge');
             badge.innerText = totalStockSum.toFixed(2);
-            badge.style.color = totalStockSum > 0 ? '#00ff66' : (totalStockSum < 0 ? '#ff1a40' : '#facc15');
         }
 
         function openEditLotModal(index) {
@@ -1366,18 +1344,10 @@
 
             const purInput = document.getElementById('editLotPurchase');
             const supplierStr = String(lot.supplier || '');
-            if (supplierStr.includes('فاتورة شراء')) {
-                purInput.disabled = true;
-                purInput.style.background = 'var(--bg-dark-1, #111)';
-                purInput.style.color = '#7f8c8d';
-            } else {
-                purInput.disabled = false;
-                purInput.style.background = 'var(--bg-dark-1, #333)';
-                purInput.style.color = 'var(--text-main, #fff)';
-            }
+            purInput.disabled = supplierStr.includes('فاتورة شراء');
 
             document.getElementById('btnConfirmEditLot').disabled = false;
-            document.getElementById('editLotModal').style.display = 'flex';
+            openModalById('editLotModal');
         }
 
         function saveEditedLot(btn) {
@@ -1421,7 +1391,7 @@
                 recalculateProductStock(p);
 
                 DB.saveProducts(productsDB);
-                document.getElementById('editLotModal').style.display = 'none';
+                closeModalById('editLotModal');
                 renderDetailsLots(p, false);
                 window.renderInventoryTable();
                 notifyUser("✅ تم حفظ التعديل ومزامنته لحظياً!", "success");
@@ -1441,15 +1411,15 @@
                 window.ImagesDB.getImage(p.id).then(blob => {
                     if (blob) {
                         preview.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
-                        preview.style.display = 'block';
+                        preview.hidden = false;
                     }
                 });
             } else {
-                preview.style.display = 'none';
+                preview.hidden = true;
                 preview.src = '';
             }
             document.getElementById('btnConfirmEditProd').disabled = false;
-            document.getElementById('editProductModal').style.display = 'flex';
+            openModalById('editProductModal');
         }
 
         function confirmEditProduct(btn) {
@@ -1466,7 +1436,6 @@
                     return notifyUser("برجاء إدخال اسم المنتج!", "error");
                 }
 
-                // فحص التكرار عبر window.Utils.normalizeName
                 const normNewName = getNormalizedName(newName);
                 const isDuplicate = productsDB.some(otherP => {
                     if (otherP.isDeleted || otherP.isArchived || String(otherP.id) === String(p.id)) return false;
@@ -1490,7 +1459,7 @@
                 
                 const finishSaving = () => {
                     DB.saveProducts(productsDB);
-                    document.getElementById('editProductModal').style.display = 'none';
+                    closeModalById('editProductModal');
                     document.getElementById('detProductName').innerText = p.name;
                     document.getElementById('detCategoryText').innerText = `الصنف: ${p.category}`;
                     document.getElementById('detBarcodeText').innerText = `الكود: ${p.barcode || '---'}`;
@@ -1504,7 +1473,7 @@
                             p.hasImage = true;
                             let detImg = document.getElementById('detProductImage');
                             detImg.src = URL.createObjectURL(imageInput.files[0]);
-                            detImg.style.display = 'block';
+                            detImg.hidden = false;
                         }
                         finishSaving();
                     });
@@ -1522,7 +1491,7 @@
             document.getElementById('lotPurchase').value = getProductPurchasePrice(p);
             document.getElementById('lotPrice').value = getProductPrice(p);
             document.getElementById('btnConfirmAddLot').disabled = false;
-            document.getElementById('addLotModal').style.display = 'flex';
+            openModalById('addLotModal');
         }
 
         function confirmAddLot(btn) {
@@ -1568,7 +1537,7 @@
                 recalculateProductStock(p);
 
                 DB.saveProducts(productsDB);
-                document.getElementById('addLotModal').style.display = 'none';
+                closeModalById('addLotModal');
                 renderDetailsLots(p, false);
                 window.renderInventoryTable();
                 notifyUser("✅ تمت إضافة الدفعة وتحديث الرصيد الإجمالي!", "success");
@@ -1580,7 +1549,7 @@
             if (!p) return;
             document.getElementById('newUnifiedPriceInput').value = getProductPrice(p);
             document.getElementById('btnConfirmUpdatePrice').disabled = false;
-            document.getElementById('updatePriceModal').style.display = 'flex';
+            openModalById('updatePriceModal');
         }
 
         function confirmUpdatePrice(btn) {
@@ -1612,7 +1581,7 @@
 
                 recalculateProductStock(p);
                 DB.saveProducts(productsDB);
-                document.getElementById('updatePriceModal').style.display = 'none';
+                closeModalById('updatePriceModal');
                 renderDetailsLots(p, false);
                 window.renderInventoryTable();
                 notifyUser("✅ تم تحديث سعر البيع بنجاح!", "success");
@@ -1698,7 +1667,7 @@
             });
             document.getElementById('bulkPercentVal').value = '';
             document.getElementById('btnConfirmBulkUpdate').disabled = false;
-            document.getElementById('bulkUpdateModal').style.display = 'flex';
+            openModalById('bulkUpdateModal');
         }
 
         function applyBulkPriceUpdate(btn) {
@@ -1760,7 +1729,7 @@
                     if (updatedCount > 0) {
                         DB.saveProducts(productsDB);
                         window.renderInventoryTable();
-                        document.getElementById('bulkUpdateModal').style.display = 'none';
+                        closeModalById('bulkUpdateModal');
                         notifyUser(`✅ تم تعديل الأسعار لـ ${updatedCount} منتج بنجاح.`, "success");
                     } else {
                         notifyUser("لم يتم العثور على منتجات مطابقة.", "info");
@@ -1869,7 +1838,7 @@
 
         function startBarcodeScan(targetInputId) {
             currentBarcodeTargetId = targetInputId;
-            document.getElementById('scannerModal').style.display = 'flex';
+            openModalById('scannerModal');
             setTimeout(() => {
                 if (html5QrCode) {
                     html5QrCode.stop().then(() => { html5QrCode.clear(); startCamera(); }).catch(() => { startCamera(); });
@@ -1893,7 +1862,7 @@
                 () => {}
             ).catch(() => {
                 notifyUser("يرجى التأكد من إعطاء صلاحية الكاميرا للمتصفح.", "error");
-                document.getElementById('scannerModal').style.display = 'none';
+                closeModalById('scannerModal');
             });
         }
 
@@ -1902,12 +1871,12 @@
                 html5QrCode.stop().then(() => {
                     html5QrCode.clear();
                     html5QrCode = null;
-                    document.getElementById('scannerModal').style.display = 'none';
+                    closeModalById('scannerModal');
                 }).catch(() => {
-                    document.getElementById('scannerModal').style.display = 'none';
+                    closeModalById('scannerModal');
                 });
             } else {
-                document.getElementById('scannerModal').style.display = 'none';
+                closeModalById('scannerModal');
             }
         }
     </script>
@@ -1918,19 +1887,18 @@
             let preview = document.getElementById(previewId);
             if (inputElem.files && inputElem.files[0]) {
                 preview.src = URL.createObjectURL(inputElem.files[0]);
-                preview.style.display = 'block';
+                preview.hidden = false;
             } else {
-                preview.style.display = 'none';
+                preview.hidden = true;
                 preview.src = '';
             }
         }
 
         function showFullImage(e, productId) {
             e.stopPropagation();
-            let modal = document.getElementById('fullImageModal');
             let fullImg = document.getElementById('fullImageDisplay');
             fullImg.src = '';
-            modal.style.display = 'flex';
+            openModalById('fullImageModal');
             let cleanId = String(productId).trim();
             
             if (window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
@@ -1938,11 +1906,11 @@
                     if (blob) {
                         fullImg.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
                     } else {
-                        modal.style.display = 'none';
+                        closeModalById('fullImageModal');
                     }
                 });
             } else {
-                modal.style.display = 'none';
+                closeModalById('fullImageModal');
             }
         }
 
