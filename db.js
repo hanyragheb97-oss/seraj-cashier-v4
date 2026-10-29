@@ -1748,9 +1748,22 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 }
             });
 
-            // 3. مسار إطفاء الفواتير الآجلة باستخدام "دفع نقدية" فقط (مستقل عن المديونية)
-            let floatBalance = sTotalPaidGeneral; // كل النقدية المدفوعة تروح تطفي الفواتير الأول
+// 3. مسار دفع نقدية: تصفية الرصيد الحالي (المديونية الأعمى) أولاً، ثم الفواتير الآجلة
+            let floatBalance = 0; // النقدية اللي هتتبقى عشان تروح للفواتير
             
+            if (sTotalPaidGeneral > sTotalReqGeneral) {
+                // النقدية المدفوعة أكبر من الرصيد الحالي الأعمى
+                // نصفي الرصيد الحالي بالكامل، والزيادة تروح للفواتير
+                floatBalance = sTotalPaidGeneral - sTotalReqGeneral;
+                sTotalReqGeneral = 0; // الرصيد الحالي اتصفر
+            } else {
+                // النقدية المدفوعة أقل من أو تساوي الرصيد الحالي
+                // تخصم من الرصيد الحالي فقط، ولا يتبقى شيء للفواتير
+                sTotalReqGeneral -= sTotalPaidGeneral;
+                floatBalance = 0;
+            }
+            
+            // إطفاء الفواتير الآجلة بالباقي من النقدية (إن وُجد)
             if (floatBalance > 0) {
                 for (let i = 0; i < openInvoices.length; i++) {
                     if (floatBalance <= 0) break;
@@ -1782,12 +1795,12 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
             });
             actualDeferred = Math.round(actualDeferred * 100) / 100;
 
-            // 5. تصفية الرصيد الحالي الأعمى (المديونية) بالباقي من مسار الدفع النقدي
-            // floatBalance الآن يمثل النقدية الفائضة بعد إطفاء كافة الفواتير الآجلة
+            // 5. الحسابات النهائية
+            // لو اتبقى نقدية زيادة بعد طفي كل الفواتير الآجلة، هتفضل في floatBalance وهتنزل كرصيد لينا (بالسالب)
             let currentBal = sTotalReqGeneral - floatBalance;
             currentBal = Math.round(currentBal * 100) / 100;
 
-            // الحسابات النهائية للمورد
+            // إجمالي المديونية
             let netDebt = actualDeferred + currentBal;
             netDebt = Math.round(netDebt * 100) / 100;
 
