@@ -1658,11 +1658,55 @@ function saveTransaction(e) {
         let txId = window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId('SUP_REC') : 'SUP_REC_' + Date.now();
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
-        let newVoucher = { id: txId, type: txType, amount: amount, notes: notes, treasury: treasuryKey, date: date, _device: dName, _lastModifiedBy: dName };
+// 🚀 توزيع المبلغ تلقائياً على الفواتير الآجلة للمورد (FIFO Loop) لو كان سند دفع (تسديد)
+let allocatedInvoices = [];
+        let remainingPayment = amount;
+
+        if (txType === 'payment' && typeof DB !== 'undefined') {
+            let allPurchaseInvoices = DB.getPurchaseInvoices() || [];
+            // جلب فواتير المورد الآجلة غير المسددة
+            let supplierInvs = allPurchaseInvoices.filter(inv => {
+                let isNotCanceled = (!inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
+                let matchId = String(inv.supplierId) === String(s.id);
+                let matchName = typeof normalizeNameClean === 'function' ? 
+                    (normalizeNameClean(inv.supplier) === normalizeNameClean(s.name) || normalizeNameClean(inv.supplierName) === normalizeNameClean(s.name)) :
+                    (String(inv.supplier || '').trim() === String(s.name || '').trim());
+                let rem = parseFloat(inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || inv.total || 0)) || 0;
+                return isNotCanceled && (matchId || matchName) && rem > 0;
+            });
+
+            // ترتيب الفواتير من الأقدم للأحدث (FIFO) لتسديد القديم أولاً
+            supplierInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+            supplierInvs.forEach(inv => {
+                if (remainingPayment <= 0) return;
+                let invRem = parseFloat(inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || inv.total || 0)) || 0;
+                
+                let payForThis = Math.min(remainingPayment, invRem);
+                if (payForThis > 0) {
+                    allocatedInvoices.push({ invoiceId: inv.id, amount: payForThis });
+                    remainingPayment -= payForThis;
+
+                    // تحديث المدفوع والمتبقي في الفاتورة مباشرة
+                    inv.paid = (parseFloat(inv.paid) || 0) + payForThis;
+                    let newRem = (parseFloat(inv.total) || 0) - inv.paid;
+                    inv.remaining = newRem > 0 ? newRem : 0;
+                    inv.calculatedRemaining = inv.remaining;
+                }
+            });
+
+            // حفظ فواتير المشتريات المحدثة في الداتابيز المركزية
+            DB.savePurchaseInvoices(allPurchaseInvoices);
+        }
+
+        let newVoucher = { 
+            id: txId, type: txType, amount: amount, notes: notes, treasury: treasuryKey, date: date, 
+            allocatedInvoices: allocatedInvoices, _device: dName, _lastModifiedBy: dName 
+        };
         s.transactions.push(newVoucher);
 
         if(typeof DB !== 'undefined') {
-            // 2. ترتيب الحفظ إجباري: حفظ المورد أولاً
+            // 2. حفظ المورد أولاً
             DB.saveSuppliers(suppliersDB);
 
             // 3. تسجيل الحركة بالخزينة مع تمرير supplierId و supplier صراحةً
