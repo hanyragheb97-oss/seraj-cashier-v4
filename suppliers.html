@@ -205,10 +205,10 @@
         
         <div class="compact-row">
             <label>الخزينة (التأثير):</label>
-            <select id="transTreasurySelect">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
+            <select id="transTreasurySelect" style="background-color: var(--card-bg-alt); color: var(--text-white); border: 2px solid var(--neon-border); border-radius: 10px; padding: 8px; font-weight: bold; text-align: center; width: 100%; -webkit-appearance: none; appearance: none;">
+                <option value="main" selected style="background: var(--bg-dark-1);">الخزينة الرئيسية (كاش)</option>
+                <option value="insta" style="background: var(--bg-dark-1);">إنستا (InstaPay)</option>
+                <option value="wallet" style="background: var(--bg-dark-1);">المحفظة الإلكترونية</option>
             </select>
         </div>
         
@@ -230,10 +230,10 @@
         <div class="compact-row"><label>التاريخ:</label><input type="date" id="payModalDateInput"></div>
         <div class="compact-row">
             <label>الخزينة المسحوب منها:</label>
-            <select id="payModalTreasurySelect">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
+            <select id="payModalTreasurySelect" style="background-color: var(--card-bg-alt); color: var(--text-white); border: 2px solid var(--neon-border); border-radius: 10px; padding: 8px; font-weight: bold; text-align: center; width: 100%; -webkit-appearance: none; appearance: none;">
+                <option value="main" selected style="background: var(--bg-dark-1);">الخزينة الرئيسية (كاش)</option>
+                <option value="insta" style="background: var(--bg-dark-1);">إنستا (InstaPay)</option>
+                <option value="wallet" style="background: var(--bg-dark-1);">المحفظة الإلكترونية</option>
             </select>
         </div>
         <button type="button" class="details-toggle-btn" onclick="openViewModalFromOpt(event)">📄 عرض الفاتورة وأصنافها</button>
