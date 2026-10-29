@@ -1663,9 +1663,6 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 return isMatch && isValid;
             });
 
-            // ترتيب الفواتير من الأقدم للأحدث لإطفائها بالترتيب
-            sInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)); 
-
             let validTransactions = this._collectUnifiedEntityTransactions(s, allMoves, true);
             if (validTransactions.some(t => t._restoredFromTreasury)) {
                 s.transactions = validTransactions.map(t => {
@@ -1675,133 +1672,168 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 });
             }
 
-            // 1. فصل المسارين بشكل نهائي وتام
-            let sTotalReqGeneral = parseFloat(s.openingBalance) || 0; // مسار المديونية الأعمى (رصيد حالي علينا)
-            let sTotalPaidGeneral = 0; // مسار الدفع النقدي (يطفئ الفواتير الآجلة أولاً)
-            
+            // ==========================================
+            // بناء خط الزمن (Timeline) لكل الحركات
+            // ==========================================
+            let timeline = [];
+
+            // 1. الرصيد الافتتاحي (يعتبر مديونية عامة في بداية الزمن)
+            let opBal = parseFloat(s.openingBalance) || 0;
+            if (opBal > 0) {
+                timeline.push({ type: 'receipt', amount: opBal, date: 0 }); 
+            } else if (opBal < 0) {
+                timeline.push({ type: 'payment', amount: Math.abs(opBal), date: 0 }); 
+            }
+
+            // 2. السندات وحركات الخزينة
             validTransactions.forEach(t => {
-                let amt = parseFloat(t.amount) || 0;
-                // مسار إضافة مديونية (يصب أعمى في الرصيد الحالي)
-                if (t.type === 'receipt' || t.type === 'supplier_receipt') {
-                    sTotalReqGeneral += amt; 
-                }
-                // مسار دفع نقدية تسديد (يجمع ليطفئ الفواتير)
-                if (t.type === 'payment' || t.type === 'purchase_payment') {
-                    sTotalPaidGeneral += amt; 
-                }
-            });
-
-            let openInvoices = [];
-
-            // 2. معالجة الفواتير (تحديد الزيادات)
-            sInvs.forEach(inv => {
-                let totalVal = parseFloat(inv.total) || 0;
-                let discVal = parseFloat(inv.discount) || 0;
-                let paidVal = parseFloat(inv.paid) || 0;
-                let remVal = parseFloat(inv.remaining) || 0;
-                
-                let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
-                if (req < 0) req = 0;
-                
-                let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
-
-                let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
-                
-                let invIdStr = String(inv.id);
-                let idRegex = new RegExp('\\b' + invIdStr + '\\b');
-                let aggressiveApplied = 0;
-                validTransactions.forEach(t => {
-                    if (t.type === 'payment' || t.type === 'purchase_payment') {
-                        if (String(t.invoiceNo) === invIdStr || (t.notes && idRegex.test(String(t.notes)))) {
-                            aggressiveApplied += (parseFloat(t.amount) || 0);
-                        }
-                    }
+                timeline.push({
+                    type: (t.type === 'receipt' || t.type === 'supplier_receipt') ? 'receipt' : 'payment',
+                    amount: parseFloat(t.amount) || 0,
+                    date: new Date(t.date || 0).getTime(),
+                    ref: t
                 });
-                appliedAmount = Math.max(appliedAmount, aggressiveApplied);
+            });
 
-                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-                    ? Math.max(0, parseFloat(inv.initialPaid))
-                    : Math.max(0, paidVal - appliedAmount);
+            // 3. الفواتير والمرتجعات
+            sInvs.forEach(inv => {
+                timeline.push({
+                    type: 'invoice',
+                    inv: inv,
+                    date: new Date(inv.date || 0).getTime()
+                });
+            });
 
-                let totalPaidForThisInvoice = checkoutPaid + appliedAmount;
+            // ترتيب خط الزمن من الأقدم للأحدث
+            timeline.sort((a, b) => a.date - b.date);
 
-                if (!isReturn) {
-                    if (totalPaidForThisInvoice >= req) {
-                        // فاتورة مدفوعة بزيادة: الزيادة تنضم لمسار الدفع النقدي العام
-                        let overpayment = totalPaidForThisInvoice - req;
-                        sTotalPaidGeneral += overpayment; 
-                        
-                        inv.calculatedRemaining = 0;
-                        if (parseFloat(inv.remaining) !== 0) {
-                            inv.remaining = 0;
-                            invoicesNeedSave = true; 
+            // ==========================================
+            // معالجة خط الزمن خطوة بخطوة (التشغيل)
+            // ==========================================
+            let currentBalance = 0; // الرصيد الحالي الأعمى (المديونية المستقلة)
+            let deferredInvoices = []; // طابور الفواتير الآجلة المفتوحة
+
+            // دالة داخلية ذكية لمعالجة أي "نقدية مدفوعة" وقت حدوثها
+            const processPaymentEvent = (payAmt) => {
+                // 1. النقدية تهاجم الرصيد الأعمى أولاً
+                if (currentBalance > 0) {
+                    if (payAmt >= currentBalance) {
+                        payAmt -= currentBalance;
+                        currentBalance = 0;
+                    } else {
+                        currentBalance -= payAmt;
+                        payAmt = 0;
+                    }
+                }
+                // 2. لو اتبقى نقدية، تهاجم الفواتير الآجلة بالترتيب
+                if (payAmt > 0) {
+                    for (let i = 0; i < deferredInvoices.length; i++) {
+                        if (payAmt <= 0) break;
+                        let oi = deferredInvoices[i];
+                        if (oi.rem > 0) {
+                            if (payAmt >= oi.rem) {
+                                payAmt -= oi.rem;
+                                oi.rem = 0;
+                            } else {
+                                oi.rem -= payAmt;
+                                payAmt = 0;
+                            }
+                        }
+                    }
+                }
+                // 3. لو دفعنا اكتر من كل اللي علينا (رصيد ورقي وآجل)، ينزل كرصيد لينا
+                if (payAmt > 0) {
+                    currentBalance -= payAmt; // يتحول لسالب (يعني لينا فلوس)
+                }
+            };
+
+            // تشغيل الأحداث
+            timeline.forEach(event => {
+                if (event.type === 'receipt') {
+                    // إضافة مديونية: دلو أعمى يصب في الرصيد الحالي فقط ولا يلمس الماضي
+                    currentBalance += event.amount;
+                } 
+                else if (event.type === 'payment') {
+                    // دفع نقدية تسديد: تهاجم الرصيد الأعمى ثم الفواتير الآجلة
+                    processPaymentEvent(event.amount);
+                } 
+                else if (event.type === 'invoice') {
+                    let inv = event.inv;
+                    let totalVal = parseFloat(inv.total) || 0;
+                    let discVal = parseFloat(inv.discount) || 0;
+                    let paidVal = parseFloat(inv.paid) || 0;
+                    let req = (Math.abs((paidVal + (parseFloat(inv.remaining)||0)) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                    if (req < 0) req = 0;
+                    
+                    let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+
+                    // تحديد النقدية المدفوعة فعلياً داخل الفاتورة (Checkout) لمنع الازدواج
+                    let invIdStr = String(inv.id);
+                    let idRegex = new RegExp('\\b' + invIdStr + '\\b');
+                    let aggressiveApplied = 0;
+                    validTransactions.forEach(t => {
+                        if (t.type === 'payment' || t.type === 'purchase_payment') {
+                            if (String(t.invoiceNo) === invIdStr || (t.notes && idRegex.test(String(t.notes)))) {
+                                aggressiveApplied += (parseFloat(t.amount) || 0);
+                            }
+                        }
+                    });
+                    
+                    let appliedAmount = Math.max(this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true), aggressiveApplied);
+                    let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                        ? Math.max(0, parseFloat(inv.initialPaid))
+                        : Math.max(0, paidVal - appliedAmount);
+
+                    if (!isReturn) {
+                        if (checkoutPaid >= req) {
+                            // فاتورة مدفوعة بزيادة: الزيادة تنفذ كأنها سند دفع نقدية في نفس اللحظة
+                            let overpayment = checkoutPaid - req;
+                            deferredInvoices.push({ ref: inv, rem: 0 }); // تسجل كفاتورة مسددة بالكامل
+                            if (overpayment > 0) {
+                                processPaymentEvent(overpayment);
+                            }
+                        } else {
+                            // فاتورة آجلة تدخل طابور التسديد
+                            let invoiceRemaining = req - checkoutPaid;
+                            deferredInvoices.push({ ref: inv, rem: invoiceRemaining });
                         }
                     } else {
-                        // فاتورة آجلة تدخل الطابور
-                        let invoiceRemaining = req - totalPaidForThisInvoice;
-                        openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
+                        // مرتجع: البضاعة المسترجعة تسدد مديونيتنا (دفع)، والنقدية المستردة تزيد مديونيتنا (إضافة)
+                        processPaymentEvent(req); 
+                        currentBalance += checkoutPaid; 
                     }
-                } else {
-                    // المرتجعات
-                    sTotalPaidGeneral += req; 
-                    sTotalReqGeneral += totalPaidForThisInvoice; 
                 }
             });
 
-// 3. مسار دفع نقدية: تصفية الرصيد الحالي (المديونية الأعمى) أولاً، ثم الفواتير الآجلة
-            let floatBalance = 0; // النقدية اللي هتتبقى عشان تروح للفواتير
-            
-            if (sTotalPaidGeneral > sTotalReqGeneral) {
-                // النقدية المدفوعة أكبر من الرصيد الحالي الأعمى
-                // نصفي الرصيد الحالي بالكامل، والزيادة تروح للفواتير
-                floatBalance = sTotalPaidGeneral - sTotalReqGeneral;
-                sTotalReqGeneral = 0; // الرصيد الحالي اتصفر
-            } else {
-                // النقدية المدفوعة أقل من أو تساوي الرصيد الحالي
-                // تخصم من الرصيد الحالي فقط، ولا يتبقى شيء للفواتير
-                sTotalReqGeneral -= sTotalPaidGeneral;
-                floatBalance = 0;
-            }
-            
-            // إطفاء الفواتير الآجلة بالباقي من النقدية (إن وُجد)
-            if (floatBalance > 0) {
-                for (let i = 0; i < openInvoices.length; i++) {
-                    if (floatBalance <= 0) break;
-                    
-                    let oi = openInvoices[i];
-                    if (floatBalance >= oi.currentRem) {
-                        floatBalance -= oi.currentRem;
-                        oi.currentRem = 0; 
-                    } else {
-                        oi.currentRem -= floatBalance;
-                        floatBalance = 0; 
-                    }
-                }
-            }
-
-            // 4. حفظ الفواتير الآجلة المتأثرة فعلياً
+            // ==========================================
+            // تحديث الحفظ الفعلي للفواتير وتجميع الأرصدة
+            // ==========================================
             let actualDeferred = 0;
-            openInvoices.forEach(oi => {
-                let roundedRem = Math.round(oi.currentRem * 100) / 100;
-                oi.invRef.calculatedRemaining = roundedRem;
-                
-                let oldRem = parseFloat(oi.invRef.remaining) || 0;
-                if (Math.abs(oldRem - roundedRem) > 0.001) {
-                    oi.invRef.remaining = roundedRem;
-                    invoicesNeedSave = true;
+            
+            // تحديث الفواتير في الذاكرة وقاعدة البيانات بناءً على نتيجة خط الزمن
+            sInvs.forEach(inv => {
+                let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+                if (!isReturn) {
+                    let timelineInv = deferredInvoices.find(di => di.ref.id === inv.id);
+                    let roundedRem = timelineInv ? Math.round(timelineInv.rem * 100) / 100 : 0;
+                    
+                    inv.calculatedRemaining = roundedRem;
+                    
+                    let oldRem = parseFloat(inv.remaining) || 0;
+                    if (Math.abs(oldRem - roundedRem) > 0.001) {
+                        inv.remaining = roundedRem;
+                        invoicesNeedSave = true;
+                    }
+                    
+                    actualDeferred += roundedRem;
                 }
-                
-                actualDeferred += roundedRem;
             });
+
             actualDeferred = Math.round(actualDeferred * 100) / 100;
+            currentBalance = Math.round(currentBalance * 100) / 100;
 
-            // 5. الحسابات النهائية
-            // لو اتبقى نقدية زيادة بعد طفي كل الفواتير الآجلة، هتفضل في floatBalance وهتنزل كرصيد لينا (بالسالب)
-            let currentBal = sTotalReqGeneral - floatBalance;
-            currentBal = Math.round(currentBal * 100) / 100;
-
-            // إجمالي المديونية
-            let netDebt = actualDeferred + currentBal;
+            // الحسابات النهائية للمورد
+            let netDebt = actualDeferred + currentBalance;
             netDebt = Math.round(netDebt * 100) / 100;
 
             s.balance = -netDebt;              
@@ -1811,11 +1843,12 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
 
             s.deferredInvoicesTotal = actualDeferred; 
             
-            // الرصيد الحالي (الموجب = مديونية علينا، السالب = رصيد لينا)
-            s.displayCurrentBalance = Math.abs(currentBal); 
-            s.isCurrentBalDebt = currentBal > 0; 
+            // الرصيد الحالي (الموجب = مديونية أعمى علينا، السالب = رصيد لينا)
+            s.displayCurrentBalance = Math.abs(currentBalance); 
+            s.isCurrentBalDebt = currentBalance > 0; 
         });
 
+        // تنفيذ الحفظ المركزي في الـ DB
         if (invoicesNeedSave && typeof this.savePurchaseInvoices === 'function') {
             this.savePurchaseInvoices(invoices);
         }
