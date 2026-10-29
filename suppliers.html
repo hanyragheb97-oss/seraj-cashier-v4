@@ -982,20 +982,21 @@ function renderAccountTransactions(supplier) {
     listContainer.innerHTML = '';
     if (!supplier) return;
 
-    let allPurchaseInvoices = [];
-    if (typeof DB !== 'undefined') allPurchaseInvoices = DB.getPurchaseInvoices() || [];
-
-    let supplierInvoices = allPurchaseInvoices.filter(inv => {
-        let isNotCanceled = (!inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
-        let matchId = String(inv.supplierId) === String(supplier.id);
-        let matchName = false;
-        if(typeof normalizeNameClean === 'function') {
-            matchName = normalizeNameClean(inv.supplier) === normalizeNameClean(supplier.name) || normalizeNameClean(inv.supplierName) === normalizeNameClean(supplier.name);
-        } else {
-            matchName = String(inv.supplier || '').trim() === String(supplier.name || '').trim();
-        }
-        return isNotCanceled && (matchId || matchName);
-    });
+    // 1. جلب الفواتير المحدثة من كائن المورد مباشرة (المختومة بـ calculatedRemaining)
+    let supplierInvoices = supplier.invoices || supplier.purchaseInvoices || [];
+    
+    // 2. كود احتياطي في حالة تعثر المحرك 
+    if (supplierInvoices.length === 0 && typeof DB !== 'undefined') {
+        let allPurchaseInvoices = DB.getPurchaseInvoices() || [];
+        supplierInvoices = allPurchaseInvoices.filter(inv => {
+            let isNotCanceled = (!inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
+            let matchId = String(inv.supplierId) === String(supplier.id);
+            let matchName = typeof normalizeNameClean === 'function' ? 
+                (normalizeNameClean(inv.supplier) === normalizeNameClean(supplier.name) || normalizeNameClean(inv.supplierName) === normalizeNameClean(supplier.name)) :
+                (String(inv.supplier || '').trim() === String(supplier.name || '').trim());
+            return isNotCanceled && (matchId || matchName);
+        });
+    }
     supplierInvoices.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     let displayList = [];
