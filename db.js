@@ -1662,7 +1662,6 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 return isMatch && isValid;
             });
 
-            // ترتيب الفواتير من الأقدم للأحدث لإطفائها بالترتيب
             sInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)); 
 
             let validTransactions = this._collectUnifiedEntityTransactions(s, allMoves, true);
@@ -1674,18 +1673,14 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 });
             }
 
-            // ميزان المورد:
-            // اللي إحنا مديونين بيه للمورد (الفواتير اللي اشتريناها + رصيد افتتاحي)
             let sTotalReq = parseFloat(s.openingBalance) || 0; 
-            // اللي إحنا دفعناه للمورد (كاش وقت الفاتورة + سندات دفع)
             let sTotalPaid = 0;
-            
             let rawDeferredTotal = 0;
             let openInvoices = [];
 
             validTransactions.forEach(t => {
                 if (t.type === 'payment' || t.type === 'purchase_payment') sTotalPaid += (parseFloat(t.amount) || 0); 
-                if (t.type === 'receipt' || t.type === 'supplier_receipt') sTotalReq += (parseFloat(t.amount) || 0); // لو خدنا فلوس من مورد (زي سلفة) تزود مديونيتنا ليه
+                if (t.type === 'receipt' || t.type === 'supplier_receipt') sTotalReq += (parseFloat(t.amount) || 0); 
             });
 
             sInvs.forEach(inv => {
@@ -1699,6 +1694,22 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
 
                 let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
+                
+                // 🔥 مانع الازدواجية (منع خصم الضعف للموردين) 🔥
+                let invIdStr = String(inv.id);
+                let idRegex = new RegExp('\\b' + invIdStr + '\\b');
+                let aggressiveApplied = 0;
+                validTransactions.forEach(t => {
+                    let isTarget = (t.type === 'payment' || t.type === 'purchase_payment');
+                    if (isTarget) {
+                        if (String(t.invoiceNo) === invIdStr || (t.notes && idRegex.test(String(t.notes)))) {
+                            aggressiveApplied += (parseFloat(t.amount) || 0);
+                        }
+                    }
+                });
+                // أخذ الرقم الأكبر لضمان احتساب السند مرة واحدة فقط
+                appliedAmount = Math.max(appliedAmount, aggressiveApplied);
+
                 let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
                     ? Math.max(0, parseFloat(inv.initialPaid))
                     : Math.max(0, paidVal - appliedAmount);
@@ -1709,24 +1720,21 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 if (!isReturn) {
                     if (invoiceRemaining > 0) {
                         openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
-                        rawDeferredTotal += invoiceRemaining; // الفواتير اللي علينا
+                        rawDeferredTotal += invoiceRemaining; 
                     }
-                    sTotalReq += req; // قيمة الفاتورة زودت مديونيتنا
-                    sTotalPaid += checkoutPaid; // الفلوس اللي دفعناها كاش وقت الفاتورة
+                    sTotalReq += req; 
+                    sTotalPaid += checkoutPaid; 
                 } else {
-                    sTotalReq -= req; // المرتجع قلل مديونيتنا
-                    sTotalPaid -= checkoutPaid; // لو المورد ادانا كاش وقت المرتجع، يقلل من الفلوس اللي دفعناها له
+                    sTotalReq -= req; 
+                    sTotalPaid -= checkoutPaid; 
                 }
             });
 
-            // الصافي (المديونية الكلية للمورد) - لو موجب يبقى إحنا مديونين له
             let netDebt = sTotalReq - sTotalPaid; 
             netDebt = Math.round(netDebt * 100) / 100;
 
-            // الرصيد العائم (لو إحنا دافعين للمورد بزيادة، يبقى netDebt أقل من rawDeferredTotal)
             let floatBalance = rawDeferredTotal - netDebt;
             
-            // إطفاء الفواتير بنفس منطق العملاء
             if (floatBalance > 0) {
                 for (let i = 0; i < openInvoices.length; i++) {
                     if (floatBalance <= 0) break;
