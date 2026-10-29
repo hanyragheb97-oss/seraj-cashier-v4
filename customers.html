@@ -1035,7 +1035,7 @@ function renderAccountTransactions(customer) {
 
     if (currentFilterMode === 'deferred') {
         customerInvoices.forEach(inv => {
-            let rem = parseFloat(inv.remaining) || 0;
+            let rem = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
             if (rem > 0) {
                 let totalReq = (parseFloat(inv.total) || 0) - (parseFloat(inv.discount) || 0);
                 let isReturn = inv.type === 'return' || inv.type === 'return_sale';
@@ -1056,7 +1056,7 @@ function renderAccountTransactions(customer) {
         });
     } else if (currentFilterMode === 'all_invoices') {
         customerInvoices.forEach(inv => {
-            let rem = parseFloat(inv.remaining) || 0;
+            let rem = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
             let isDef = rem > 0;
             let totalReq = (parseFloat(inv.total) || 0) - (parseFloat(inv.discount) || 0);
             let isReturn = inv.type === 'return' || inv.type === 'return_sale';

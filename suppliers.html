@@ -1002,7 +1002,7 @@ function renderAccountTransactions(supplier) {
 
     if (currentFilterMode === 'deferred') {
         supplierInvoices.forEach(inv => {
-            let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (inv.remaining || 0);
+            let rem = inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0);
             if (rem > 0) {
                 let totalReq = parseFloat(inv.total) || 0;
                 displayList.push({
@@ -1016,7 +1016,7 @@ function renderAccountTransactions(supplier) {
         });
     } else if (currentFilterMode === 'all_invoices') {
         supplierInvoices.forEach(inv => {
-            let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (inv.remaining || 0);
+            let rem = inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0);
             let isDef = rem > 0;
             let totalReq = parseFloat(inv.total) || 0;
             displayList.push({
@@ -1288,7 +1288,7 @@ function confirmInvoicePayment(e) {
     function executeInvoicePayment() {
         let inv = activeSelectedInvoice.rawObj;
         // تأمين القيم كأرقام لمنع خطأ المطابقة
-        let rem = parseFloat(inv.computedRemaining !== undefined ? inv.computedRemaining : (inv.remaining || 0)) || 0;
+        let rem = parseFloat(inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0)) || 0;
         let maxRem = rem || parseFloat(inv.total) || 0;
 
         let pAmount = Math.max(0, parseFloat(document.getElementById('payModalAmountInput').value) || 0);
@@ -1438,7 +1438,7 @@ ${deviceHtml}
 <div style="text-align:left; font-size:16px; font-weight:bold;">
 <div>إجمالي الفاتورة: <span style="color:#38bdf8;">${(inv.total || 0).toFixed(2)}</span></div>
 <div>المدفوع: <span class="badge-paid">${(inv.paid || 0).toFixed(2)}</span></div>
-<div>المتبقي (الآجل): <span class="badge-unpaid">${(inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining || 0).toFixed(2)}</span></div>
+<div>المتبقي (الآجل): <span class="badge-unpaid">${(inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : inv.remaining || 0).toFixed(2)}</span></div>
 </div>
 `;
 }
@@ -1709,7 +1709,7 @@ window.openPaymentModalFromInline = function(e) {
         }
         
         let inv = activeSelectedInvoice.rawObj;
-        let rem = parseFloat(inv.computedRemaining !== undefined ? inv.computedRemaining : (inv.remaining || 0)) || 0;
+        let rem = parseFloat(inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0)) || 0;
         let safeId = String(inv.id || '').slice(-6);
 
         let titleEl = document.getElementById('payModalHeaderTitle');
