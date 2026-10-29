@@ -1002,7 +1002,7 @@ function renderAccountTransactions(supplier) {
 
     if (currentFilterMode === 'deferred') {
         supplierInvoices.forEach(inv => {
-            let rem = inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0);
+            let rem = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
             if (rem > 0) {
                 let totalReq = parseFloat(inv.total) || 0;
                 displayList.push({
@@ -1016,7 +1016,7 @@ function renderAccountTransactions(supplier) {
         });
     } else if (currentFilterMode === 'all_invoices') {
         supplierInvoices.forEach(inv => {
-            let rem = inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0);
+            let rem = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
             let isDef = rem > 0;
             let totalReq = parseFloat(inv.total) || 0;
             displayList.push({
