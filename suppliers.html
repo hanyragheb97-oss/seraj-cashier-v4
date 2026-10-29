@@ -715,47 +715,56 @@ switchView('supplier-account-view');
 }
 
 function updateAccountSummary(supplier) {
-let currentBal = supplier.displayCurrentBalance || 0;
-let defTotal = supplier.deferredInvoicesTotal || 0;
-let isCurrentDebt = supplier.isCurrentBalDebt !== undefined ? supplier.isCurrentBalDebt : true;
+    if(!supplier) return;
+    
+    let currentBal = supplier.displayCurrentBalance || 0;
+    let defTotal = supplier.deferredInvoicesTotal || 0;
+    let netVal = supplier.netBalanceVal || 0;
 
-let balElem = document.getElementById('summaryCurrentBalance');
-balElem.innerText = Math.abs(currentBal).toFixed(2);
+    let isCurrentDebt = supplier.isCurrentBalDebt !== undefined ? supplier.isCurrentBalDebt : true;
+    let isNetDebt = supplier.isNetDebt !== undefined ? supplier.isNetDebt : true;
+    let isDeferredDebt = supplier.isDeferredDebt !== undefined ? supplier.isDeferredDebt : true; 
 
-if (currentBal > 0) {
-if (isCurrentDebt) {
-balElem.style.color = "#00ff66";
-balElem.style.textShadow = "0 0 10px rgba(0, 255, 102, 0.9)";
-} else {
-balElem.style.color = "#ff1a40";
-balElem.style.textShadow = "0 0 10px rgba(255, 26, 64, 0.9)";
-}
-} else {
-balElem.style.color = "#00ff66";
-balElem.style.textShadow = "0 0 10px rgba(0, 255, 102, 0.9)";
-}
+    // دالة مساعدة لتبديل الكلاسات ومنع تداخل الألوان مع الـ CSS
+    function applyColorClass(elementId, amount, isDebt, isDeferred = false) {
+        let el = document.getElementById(elementId);
+        if (!el) return;
+        
+        // كتابة الرقم صافي بدون سوالب
+        el.innerText = Math.abs(amount).toFixed(2);
+        
+        // مسح أي ستايل داخلي قديم عامل مشكلة
+        el.style.color = '';
+        el.style.textShadow = '';
+        
+        // إزالة الكلاسات القديمة
+        el.classList.remove('val-red', 'val-green');
+        
+        // تطبيق المنطق اللوني الخاص بالموردين
+        if (amount === 0) {
+            el.classList.add('val-green'); // الزيرو دائماً أخضر
+        } else if (isDeferred) {
+            // الفواتير الآجلة للموردين: لونها أخضر في وضعها الطبيعي
+            // لو كانت مرتجع آجل (عكس الطبيعي) تقلب أحمر
+            if (isDebt) {
+                el.classList.add('val-green');
+            } else {
+                el.classList.add('val-red');
+            }
+        } else {
+            // الرصيد الحالي والصافي
+            if (isDebt) {
+                el.classList.add('val-green'); // المورد عليه فلوس = رصيد لينا (أخضر)
+            } else {
+                el.classList.add('val-red');   // المورد له فلوس = ديون علينا (أحمر)
+            }
+        }
+    }
 
-let defElem = document.getElementById('summaryDeferredInvoices');
-defElem.innerText = defTotal.toFixed(2);
-defElem.style.color = "#00ff66";
-defElem.style.textShadow = "0 0 10px rgba(0, 255, 102, 0.9)";
-
-let netElem = document.getElementById('summaryNetBalance');
-if(netElem) {
-let netVal = supplier.netBalanceVal || 0;
-netElem.innerText = netVal.toFixed(2);
-
-if (netVal > 0 && supplier.isNetDebt) {
-netElem.style.color = "#00ff66";
-netElem.style.textShadow = "0 0 10px rgba(0, 255, 102, 0.9)";
-} else if (netVal > 0 && !supplier.isNetDebt) {
-netElem.style.color = "#ff1a40";
-netElem.style.textShadow = "0 0 10px rgba(255, 26, 64, 0.9)";
-} else {
-netElem.style.color = "#00ff66";
-netElem.style.textShadow = "0 0 10px rgba(0, 255, 102, 0.9)";
-}
-}
+    // تطبيق الدالة على الخانات الثلاثة
+    applyColorClass('summaryCurrentBalance', currentBal, isCurrentDebt);
+    applyColorClass('summaryDeferredInvoices', defTotal, isDeferredDebt, true); // true هنا لتمييز الفواتير الآجلة
+    applyColorClass('summaryNetBalance', netVal, isNetDebt);
 }
 
 function setAccountFilter(mode, e) {
