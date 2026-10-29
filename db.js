@@ -1589,8 +1589,13 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
                 }
             });
 
-            // ترتيب خط الزمن بالتاريخ من الأقدم للأحدث
-            timeline.sort((a, b) => a.date - b.date);
+// ترتيب خط الزمن بالتاريخ من الأقدم للأحدث مع إعطاء أولوية ذكية في نفس اللحظة
+timeline.sort((a, b) => {
+    if (a.date !== b.date) return a.date - b.date;
+    // لو الحركات في نفس الوقت: الفاتورة تنزل أولاً، ثم المديونية، ثم التسديد في الآخر ليصفي ما قبله
+    let weight = { 'invoice_event': 1, 'debt_event': 2, 'payment_event': 3 };
+    return (weight[a.type] || 9) - (weight[b.type] || 9);
+});
 
             // ==========================================
             // الخطوة 3: التشغيل الزمني الدقيق
