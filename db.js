@@ -1749,18 +1749,24 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 }
             });
 
-            // 3. تصفية الرصيد الحالي بالدفعات العامة (النقدية + زيادات الفواتير)
-            let generalDebt = sTotalReqGeneral - sTotalPaidGeneral; 
-            generalDebt = Math.round(generalDebt * 100) / 100;
+// 3. فصل مسار المدفوعات عن المديونية لمنع ارتداد الفواتير
+            let floatBalance = 0; // الفلوس اللي هتروح تطفئ الفواتير
+            let generalDebt = 0; // الرصيد الحالي المنفصل
+
+            if (sTotalPaidGeneral > sTotalReqGeneral) {
+                // إحنا دافعين أكتر من المديونيات العامة المستقلة
+                // إذن المديونية تتصفر، والزيادة (الفرق) تروح كـ Float تطفئ الفواتير الآجلة
+                floatBalance = sTotalPaidGeneral - sTotalReqGeneral;
+                generalDebt = 0;
+            } else {
+                // المديونيات المستقلة أكبر من المدفوعات
+                // إذن مفيش فلوس هتطفي الفواتير (Float = 0)، والفرق يفضل مديونية في الرصيد الحالي
+                generalDebt = sTotalReqGeneral - sTotalPaidGeneral;
+                floatBalance = 0; 
+            }
             
-            let floatBalance = 0;
-            
-            if (generalDebt < 0) {
-                // دفعنا اكتر من الرصيد الحالي -> الرصيد الحالي يتصفر، والزيادة تروح للفواتير
-                floatBalance = Math.abs(generalDebt);
-                generalDebt = 0; // تم تصفية الرصيد الحالي بنجاح
-                
-                // 4. إطفاء الفواتير الآجلة بالترتيب الصاعد
+            // إطفاء الفواتير الآجلة بالترتيب الصاعد
+            if (floatBalance > 0) {
                 for (let i = 0; i < openInvoices.length; i++) {
                     if (floatBalance <= 0) break;
                     
