@@ -1437,24 +1437,23 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
             return isMatch && isValid;
         });
 
-// 1. تجميع السندات مع استرجاع أي سند موجود في الخزينة وسقط من العميل أولاً قبل حساب الفواتير
-let validTransactions = this._collectUnifiedEntityTransactions(c, allMoves, false);
+// 1. تجميع السندات مع استرجاع أي سند سقط (لاحظ true تعني أنه مورد)
+let validTransactions = this._collectUnifiedEntityTransactions(s, allMoves, true);
 
-// حفظ السند المسترجع في ملف العميل تلقائياً إذا وُجد
+// حفظ السند المسترجع في ملف المورد تلقائياً
 if (validTransactions.some(t => t._restoredFromTreasury)) {
-    c.transactions = validTransactions.map(t => {
+    s.transactions = validTransactions.map(t => {
         let cleanT = { ...t };
         delete cleanT._restoredFromTreasury;
         return cleanT;
     });
 }
 
-// متغيرات حسابية داخلية مخصصة لتجنب أي تعارض مع أكواد قديمة
 let t_req = 0;
 let t_paid = 0;
-let rawDeferredTotal = 0; // إجمالي الآجل الخام (للفواتير التي لم تسدد بالكامل فقط)
+let rawDeferredTotal = 0; // إجمالي الآجل الخام للمورد
 
-cInvs.forEach(inv => {
+sInvs.forEach(inv => {
     let totalVal = parseFloat(inv.total) || 0;
     let discVal = parseFloat(inv.discount) || 0;
     let paidVal = parseFloat(inv.paid) || 0;
@@ -1462,59 +1461,61 @@ cInvs.forEach(inv => {
     let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
     if (req < 0) req = 0;
     
-    let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+    // معالجة مرتجع المشتريات
+    let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
 
-    // حساب المدفوع نقداً وقت إنشاء الفاتورة فقط (مع عزله تماماً عن تسديدات السندات اللاحقة)
-    let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
+    let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true); // true = للمورد
     let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
         ? Math.max(0, parseFloat(inv.initialPaid))
         : Math.max(0, paidVal - appliedAmount);
 
-    // حساب المتبقي الفعلي لهذه الفاتورة فقط لمنع ظهور الفاتورة بسالب
     let totalPaidForThisInvoice = checkoutPaid + appliedAmount;
     let invoiceRemaining = req - totalPaidForThisInvoice;
 
     if (!isReturn) {
-        // لو الفاتورة لسه عليها فلوس، نجمعها في الآجل. لو العميل دفع بزيادة نعتبر الآجل صفر لتلك الفاتورة
+        // لو فاتورة شراء لسه عليها فلوس
         if (invoiceRemaining > 0) {
             rawDeferredTotal += invoiceRemaining;
         }
         t_req += req;
         t_paid += checkoutPaid;
     } else {
+        // لو مرتجع مشتريات (بننقص مديونيتنا)
         t_req -= req;
-        t_paid -= checkoutPaid; // لو العميل أخذ نقدية تفوق قيمة المرتجع تنزل كمديونية
+        t_paid -= checkoutPaid;
     }
 });
 
-let totalVoucherDebt = 0;    
-let totalVoucherReceipt = 0; 
+let totalVoucherPayment = 0; // دفعات نقدية خرجت من الخزينة للمورد
+let totalVoucherReceipt = 0; // فلوس استرديناها من المورد
 
 validTransactions.forEach(t => {
-    if (t.type === 'payment') totalVoucherDebt += (parseFloat(t.amount) || 0);
-    if (t.type === 'receipt') totalVoucherReceipt += (parseFloat(t.amount) || 0);
+    if (t.type === 'payment' || t.type === 'purchase_payment') totalVoucherPayment += (parseFloat(t.amount) || 0);
+    if (t.type === 'receipt' || t.type === 'supplier_receipt') totalVoucherReceipt += (parseFloat(t.amount) || 0);
 });
 
-let openingDebt = parseFloat(c.openingBalance) || 0;
+let openingDebt = parseFloat(s.openingBalance) || 0;
 
-// الصافي العام للحساب (شامل كل مليم دخل أو خرج)
-let netDebt = (t_req + totalVoucherDebt + openingDebt) - (t_paid + totalVoucherReceipt);
+// الصافي العام (مديونيتنا للمورد)
+// اللي علينا للمورد = (t_req + totalVoucherReceipt + openingDebt)
+// اللي دفعناه للمورد = (t_paid + totalVoucherPayment)
+let netDebt = (t_req + totalVoucherReceipt + openingDebt) - (t_paid + totalVoucherPayment);
 netDebt = Math.round(netDebt * 100) / 100;
 
-// الحيلة الذكية (الخصم التلقائي من أقدم فواتير):
+// الحيلة الذكية (الخصم التلقائي من أقدم فواتير الشراء):
 let actualDeferred = Math.min(rawDeferredTotal, Math.max(0, netDebt));
 actualDeferred = Math.round(actualDeferred * 100) / 100;
 
-c.balance = -netDebt;              
-c.calculatedBalance = -netDebt;    
-c.netBalanceVal = Math.abs(netDebt);
-c.isNetDebt = netDebt > 0;
+s.balance = -netDebt;              
+s.calculatedBalance = -netDebt;    
+s.netBalanceVal = Math.abs(netDebt);
+s.isNetDebt = netDebt > 0; // لو true يعني إحنا مديونين للمورد
 
-c.deferredInvoicesTotal = actualDeferred; 
+s.deferredInvoicesTotal = actualDeferred; 
 
 let currentBal = netDebt - actualDeferred;
-c.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
-c.isCurrentBalDebt = currentBal > 0; 
+s.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
+s.isCurrentBalDebt = currentBal > 0; 
 });
 
 if (targetCustomerId !== null && targetCustomerId !== undefined) {
