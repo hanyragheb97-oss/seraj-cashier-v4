@@ -1675,17 +1675,17 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 });
             }
 
-            // 1. فصل الرصيد الحالي (المديونية العامة المستقلة عن الفواتير)
-            let sTotalReqGeneral = parseFloat(s.openingBalance) || 0; // مديونيات علينا (رصيد حالي)
-            let sTotalPaidGeneral = 0; // دفعات نقدية دفعناها للمورد
+            // 1. فصل المسارين بشكل نهائي وتام
+            let sTotalReqGeneral = parseFloat(s.openingBalance) || 0; // مسار المديونية الأعمى (رصيد حالي علينا)
+            let sTotalPaidGeneral = 0; // مسار الدفع النقدي (يطفئ الفواتير الآجلة أولاً)
             
             validTransactions.forEach(t => {
                 let amt = parseFloat(t.amount) || 0;
-                // إضافة مديونية أو استلام نقدية من المورد (تزود الرصيد الحالي)
+                // مسار إضافة مديونية (يصب أعمى في الرصيد الحالي)
                 if (t.type === 'receipt' || t.type === 'supplier_receipt') {
                     sTotalReqGeneral += amt; 
                 }
-                // سندات الدفع النقدية للمورد (تصفي الرصيد الحالي أولاً)
+                // مسار دفع نقدية تسديد (يجمع ليطفئ الفواتير)
                 if (t.type === 'payment' || t.type === 'purchase_payment') {
                     sTotalPaidGeneral += amt; 
                 }
@@ -1693,7 +1693,7 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
 
             let openInvoices = [];
 
-            // 2. معالجة الفواتير وفصل الزيادات
+            // 2. معالجة الفواتير (تحديد الزيادات)
             sInvs.forEach(inv => {
                 let totalVal = parseFloat(inv.total) || 0;
                 let discVal = parseFloat(inv.discount) || 0;
@@ -1707,7 +1707,6 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
 
                 let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
                 
-                // مانع الازدواجية الصارم
                 let invIdStr = String(inv.id);
                 let idRegex = new RegExp('\\b' + invIdStr + '\\b');
                 let aggressiveApplied = 0;
@@ -1728,44 +1727,30 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
 
                 if (!isReturn) {
                     if (totalPaidForThisInvoice >= req) {
-                        // الفاتورة اندفعت بزيادة: تقفل تماماً والزيادة تروح للرصيد المدفوع العام
+                        // فاتورة مدفوعة بزيادة: الزيادة تنضم لمسار الدفع النقدي العام
                         let overpayment = totalPaidForThisInvoice - req;
-                        sTotalPaidGeneral += overpayment; // إضافة الزيادة كدفعة عامة
+                        sTotalPaidGeneral += overpayment; 
                         
                         inv.calculatedRemaining = 0;
                         if (parseFloat(inv.remaining) !== 0) {
                             inv.remaining = 0;
-                            invoicesNeedSave = true; // حفظ الإغلاق في قاعدة البيانات
+                            invoicesNeedSave = true; 
                         }
                     } else {
-                        // الفاتورة لسه عليها فلوس -> تدخل طابور الآجل
+                        // فاتورة آجلة تدخل الطابور
                         let invoiceRemaining = req - totalPaidForThisInvoice;
                         openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
                     }
                 } else {
-                    // المرتجع: بضاعة رجعناها (كأننا دفعنا), نقدية استلمناها (تزود مديونيتنا)
+                    // المرتجعات
                     sTotalPaidGeneral += req; 
                     sTotalReqGeneral += totalPaidForThisInvoice; 
                 }
             });
 
-// 3. فصل مسار المدفوعات عن المديونية لمنع ارتداد الفواتير
-            let floatBalance = 0; // الفلوس اللي هتروح تطفئ الفواتير
-            let generalDebt = 0; // الرصيد الحالي المنفصل
-
-            if (sTotalPaidGeneral > sTotalReqGeneral) {
-                // إحنا دافعين أكتر من المديونيات العامة المستقلة
-                // إذن المديونية تتصفر، والزيادة (الفرق) تروح كـ Float تطفئ الفواتير الآجلة
-                floatBalance = sTotalPaidGeneral - sTotalReqGeneral;
-                generalDebt = 0;
-            } else {
-                // المديونيات المستقلة أكبر من المدفوعات
-                // إذن مفيش فلوس هتطفي الفواتير (Float = 0)، والفرق يفضل مديونية في الرصيد الحالي
-                generalDebt = sTotalReqGeneral - sTotalPaidGeneral;
-                floatBalance = 0; 
-            }
+            // 3. مسار إطفاء الفواتير الآجلة باستخدام "دفع نقدية" فقط (مستقل عن المديونية)
+            let floatBalance = sTotalPaidGeneral; // كل النقدية المدفوعة تروح تطفي الفواتير الأول
             
-            // إطفاء الفواتير الآجلة بالترتيب الصاعد
             if (floatBalance > 0) {
                 for (let i = 0; i < openInvoices.length; i++) {
                     if (floatBalance <= 0) break;
@@ -1780,9 +1765,8 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                     }
                 }
             }
-            // لو generalDebt موجب (اضافة مديونية)، الفواتير الآجلة ستظل كما هي بدون تعديل (floatBalance = 0)
 
-            // 5. حفظ التعديلات في الفواتير فعلياً لتسميعها في كل الشاشات
+            // 4. حفظ الفواتير الآجلة المتأثرة فعلياً
             let actualDeferred = 0;
             openInvoices.forEach(oi => {
                 let roundedRem = Math.round(oi.currentRem * 100) / 100;
@@ -1796,28 +1780,29 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 
                 actualDeferred += roundedRem;
             });
-
             actualDeferred = Math.round(actualDeferred * 100) / 100;
 
-            // 6. الحسابات النهائية للمورد
-            // إجمالي المديونية = الفواتير الآجلة + الرصيد الحالي - الفلوس الفايضة (لو موجودة رصيد لنا)
-            let netDebt = actualDeferred + generalDebt - floatBalance;
+            // 5. تصفية الرصيد الحالي الأعمى (المديونية) بالباقي من مسار الدفع النقدي
+            // floatBalance الآن يمثل النقدية الفائضة بعد إطفاء كافة الفواتير الآجلة
+            let currentBal = sTotalReqGeneral - floatBalance;
+            currentBal = Math.round(currentBal * 100) / 100;
+
+            // الحسابات النهائية للمورد
+            let netDebt = actualDeferred + currentBal;
             netDebt = Math.round(netDebt * 100) / 100;
 
             s.balance = -netDebt;              
             s.calculatedBalance = -netDebt;    
             s.netBalanceVal = Math.abs(netDebt);
-            s.isNetDebt = netDebt > 0; // إحنا مديونين للمورد (عليه فلوس لنا لو false)
+            s.isNetDebt = netDebt > 0; // علينا إجمالي
 
             s.deferredInvoicesTotal = actualDeferred; 
             
-            // الرصيد الحالي المنفصل = الرصيد الحالي المتبقي - الفلوس الفايضة (رصيدنا عند المورد)
-            let currentBal = generalDebt - floatBalance; 
-            s.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
-            s.isCurrentBalDebt = currentBal > 0; // مديونية حالية علينا لو موجب
+            // الرصيد الحالي (الموجب = مديونية علينا، السالب = رصيد لينا)
+            s.displayCurrentBalance = Math.abs(currentBal); 
+            s.isCurrentBalDebt = currentBal > 0; 
         });
 
-        // تنفيذ الحفظ المركزي في الـ DB
         if (invoicesNeedSave && typeof this.savePurchaseInvoices === 'function') {
             this.savePurchaseInvoices(invoices);
         }
