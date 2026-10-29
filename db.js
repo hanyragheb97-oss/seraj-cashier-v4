@@ -1458,136 +1458,134 @@ saveSuppliers: function(data) {
 },
 
 calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers = null) {
-        let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
-        let invoices = this.getSalesInvoices(true);
-        let allMoves = this.getTreasuryMoves(false);
+    let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
+    let invoices = this.getSalesInvoices(true);
+    let allMoves = this.getTreasuryMoves(false);
 
-        customers.forEach(c => {
-            let cIdStr = String(c.id);
-            let cNorm = window.Utils.normalizeName(c.name || '');
+    customers.forEach(c => {
+        let cIdStr = String(c.id);
+        let cNorm = window.Utils.normalizeName(c.name || '');
 
-            let cInvs = invoices.filter(inv => {
-                if (!inv) return false;
-                let invCustNorm = window.Utils.normalizeName(inv.customer || inv.customerName || '');
-                let isMatch = (
-                    (inv.customerId !== undefined && inv.customerId !== null && String(inv.customerId) === cIdStr) || 
-                    (cNorm !== '' && invCustNorm === cNorm)
-                );
-                let isValid = (
-                    inv.type !== 'canceled' && 
-                    inv.isCanceled !== true && 
-                    inv.type !== 'quotation' && 
-                    inv.isDeleted !== true && 
-                    inv.status !== 'deleted'
-                );
-                return isMatch && isValid;
-            });
-
-            cInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-
-            let validTransactions = this._collectUnifiedEntityTransactions(c, allMoves, false);
-            if (validTransactions.some(t => t._restoredFromTreasury)) {
-                c.transactions = validTransactions.map(t => {
-                    let cleanT = { ...t };
-                    delete cleanT._restoredFromTreasury;
-                    return cleanT;
-                });
-            }
-
-            // --- المعالجة المحاسبية الجديدة المفصولة ---
-            let openInvoices = []; 
-            let freeCash = 0;    // أي فلوس زيادة دفعها العميل أو مرتجعات (رصيد حر يخصم من الفواتير)
-            let directDebt = 0;  // أي نقدية إديناها للعميل كسلفة أو خلافه (رصيد حالي عليه)
-
-            cInvs.forEach(inv => {
-                let totalVal = parseFloat(inv.total) || 0;
-                let discVal = parseFloat(inv.discount) || 0;
-                let paidVal = parseFloat(inv.paid) || 0;
-                let remVal = parseFloat(inv.remaining) || 0;
-                let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
-                if (req < 0) req = 0;
-                
-                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-
-                let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
-                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-                    ? Math.max(0, parseFloat(inv.initialPaid))
-                    : Math.max(0, paidVal - appliedAmount);
-
-                if (!isReturn) {
-                    let invoiceRemaining = req - (checkoutPaid + appliedAmount);
-                    if (invoiceRemaining > 0) {
-                        openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
-                    } else if (invoiceRemaining < 0) {
-                        // لو دفع بزيادة وقت الفاتورة، الزيادة تتحول لرصيد حر يخصم من القديم
-                        freeCash += Math.abs(invoiceRemaining);
-                    }
-                } else {
-                    // فاتورة المرتجع
-                    let returnCredit = req - (checkoutPaid + appliedAmount);
-                    if (returnCredit > 0) {
-                        freeCash += returnCredit; // قيمة البضاعة المرتجعة (رصيد حر له)
-                    } else if (returnCredit < 0) {
-                        directDebt += Math.abs(returnCredit); // لو إديتله فلوس كاش أكتر من المرتجع (عليه)
-                    }
-                }
-            });
-
-            validTransactions.forEach(t => {
-                if (t.type === 'payment') directDebt += (parseFloat(t.amount) || 0); // كاش إديناه للعميل (عليه)
-                if (t.type === 'receipt') freeCash += (parseFloat(t.amount) || 0);   // كاش دفعه العميل (له)
-            });
-
-            let openingBalance = parseFloat(c.openingBalance) || 0;
-            if (openingBalance > 0) directDebt += openingBalance;
-            else if (openingBalance < 0) freeCash += Math.abs(openingBalance);
-
-            // إطفاء الفواتير باستخدام "الرصيد الحر / الفلوس اللي دفعها" فقط
-            if (freeCash > 0) {
-                for (let oi of openInvoices) {
-                    if (freeCash <= 0) break;
-                    if (freeCash >= oi.currentRem) {
-                        freeCash -= oi.currentRem;
-                        oi.currentRem = 0; 
-                    } else {
-                        oi.currentRem -= freeCash;
-                        freeCash = 0; 
-                    }
-                }
-            }
-
-            let actualDeferred = 0;
-            openInvoices.forEach(oi => {
-                oi.invRef.calculatedRemaining = oi.currentRem; 
-                actualDeferred += oi.currentRem;
-            });
-            
-            // الرصيد الحالي = المديونية المباشرة (السلف اللي خدها) - الرصيد الحر المتبقي معاه
-            let currentBal = directDebt - freeCash; 
-
-            // الصافي العام
-            let netDebt = actualDeferred + currentBal;
-            
-            netDebt = Math.round(netDebt * 100) / 100;
-            actualDeferred = Math.round(actualDeferred * 100) / 100;
-            currentBal = Math.round(currentBal * 100) / 100;
-            
-            c.balance = -netDebt;              
-            c.calculatedBalance = -netDebt;    
-            c.netBalanceVal = Math.abs(netDebt);
-            c.isNetDebt = netDebt > 0;
-            
-            c.deferredInvoicesTotal = actualDeferred; 
-            
-            c.displayCurrentBalance = Math.abs(currentBal); 
-            c.isCurrentBalDebt = currentBal > 0; // لو أكبر من صفر يبقى دي سلفة/مديونية وتاخد اللون الأحمر
+        let cInvs = invoices.filter(inv => {
+            if (!inv) return false;
+            let invCustNorm = window.Utils.normalizeName(inv.customer || inv.customerName || '');
+            let isMatch = (
+                (inv.customerId !== undefined && inv.customerId !== null && String(inv.customerId) === cIdStr) || 
+                (cNorm !== '' && invCustNorm === cNorm)
+            );
+            let isValid = (
+                inv.type !== 'canceled' && 
+                inv.isCanceled !== true && 
+                inv.type !== 'quotation' && 
+                inv.isDeleted !== true && 
+                inv.status !== 'deleted'
+            );
+            return isMatch && isValid;
         });
 
-        if (targetCustomerId !== null && targetCustomerId !== undefined) {
-            return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
+        // ترتيب الفواتير من الأقدم للأحدث لإطفائها بالترتيب
+        cInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+
+        // تجميع السندات مع استرجاع المفقود منها
+        let validTransactions = this._collectUnifiedEntityTransactions(c, allMoves, false);
+        if (validTransactions.some(t => t._restoredFromTreasury)) {
+            c.transactions = validTransactions.map(t => {
+                let cleanT = { ...t };
+                delete cleanT._restoredFromTreasury;
+                return cleanT;
+            });
         }
-        return customers;
-    },
+
+        // ميزان العميل (مدين: عليه / دائن: له)
+        let cDebit = parseFloat(c.openingBalance) || 0; 
+        let cCredit = 0;
+        let rawDeferredTotal = 0;
+        let openInvoices = []; 
+
+        validTransactions.forEach(t => {
+            if (t.type === 'payment') cDebit += (parseFloat(t.amount) || 0); // فلوس عطيناها للعميل (عليه)
+            if (t.type === 'receipt') cCredit += (parseFloat(t.amount) || 0); // فلوس دفعها العميل (له)
+        });
+
+        cInvs.forEach(inv => {
+            let totalVal = parseFloat(inv.total) || 0;
+            let discVal = parseFloat(inv.discount) || 0;
+            let paidVal = parseFloat(inv.paid) || 0;
+            let remVal = parseFloat(inv.remaining) || 0;
+            let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+            if (req < 0) req = 0;
+            
+            let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+
+            let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
+            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                ? Math.max(0, parseFloat(inv.initialPaid))
+                : Math.max(0, paidVal - appliedAmount);
+
+            let totalPaidForThisInvoice = checkoutPaid + appliedAmount;
+            let invoiceRemaining = req - totalPaidForThisInvoice;
+
+            if (!isReturn) {
+                if (invoiceRemaining > 0) {
+                    openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
+                    rawDeferredTotal += invoiceRemaining;
+                }
+                cDebit += req; // قيمة الفاتورة (عليه)
+                cCredit += checkoutPaid; // اللي دفعه كاش وقت الفاتورة (له)، سواء أقل أو أكتر
+            } else {
+                cCredit += req; // قيمة المرتجع (له)
+                cDebit += checkoutPaid; // فلوس المرتجع اللي أخدها كاش (عليه)
+            }
+        });
+        
+        // الصافي (المديونية الكلية للعميل)
+        let netDebt = cDebit - cCredit;
+        netDebt = Math.round(netDebt * 100) / 100;
+        
+        // الحسبة السحرية: الفلوس الفايضة اللي هتصفي الفواتير القديمة (الرصيد العائم)
+        let floatBalance = rawDeferredTotal - netDebt;
+        
+        if (floatBalance > 0) {
+            for (let i = 0; i < openInvoices.length; i++) {
+                if (floatBalance <= 0) break;
+                
+                let oi = openInvoices[i];
+                if (floatBalance >= oi.currentRem) {
+                    floatBalance -= oi.currentRem;
+                    oi.currentRem = 0; // الفاتورة اتسددت بالكامل من الفايض
+                } else {
+                    oi.currentRem -= floatBalance;
+                    floatBalance = 0; // الفلوس خلصت
+                }
+            }
+        }
+
+        // تحديث الفواتير الآجلة لتعرض في الجداول
+        let actualDeferred = 0;
+        openInvoices.forEach(oi => {
+            oi.invRef.calculatedRemaining = oi.currentRem; 
+            actualDeferred += oi.currentRem;
+        });
+        
+        actualDeferred = Math.round(actualDeferred * 100) / 100;
+        
+        c.balance = -netDebt;              
+        c.calculatedBalance = -netDebt;    
+        c.netBalanceVal = Math.abs(netDebt);
+        c.isNetDebt = netDebt > 0;
+        
+        c.deferredInvoicesTotal = actualDeferred; 
+        
+        let currentBal = netDebt - actualDeferred;
+        c.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
+        c.isCurrentBalDebt = currentBal > 0; 
+    });
+
+    if (targetCustomerId !== null && targetCustomerId !== undefined) {
+        return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
+    }
+    return customers;
+},
 
 getSuppliers: function(rawOnly = false) { 
     let suppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
