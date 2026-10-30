@@ -1627,40 +1627,42 @@ timeline.sort((a, b) => {
                         deferredInvoicesQueue.push({ ref: ev.ref, rem: 0 });
                     }
                 } 
-                else if (ev.type === 'payment_event') {
+else if (ev.type === 'payment_event') {
                     let payAmt = ev.amount;
                     
-                    // السداد يهاجم الرصيد الأعمى أولاً (لو العميل عليه مديونية فيه)
+                    // 1. الدفع يهاجم الرصيد الأعمى أولاً ويقتله (لو العميل عليه مديونية فيه)
                     if (currentBalance > 0) {
                         if (payAmt >= currentBalance) {
                             payAmt -= currentBalance;
-                            currentBalance = 0;
+                            currentBalance = 0; // الرصيد اتصفر تماماً
                         } else {
                             currentBalance -= payAmt;
-                            payAmt = 0;
+                            payAmt = 0; // الفلوس خلصت جوا الرصيد
                         }
                     }
                     
-                    // لو اتبقى سداد، يطفي الفواتير الآجلة بالترتيب
+                    // 2. لو لسه متبقي فلوس (يعني الدفع كان أكبر من الرصيد)، تروح تصفي الفواتير
                     if (payAmt > 0) {
                         for (let i = 0; i < deferredInvoicesQueue.length; i++) {
                             if (payAmt <= 0) break;
                             let oi = deferredInvoicesQueue[i];
+                            
+                            // لازم نتأكد إن الفاتورة لسه عليها فلوس
                             if (oi.rem > 0) {
                                 if (payAmt >= oi.rem) {
-                                    payAmt -= oi.rem;
-                                    oi.rem = 0;
+                                    payAmt -= oi.rem; // خصم قيمة الفاتورة من الفلوس اللي معانا
+                                    oi.rem = 0; // تصفير الفاتورة
                                 } else {
-                                    oi.rem -= payAmt;
-                                    payAmt = 0;
+                                    oi.rem -= payAmt; // تقليل الفاتورة بالفلوس اللي باقية
+                                    payAmt = 0; // الفلوس خلصت
                                 }
                             }
                         }
                     }
                     
-                    // لو العميل سدد أكتر من كل اللي عليه، يتحول لرصيد مقدم له (سالب)
+                    // 3. لو العميل دافع أكتر من الرصيد ومن كل الفواتير مجتمعة (رصيد مقدم)
                     if (payAmt > 0) {
-                        currentBalance -= payAmt;
+                        currentBalance -= payAmt; // يتحول لسالب (العميل له فلوس)
                     }
                 }
             });
