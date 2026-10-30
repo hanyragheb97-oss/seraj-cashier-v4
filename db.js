@@ -1893,8 +1893,29 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                 }
             });
 
-            // ترتيب خط الزمن بالتاريخ
-            timeline.sort((a, b) => a.date - b.date);
+// ترتيب خط الزمن بالتاريخ من الأقدم للأحدث مع فك الاشتباك لنفس اليوم
+            timeline.sort((a, b) => {
+                // 1. الترتيب الزمني الأساسي (الأقدم أولاً)
+                if (a.date !== b.date) {
+                    return a.date - b.date;
+                }
+                
+                // 2. لو الحركات في نفس اليوم، نطبق قانون الأولوية لمنع التداخل:
+                // (الفاتورة تنزل الأول، ثم السداد، ثم المديونية)
+                let weight = { 'invoice_event': 1, 'payment_event': 2, 'debt_event': 3 };
+                let wA = weight[a.type] || 9;
+                let wB = weight[b.type] || 9;
+                
+                if (wA !== wB) {
+                    return wA - wB;
+                }
+                
+                // 3. لو الحدثين فاتورتين في نفس اليوم:
+                // نستخدم الـ ID عشان نجبر الكود يحط الفاتورة القديمة (رقمها أصغر) الأول وتتسدد الأول
+                let idA = (a.ref && a.ref.id) ? a.ref.id : 0;
+                let idB = (b.ref && b.ref.id) ? b.ref.id : 0;
+                return idA - idB; 
+            });
 
             // ==========================================
             // الخطوة 3: التشغيل الزمني الدقيق 
