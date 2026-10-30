@@ -148,7 +148,7 @@
         <div style="margin-bottom: 15px;">
             <label style="display: block; font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; text-align: right;">اسم العميل</label>
             <div style="position: relative; width: 100%;">
-                <input type="text" id="customerSearchInput" placeholder="ادخل اسم العميل..." oninput="handleCustomerInput()" style="width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 20px; font-weight: bold; background: rgba(19, 17, 44, 0.6); color: var(--text-main); border: 2px solid var(--neon-border); border-radius: 14px; outline: none; box-shadow: 0 0 10px var(--neon-glow);">
+                <input type="text" id="customerSearchInput" class="customer-input-box" placeholder="ادخل اسم العميل..." oninput="handleCustomerInput()">
                 <div id="customerResults" class="dropdown-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
             </div>
         </div>
@@ -243,7 +243,7 @@
 
 <!-- الإشعارات ومنطقة الطباعة -->
 <div id="exitToast" class="toast-msg" style="display: none;">الفاتورة مفتوحة!</div>
-<div id="stockWarningToast" class="toast-warning" style="display: none;"></div>
+<div id="stockWarningToast" class="toast-warning"></div>
 <div id="printReceiptArea" style="display: none;"></div>
 
 <script src="db.js"></script>
@@ -311,10 +311,11 @@ function changeInvoiceType(type, title, headerColor) {
 let stockWarningTimer;
 function showStockWarning(name, stock) {
     const toast = document.getElementById('stockWarningToast');
-    toast.innerText = `تنبيه: "${name}" رصيده (${stock}) غير كافٍ! سيتم البيع بالسالب.`;
+    if (!toast) return;
+    toast.innerText = `⚠️ تنبيه: "${name}" رصيده (${stock}) غير كافٍ! سيتم البيع بالسالب.`;
     toast.style.display = 'block';
     clearTimeout(stockWarningTimer);
-    stockWarningTimer = setTimeout(() => { toast.style.display = 'none'; }, 5000);
+    stockWarningTimer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
 }
 
 // ================= نظام البحث والطابور الذكي =================
@@ -724,8 +725,19 @@ function handleCustomerInput() {
         filtered.forEach(c => {
             const div = document.createElement('div');
             div.className = 'dropdown-item';
-            let bal = c.calculatedBalance !== undefined ? c.calculatedBalance : (c.balance || 0);
-            div.innerHTML = `<span>${c.name}</span><span>${parseFloat(bal).toFixed(2)}</span>`;
+            
+            let bal = parseFloat(c.calculatedBalance !== undefined ? c.calculatedBalance : (c.balance || 0)) || 0;
+            let balHtml = '';
+            
+            if (bal > 0) {
+                balHtml = `<span class="color-red-val">${bal.toFixed(2)} (عليه)</span>`;
+            } else if (bal < 0) {
+                balHtml = `<span class="color-green-val">${Math.abs(bal).toFixed(2)} (له)</span>`;
+            } else {
+                balHtml = `<span>0.00</span>`;
+            }
+
+            div.innerHTML = `<span>${c.name}</span>${balHtml}`;
             div.onmousedown = (e) => {
                 e.preventDefault();
                 selectedCustomerId = c.id;
@@ -744,14 +756,19 @@ function updateLiveCustomerBalanceUI(customer) {
     const balDiv = document.getElementById('liveCustomerBalance');
     
     if (customer) {
-        let net = customer.calculatedBalance !== undefined ? customer.calculatedBalance : (customer.balance || 0);
+        let net = parseFloat(customer.calculatedBalance !== undefined ? customer.calculatedBalance : (customer.balance || 0)) || 0;
         
-        if (net < 0) {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${Math.abs(net)} (عليه)</span>`;
-        } else if (net > 0) {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${net} (له)</span>`;
-        } else {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">0 (صافي)</span>`;
+        // الرصيد موجب = مديون للمحل (عليه) بالأحمر
+        if (net > 0) {
+            balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${net.toFixed(2)} (عليه)</span>`;
+        } 
+        // الرصيد سالب = له رصيد عند المحل (له) بالأخضر بدون إشارة سالب
+        else if (net < 0) {
+            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${Math.abs(net).toFixed(2)} (له)</span>`;
+        } 
+        // صفر = صافي
+        else {
+            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">0.00 (صافي)</span>`;
         }
     } else {
         balDiv.innerHTML = `<span>عميل جديد - الرصيد: 0</span>`;
@@ -804,16 +821,21 @@ function generateSmartInvoiceId(dbArray) {
 }
 
 function executePostSavePrint() {
-    let modalEl = document.getElementById('postSavePrintModal');
+    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
     if (modalEl) modalEl.style.display = 'none';
     
     if (typeof PrintManager !== 'undefined' && lastSavedInvoice) {
         PrintManager.printThermalReceipt(lastSavedInvoice);
     } else if (typeof printLastInvoice === 'function') {
         printLastInvoice();
-    } else {
-        SerajAlert("خطأ: ملف الطباعة المركزي غير متصل بالشاشة.", "error");
     }
+    lastSavedInvoice = null;
+}
+
+function closePostSavePrintModal() {
+    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
+    if (modalEl) modalEl.style.display = 'none';
+    lastSavedInvoice = null;
 }
 
 function closePostSavePrintModal() {
@@ -893,8 +915,7 @@ function confirmSave() {
     closeModals();
 
     // إظهار شريط الطباعة والتصدير السفلي بـ display: flex بعد إتمام الحفظ
-    let printBarEl = document.getElementById('bottomPrintBar');
-    if (printBarEl) printBarEl.style.display = 'flex';
+
 
     let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
     let printModalEl = document.getElementById('postSavePrintModal');
@@ -1346,35 +1367,79 @@ function processLocalAI() {
 // ================= الطباعة والباركود =================
 function printLastInvoice() {
     if (!lastSavedInvoice) return;
-    if (typeof PrintManager !== 'undefined') {
-        PrintManager.printThermalReceipt(lastSavedInvoice);
-        return;
-    }
+    
     let sub = 0;
     let itemsHtml = '';
     lastSavedInvoice.items.forEach(item => {
         sub += item.total;
         itemsHtml += `<tr><td>${item.name}</td><td>${item.price}</td><td>${item.qty}</td><td>${item.total.toFixed(2)}</td></tr>`;
     });
+
     let rem = (sub - lastSavedInvoice.discount) - lastSavedInvoice.paid;
     let accountHtml = '';
+
     if (lastSavedInvoice.customer) {
         let prev = lastSavedInvoice.prevBalance || 0;
         let curr = lastSavedInvoice.currentBalance || 0;
-        let prevText = prev < 0 ? `${Math.abs(prev).toFixed(2)} (عليه)` : (prev > 0 ? `${prev.toFixed(2)} (له)` : "0.00");
-        let currText = curr < 0 ? `${Math.abs(curr).toFixed(2)} (عليه)` : (curr > 0 ? `${curr.toFixed(2)} (له)` : "0.00");
+        let prevText = prev > 0 ? `${prev.toFixed(2)} (عليه)` : (prev < 0 ? `${Math.abs(prev).toFixed(2)} (له)` : "0.00");
+        let currText = curr > 0 ? `${curr.toFixed(2)} (عليه)` : (curr < 0 ? `${Math.abs(curr).toFixed(2)} (له)` : "0.00");
         accountHtml = `<div><div><span class="label">حساب سابق:</span> ${prevText}</div><div><span class="label">إجمالي الحساب الجديد:</span> ${currText}</div></div>`;
     }
-    let printHtml = `<div class="print-header">سراج LED</div><div class="print-meta-row"><span>رقم: ${lastSavedInvoice.id}</span><span>التاريخ: ${lastSavedInvoice.date}</span></div><div class="print-customer">العميل: ${lastSavedInvoice.customer || "نقدي"}</div><table class="print-table"><thead><tr><th>الصنف</th><th>السعر</th><th>العدد</th><th>الإجمالي</th></tr></thead><tbody>${itemsHtml}</tbody></table><div class="print-totals"><div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>${lastSavedInvoice.discount > 0 ? `<div><span class="label">الخصم:</span> ${lastSavedInvoice.discount.toFixed(2)}</div>` : ''}<div><span class="label">المدفوع:</span> ${lastSavedInvoice.paid.toFixed(2)}</div><div><span class="label">باقي الفاتورة:</span> ${rem.toFixed(2)}</div>${accountHtml}</div>`;
 
-    document.getElementById('printReceiptArea').innerHTML = printHtml;
+    let printHtml = `
+        <div class="print-header">سراج LED</div>
+        <div class="print-meta-row"><span>رقم: ${lastSavedInvoice.id}</span><span>التاريخ: ${lastSavedInvoice.date}</span></div>
+        <div class="print-customer">العميل: ${lastSavedInvoice.customer || "نقدي"}</div>
+        <table class="print-table">
+            <thead><tr><th>الصنف</th><th>السعر</th><th>العدد</th><th>الإجمالي</th></tr></thead>
+            <tbody>${itemsHtml}</tbody>
+        </table>
+        <div class="print-totals">
+            <div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>
+            ${lastSavedInvoice.discount > 0 ? `<div><span class="label">الخصم:</span> ${lastSavedInvoice.discount.toFixed(2)}</div>` : ''}
+            <div><span class="label">المدفوع:</span> ${lastSavedInvoice.paid.toFixed(2)}</div>
+            <div><span class="label">باقي الفاتورة:</span> ${rem.toFixed(2)}</div>
+            ${accountHtml}
+        </div>
+    `;
+
+    let printArea = document.getElementById('printReceiptArea');
+    if (printArea) printArea.innerHTML = printHtml;
+
     document.body.classList.add('thermal-print-mode');
-    document.getElementById('bottomPrintBar').style.display = 'none';
 
     setTimeout(() => {
         window.print();
-        setTimeout(() => { document.body.classList.remove('thermal-print-mode'); }, 500);
+        setTimeout(() => {
+            document.body.classList.remove('thermal-print-mode');
+        }, 500);
     }, 250);
+}
+
+function executePostSavePrint() {
+    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
+    if (modalEl) modalEl.style.display = 'none';
+
+    if (typeof PrintManager !== 'undefined' && typeof PrintManager.printThermalReceipt === 'function' && lastSavedInvoice) {
+        PrintManager.printThermalReceipt(lastSavedInvoice);
+    } else {
+        printLastInvoice();
+    }
+}
+
+// دالة بديلة لنفس الغرض لضمان الاستجابة مع أي مسمى زر
+function executePrintModalThermal() {
+    executePostSavePrint();
+}
+
+function closePostSavePrintModal() {
+    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
+    if (modalEl) modalEl.style.display = 'none';
+    lastSavedInvoice = null;
+}
+
+function closePrintModal() {
+    closePostSavePrintModal();
 }
 
 function exportLastInvoiceToExcel() {

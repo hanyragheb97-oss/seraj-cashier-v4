@@ -189,9 +189,8 @@
             <div class="modal-header"><h3 id="editItemName">تعديل الصنف</h3></div>
             <button type="button" class="details-toggle-btn" onclick="toggleDetails()">+ عرض تفاصيل المخزن والمورد</button>
             <div class="hidden-details" id="hiddenDetailsBox">
-                <p>سعر الشراء: <strong id="editPurchasePrice">0</strong></p>
-                <p>الرصيد بالمخزن: <strong id="editStockInfo">0</strong></p>
-                <p>المورد: <strong id="editSupplier">---</strong></p>
+                <div class="batches-slider" id="editBatchesSlider"></div>
+                <div class="batch-total-summary">إجمالي الرصيد بالمخزن: <span id="editTotalStock">0</span></div>
             </div>
             <div class="compact-row"><label>تعديل السعر:</label><input type="number" id="editItemPrice" onclick="this.select()"></div>
             <div class="compact-row"><label>تعديل الكمية:</label><input type="number" id="editItemQty" onclick="this.select()"></div>
@@ -945,9 +944,34 @@
                     document.getElementById('editItemIndex').value = index;
                     
                     let p = productsDB.find(x => String(x.id) === String(item.id));
-                    document.getElementById('editPurchasePrice').innerText = (p ? (p.lots && p.lots.length > 0 ? p.lots[p.lots.length-1].purchasePrice : p.purchasePrice) : 0) + " جنيه";
-                    document.getElementById('editStockInfo').innerText = (p ? (p.lots ? p.lots.reduce((s,l)=>s+(parseFloat(l.stock)||0),0) : p.stock) : 0);
-                    document.getElementById('editSupplier').innerText = (p ? (p.lots && p.lots.length>0 ? p.lots[0].supplier : p.supplier) : "---");
+                    let slider = document.getElementById('editBatchesSlider');
+                    if (slider) slider.innerHTML = '';
+                    let totalStk = 0;
+                    
+                    if (p) {
+                        let safeLots = Array.isArray(p.lots) && p.lots.length > 0 ? p.lots : [];
+                        // لو مافيش دفعات لكن فيه رصيد قديم، نعتبره دفعة واحدة
+                        if (safeLots.length === 0 && p.stock !== undefined) {
+                            safeLots.push({ stock: p.stock, purchasePrice: p.purchasePrice || 0, price: p.price || 0, supplier: p.supplier || 'غير محدد', date: p.date || '-' });
+                        }
+                        
+                        safeLots.forEach(b => {
+                            let bStock = parseFloat(b.stock) || 0;
+                            totalStk += bStock;
+                            slider.innerHTML += `
+                                <div class="batch-card">
+                                    <div>مورد: ${b.supplier || 'غير محدد'}</div>
+                                    <div>شراء: <span class="color-red-val">${b.purchasePrice || 0}</span> ج</div>
+                                    <div>بيع: <span class="color-green-val">${b.price || 0}</span> ج</div>
+                                    <div>تاريخ: ${b.date || '-'}</div>
+                                    <div>كمية: <span class="color-green-val">${bStock}</span></div>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    let editTotalStock = document.getElementById('editTotalStock');
+                    if (editTotalStock) editTotalStock.innerText = totalStk;
                     document.getElementById('hiddenDetailsBox').style.display = 'none';
                     
                     document.getElementById('editItemModal').style.display = 'flex';
@@ -1028,18 +1052,39 @@
             filtered.forEach(p => {
                 const div = document.createElement('div');
                 div.className = 'dropdown-item'; 
-                let pPrice = parseFloat((p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0)) || 0;
-                let pStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((s, l) => s + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
-                div.innerHTML = `<div class="search-col-name">${p.name}</div><div class="search-col-price">${pPrice.toFixed(2)}</div><div class="search-col-stock">${pStock}</div>`;
+                
+                let dispPrice = parseFloat((p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0)) || 0;
+                let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((s, l) => s + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
+                let imgHtml = p.image ? `<img src="${p.image}" style="width:30px; height:30px; border-radius:6px; object-fit:cover;">` : `<div style="width:30px; height:30px; border-radius:6px; background:var(--bg-dark-2, #120f29); display:flex; align-items:center; justify-content:center; font-size:16px;">📦</div>`;
+                
+                div.innerHTML = `
+                    <div class="search-col-name" style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
+                        ${imgHtml}
+                        <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
+                    </div>
+                    <div class="search-col-price" style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
+                        ${dispPrice.toFixed(2)}
+                    </div>
+                    <div class="search-col-stock" style="flex: 1; text-align: left; white-space: nowrap;">
+                        <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
+                    </div>
+                `;
+
+                // الدالة المسؤولة عن النزول في الجدول وتفريغ مربع البحث
                 div.onmousedown = (e) => {
                     e.preventDefault();
                     const ex = editingInvoiceData.items.findIndex(i => String(i.id) === String(p.id));
-                    if(ex > -1) editingInvoiceData.items[ex].qty += 1;
-                    else editingInvoiceData.items.push({...p, price: pPrice, qty: 1, total: pPrice});
+                    if(ex > -1) {
+                        editingInvoiceData.items[ex].qty += 1;
+                        editingInvoiceData.items[ex].total = editingInvoiceData.items[ex].qty * editingInvoiceData.items[ex].price;
+                    } else {
+                        editingInvoiceData.items.push({...p, price: dispPrice, qty: 1, total: dispPrice});
+                    }
                     document.getElementById('editProductSearch').value = '';
                     resultsDiv.style.display = 'none';
                     renderEditTable();
                 };
+
                 resultsDiv.appendChild(div);
             });
         } else {

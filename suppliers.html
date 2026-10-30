@@ -21,10 +21,10 @@
         <span id="mainPageTitle">الموردين</span>
     </div>
 
-    <div class="main-container suppliers-container">
+    <div class="main-container customers-container suppliers-container">
         <div class="search-box">
             <span>≡</span>
-            <input type="text" id="supplierSearch" placeholder="ابحث باسم المورد واضغط Enter..." oninput="renderSuppliersList()" onkeydown="handleSearchKey(event)">
+            <input type="text" id="supplierSearch" placeholder="ابحث باسم المورد واضغط Enter..." oninput="renderSuppliersList()" onkeydown="handleSearchKey(event)" onclick="this.select()">
         </div>
         <div class="table-wrapper">
             <table>
@@ -95,14 +95,15 @@
         <span id="statementHeaderTitle">كشف حساب المورد</span>
     </div>
 
-    <div class="main-container statement-container">
+    <div class="main-container statement-container" id="pdf-wrapper">
         <div class="table-wrapper">
             <table id="printableStatementTable">
                 <thead>
                     <tr>
-                        <th>البيان</th>
-                        <th class="val-green">له (مديونية)</th>
-                        <th class="val-red">لنا (تسديد)</th>
+                        <th>البيان والتاريخ</th>
+                        <th>الملاحظات</th>
+                        <th class="val-red">له (مديونية علينا)</th>
+                        <th class="val-green">عليه (تسديد لنا)</th>
                     </tr>
                 </thead>
                 <tbody id="statementTableBody"></tbody>
@@ -113,7 +114,7 @@
 
 <!-- ======== شريط التحكم السفلي الموحد ======== -->
 <div class="unified-bottom-bar" onclick="event.stopPropagation()">
-    <button class="header-back-btn" onclick="goBackSmart(event)">
+    <button type="button" class="header-back-btn" onclick="goBackSmart(event)">
         <span class="arrow">⬅</span>
         <span class="text">BACK</span>
     </button>
@@ -122,13 +123,13 @@
         <div class="capsule" onclick="toggleDurationMenu(event)">
             📅 <span id="currentDurationLabelOutside">اخر 30 يوم</span>
             <div class="dropdown-menu" id="durationDropdownOutside">
-                <div class="dropdown-item" onclick="filterByDate('اليوم', 'today')">اليوم</div>
-                <div class="dropdown-item" onclick="filterByDate('أمس', 'yesterday')">أمس</div>
-                <div class="dropdown-item" onclick="filterByDate('اخر 7 ايام', '7days')">آخر 7 أيام</div>
-                <div class="dropdown-item" onclick="filterByDate('هذا الشهر', 'thisMonth')">هذا الشهر</div>
-                <div class="dropdown-item" onclick="filterByDate('اخر 30 يوم', '30days')">آخر 30 يوم</div>
-                <div class="dropdown-item" onclick="filterByDate('الشهر الماضى', 'lastMonth')">الشهر الماضي</div>
-                <div class="dropdown-item" onclick="filterByDate('مدى العمل', 'allTime')">مدى العمل (الكل)</div>
+                <div class="dropdown-item" onclick="filterByDate('اليوم', 'today', event)">اليوم</div>
+                <div class="dropdown-item" onclick="filterByDate('أمس', 'yesterday', event)">أمس</div>
+                <div class="dropdown-item" onclick="filterByDate('اخر 7 ايام', '7days', event)">آخر 7 أيام</div>
+                <div class="dropdown-item" onclick="filterByDate('هذا الشهر', 'thisMonth', event)">هذا الشهر</div>
+                <div class="dropdown-item" onclick="filterByDate('اخر 30 يوم', '30days', event)">آخر 30 يوم</div>
+                <div class="dropdown-item" onclick="filterByDate('الشهر الماضى', 'lastMonth', event)">الشهر الماضي</div>
+                <div class="dropdown-item" onclick="filterByDate('مدى العمل', 'allTime', event)">مدى العمل (الكل)</div>
                 <div class="dropdown-item" onclick="openCustomDateModal(event)">📅 تاريخ مخصص...</div>
             </div>
         </div>
