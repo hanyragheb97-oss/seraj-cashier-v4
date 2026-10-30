@@ -1589,13 +1589,8 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
                 }
             });
 
-// ترتيب خط الزمن بالتاريخ من الأقدم للأحدث مع إعطاء أولوية ذكية في نفس اللحظة
-timeline.sort((a, b) => {
-    if (a.date !== b.date) return a.date - b.date;
-    // لو الحركات في نفس الوقت: الفاتورة تنزل أولاً، ثم المديونية، ثم التسديد في الآخر ليصفي ما قبله
-    let weight = { 'invoice_event': 1, 'debt_event': 2, 'payment_event': 3 };
-    return (weight[a.type] || 9) - (weight[b.type] || 9);
-});
+            // ترتيب خط الزمن بالتاريخ من الأقدم للأحدث
+            timeline.sort((a, b) => a.date - b.date);
 
             // ==========================================
             // الخطوة 3: التشغيل الزمني الدقيق
@@ -1627,42 +1622,40 @@ timeline.sort((a, b) => {
                         deferredInvoicesQueue.push({ ref: ev.ref, rem: 0 });
                     }
                 } 
-else if (ev.type === 'payment_event') {
+                else if (ev.type === 'payment_event') {
                     let payAmt = ev.amount;
                     
-                    // 1. الدفع يهاجم الرصيد الأعمى أولاً ويقتله (لو العميل عليه مديونية فيه)
+                    // السداد يهاجم الرصيد الأعمى أولاً (لو العميل عليه مديونية فيه)
                     if (currentBalance > 0) {
                         if (payAmt >= currentBalance) {
                             payAmt -= currentBalance;
-                            currentBalance = 0; // الرصيد اتصفر تماماً
+                            currentBalance = 0;
                         } else {
                             currentBalance -= payAmt;
-                            payAmt = 0; // الفلوس خلصت جوا الرصيد
+                            payAmt = 0;
                         }
                     }
                     
-                    // 2. لو لسه متبقي فلوس (يعني الدفع كان أكبر من الرصيد)، تروح تصفي الفواتير
+                    // لو اتبقى سداد، يطفي الفواتير الآجلة بالترتيب
                     if (payAmt > 0) {
                         for (let i = 0; i < deferredInvoicesQueue.length; i++) {
                             if (payAmt <= 0) break;
                             let oi = deferredInvoicesQueue[i];
-                            
-                            // لازم نتأكد إن الفاتورة لسه عليها فلوس
                             if (oi.rem > 0) {
                                 if (payAmt >= oi.rem) {
-                                    payAmt -= oi.rem; // خصم قيمة الفاتورة من الفلوس اللي معانا
-                                    oi.rem = 0; // تصفير الفاتورة
+                                    payAmt -= oi.rem;
+                                    oi.rem = 0;
                                 } else {
-                                    oi.rem -= payAmt; // تقليل الفاتورة بالفلوس اللي باقية
-                                    payAmt = 0; // الفلوس خلصت
+                                    oi.rem -= payAmt;
+                                    payAmt = 0;
                                 }
                             }
                         }
                     }
                     
-                    // 3. لو العميل دافع أكتر من الرصيد ومن كل الفواتير مجتمعة (رصيد مقدم)
+                    // لو العميل سدد أكتر من كل اللي عليه، يتحول لرصيد مقدم له (سالب)
                     if (payAmt > 0) {
-                        currentBalance -= payAmt; // يتحول لسالب (العميل له فلوس)
+                        currentBalance -= payAmt;
                     }
                 }
             });
