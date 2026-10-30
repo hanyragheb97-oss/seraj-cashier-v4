@@ -1475,118 +1475,68 @@ function confirmInvoicePayment(e) {
 
 function saveTransaction(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
-
+    
     if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
         if (!window.Utils.preventDoubleClick(e.target)) return;
     }
 
     let c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
     if(!c) return SerajAlert("لم يتم تحديد عميل!");
-
+    
     let amount = Math.max(0, parseFloat(document.getElementById('transAmount').value) || 0);
     let notes = document.getElementById('transNotes').value.trim();
     let date = document.getElementById('transDate').value || new Date().toISOString().split('T')[0];
-    let treasuryKey = document.getElementById('transTreasurySelect').value;
+    let treasuryKey = document.getElementById('transTreasurySelect').value; 
     let txType = document.querySelector('input[name="transType"]:checked').value;
 
     if(amount <= 0) return SerajAlert("أدخل مبلغ صحيح!");
     if(!c.transactions) c.transactions = [];
 
-    let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
-        ? window.Utils.generateUniqueId('REC')
+    let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') 
+        ? window.Utils.generateUniqueId('REC') 
         : Date.now().toString();
-
+        
     let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
-    let allocatedInvoices = [];
 
-    let newTx = {
-        id: receiptId,
-        type: txType,
-        amount: amount,
-        notes: notes,
-        treasury: treasuryKey,
-        date: date,
-        _device: dName,
-        _lastModifiedBy: dName
+    // 🌟 السند الحر/العام لا يحتوي على تخصيص مباشر، التوزيع يتم بالكامل داخل المحرك db.js 🌟
+    let newTx = { 
+        id: receiptId, 
+        type: txType, 
+        amount: amount, 
+        notes: notes, 
+        treasury: treasuryKey, 
+        date: date, 
+        _device: dName, 
+        _lastModifiedBy: dName,
+        allocatedInvoices: [] // فارغ تماماً ليقوم الـ DB بحسابه
     };
 
+    c.lastActivityDate = date;
+    
+    // 1. إضافة السند لملف العميل وحفظ العميل فقط
+    c.transactions.push(newTx);
+    
     if(typeof DB !== 'undefined') {
-        let salesInvoices = DB.getSalesInvoices() || [];
-        let updatedInvoices = false;
-
-        if (txType === 'receipt') {
-            let remainingReceipt = amount;
-            let cNameClean = String(c.name || '').trim();
-            let cInvs = salesInvoices.filter(x => x && !x.isCanceled && x.type !== 'canceled' && !x.isDeleted && (String(x.customerId) === String(c.id) || String(x.customer || '').trim() === cNameClean) && (parseFloat(x.remaining) || 0) > 0 && x.type !== 'return' && x.type !== 'return_sale');
-            cInvs.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            let totalDeferred = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.remaining) || 0), 0);
-            let currentNetDebt = c.isNetDebt ? (c.netBalanceVal || 0) : -(c.netBalanceVal || 0);
-            let cashDebt = Math.max(0, currentNetDebt - totalDeferred);
-
-            if (cashDebt > 0) {
-                if (remainingReceipt >= cashDebt) remainingReceipt -= cashDebt;
-                else remainingReceipt = 0;
-            }
-
-            if (remainingReceipt > 0 && cInvs.length > 0) {
-                let appliedInvoicesText = '';
-
-                for (let i = 0; i < cInvs.length; i++) {
-                    if (remainingReceipt <= 0) break;
-                    let inv = cInvs[i];
-                    let rem = parseFloat(inv.remaining) || 0;
-
-                    if (rem > 0) {
-                        let deduction = Math.round(Math.min(rem, remainingReceipt) * 100) / 100;
-                        inv.paid = Math.round(((parseFloat(inv.paid) || 0) + deduction) * 100) / 100;
-                        inv.remaining = Math.round((rem - deduction) * 100) / 100;
-                        remainingReceipt = Math.round((remainingReceipt - deduction) * 100) / 100;
-
-                        allocatedInvoices.push({ id: inv.id, deducted: deduction });
-
-                        if (inv.remaining <= 0) inv.type = 'sales';
-
-                        let mainIdx = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
-                        if (mainIdx !== -1) salesInvoices[mainIdx] = inv;
-                        updatedInvoices = true;
-
-                        appliedInvoicesText += (appliedInvoicesText ? `، ${inv.id}` : `سداد فواتير: ${inv.id}`);
-                    }
-                }
-
-                if (appliedInvoicesText) {
-                    newTx.notes = (newTx.notes ? newTx.notes + ' ' : '') + appliedInvoicesText.trim();
-                }
-            }
-        }
-
-        newTx.allocatedInvoices = allocatedInvoices;
-        c.lastActivityDate = date;
-
-        c.transactions.push(newTx);
         DB.saveCustomers(customersDB);
 
-        if (updatedInvoices) {
-            DB.saveSalesInvoices(salesInvoices);
-        }
-
+        // 2. تسجيل حركة الخزينة مركزياً عبر المركز
         if (typeof DB.recordTreasuryTransaction === 'function') {
             DB.recordTreasuryTransaction({
-                id: String(receiptId),
+                id: String(receiptId), 
                 type: txType === 'receipt' ? 'customer_receipt' : 'customer_payment',
-                vault: treasuryKey,
-                amountAdd: txType === 'receipt' ? amount : 0,
+                vault: treasuryKey, 
+                amountAdd: txType === 'receipt' ? amount : 0, 
                 amountDeduct: txType === 'payment' ? amount : 0,
-                notes: `سند ${txType === 'receipt' ? 'تحصيل' : 'سحب'} رقم ${receiptId}: ${c.name.trim()} - ${newTx.notes}`,
-                date: date,
-                invoiceNo: String(receiptId),
-                _device: dName,
+                notes: `سند ${txType === 'receipt' ? 'تحصيل' : 'سحب'} رقم ${receiptId}: ${c.name.trim()} - ${newTx.notes}`, 
+                date: date, 
+                invoiceNo: String(receiptId), 
+                _device: dName, 
                 customerId: String(c.id),
                 customer: c.name.trim()
             });
         }
 
+        // 3. سحب البيانات بعد أن قام DB.js بالحسبة الذكية والتوزيع الصحيح
         customersDB = DB.getCustomers();
     }
 
@@ -1595,6 +1545,7 @@ function saveTransaction(e) {
         closeModals();
         const updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
         if (updatedCustomer) {
+            // تحديث الشاشة بناءً على حسابات الـ DB الجديدة
             updateAccountSummary(updatedCustomer);
             renderAccountTransactions(updatedCustomer);
         }
