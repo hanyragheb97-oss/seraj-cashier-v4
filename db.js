@@ -593,19 +593,6 @@ let localCollectionsCache = {};
 let renderTimers = {};
 let _bgSaveTimers = {};
 
-function _stripRuntimeFields(obj) {
-    if (!obj || typeof obj !== 'object') return obj;
-    let copy = { ...obj };
-    delete copy._lastModified;
-    delete copy.balance;
-    delete copy.calculatedBalance;
-    delete copy.netBalanceVal;
-    delete copy.isNetDebt;
-    delete copy.deferredInvoicesTotal;
-    delete copy.displayCurrentBalance;
-    delete copy.isCurrentBalDebt;
-    return copy;
-}
 
 function saveArrayToQueueSafely(colName, newArray) {
     if (!Array.isArray(newArray)) newArray = [];
@@ -616,7 +603,7 @@ function saveArrayToQueueSafely(colName, newArray) {
         
         if (!rawOldCache) {
             localStorage.setItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
-            let newest = getNewestItems(newArray, 25);
+            let newest = [...newArray].slice(0, 25);
             newest.forEach(item => addToSyncQueue(colName, item));
             emitSerajUpdate(colName, 'local');
             return;
@@ -695,12 +682,23 @@ function startSmartRadars() {
         }
     });
 
-    let voiceRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/voice_config');
+    let voiceRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/voice_studio_v4');
     voiceRef.off();
     voiceRef.on('value', snapshot => {
         if (snapshot.exists()) {
             let vCfg = snapshot.val();
-            if (vCfg.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings'), JSON.stringify(vCfg.settings));
+            if (vCfg.sales) {
+                if (vCfg.sales.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'sales'), JSON.stringify(vCfg.sales.settings));
+                if (vCfg.sales.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'sales'), JSON.stringify(vCfg.sales.pipeline));
+            }
+            if (vCfg.purchases) {
+                if (vCfg.purchases.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'purchases'), JSON.stringify(vCfg.purchases.settings));
+                if (vCfg.purchases.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'purchases'), JSON.stringify(vCfg.purchases.pipeline));
+            }
+            if (vCfg.inventory) {
+                if (vCfg.inventory.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'inventory'), JSON.stringify(vCfg.inventory.settings));
+                if (vCfg.inventory.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'inventory'), JSON.stringify(vCfg.inventory.pipeline));
+            }
             if (vCfg.units) localStorage.setItem(window.DB._getVoiceStorageKey('units'), JSON.stringify(vCfg.units));
             if (vCfg.dictionary) localStorage.setItem(window.DB._getVoiceStorageKey('dict'), JSON.stringify(vCfg.dictionary));
             if (typeof SmartVoice !== 'undefined') SmartVoice._invalidateShadowCache();
@@ -842,7 +840,7 @@ function removeLocalSingleItem(col, docId) {
 
 function saveAndRenderLocal(col, localArray) {
     if (col.includes('invoices') || col === 'treasury_moves') {
-        localArray.sort((a, b) => window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date) || String(b.id).localeCompare(String(a.id)));
+        localArray.sort((a, b) => window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date) || (Number(b.id) || 0) - (Number(a.id) || 0));
     }
     localStorage.setItem('seraj_' + col, JSON.stringify(localArray));
     localStorage.setItem('seraj_cloud_cache_' + col, JSON.stringify(localArray)); 
@@ -909,6 +907,9 @@ window.DB = {
 
                         localStorage.setItem('seraj_treasury_moves', JSON.stringify(safeArray(data.treasury_moves)));
                         localStorage.setItem('seraj_cloud_cache_treasury_moves', JSON.stringify(safeArray(data.treasury_moves)));
+
+                        localStorage.setItem('seraj_smart_notes', JSON.stringify(safeArray(data.smart_notes)));
+                        localStorage.setItem('seraj_cloud_cache_smart_notes', JSON.stringify(safeArray(data.smart_notes)));
 
                         if (data.vaults_v2) {
                             localStorage.setItem('seraj_vaults_v2', JSON.stringify(data.vaults_v2));
@@ -1458,6 +1459,7 @@ saveSuppliers: function(data) {
 },
 
 calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers = null) {
+    let invoicesNeedSave = false;
     let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
     let invoices = this.getSalesInvoices(true);
     let allMoves = this.getTreasuryMoves(false);
@@ -1560,11 +1562,19 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
             }
         }
 
-        // تحديث الفواتير الآجلة لتعرض في الجداول
+        // تحديث الفواتير الآجلة لتعرض في الجداول ولتُحفظ في قاعدة البيانات
         let actualDeferred = 0;
         openInvoices.forEach(oi => {
-            oi.invRef.calculatedRemaining = oi.currentRem; 
-            actualDeferred += oi.currentRem;
+            let roundedRem = Math.round(oi.currentRem * 100) / 100;
+            oi.invRef.calculatedRemaining = roundedRem;
+            
+            // التحديث الفعلي لحقل المتبقي في الفاتورة
+            let oldRem = parseFloat(oi.invRef.remaining) || 0;
+            if (Math.abs(oldRem - roundedRem) > 0.001) {
+                oi.invRef.remaining = roundedRem;
+                invoicesNeedSave = true;
+            }
+            actualDeferred += roundedRem;
         });
         
         actualDeferred = Math.round(actualDeferred * 100) / 100;
@@ -1581,60 +1591,17 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
         c.isCurrentBalDebt = currentBal > 0; 
     });
 
+    // حفظ فواتير المبيعات مركزياً في قاعدة البيانات إذا حدث أي إطفاء أو تعديل
+    if (invoicesNeedSave && typeof this.saveSalesInvoices === 'function') {
+        this.saveSalesInvoices(invoices);
+    }
+
     if (targetCustomerId !== null && targetCustomerId !== undefined) {
         return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
     }
     return customers;
 },
 
-getSuppliers: function(rawOnly = false) { 
-    let suppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
-    if (rawOnly) return suppliers;
-    return this.calculateSupplierBalances(null, suppliers);
-},
-
-saveSuppliers: function(data) { 
-    if (!Array.isArray(data)) return;
-    let dedup = this._deduplicateEntities(data, 'suppliers');
-
-    if (dedup.changed && dedup.idRedirectMap.size > 0) {
-        let purchases = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
-        let pChanged = false;
-        purchases.forEach(inv => {
-            if (inv && inv.supplierId && dedup.idRedirectMap.has(String(inv.supplierId))) {
-                inv.supplierId = dedup.idRedirectMap.get(String(inv.supplierId));
-                pChanged = true;
-            }
-        });
-        if (pChanged) this.savePurchaseInvoices(purchases);
-
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-        let mChanged = false;
-        moves.forEach(m => {
-            if (m && m.supplierId && dedup.idRedirectMap.has(String(m.supplierId))) {
-                m.supplierId = dedup.idRedirectMap.get(String(m.supplierId));
-                mChanged = true;
-            }
-        });
-        if (mChanged) this.saveTreasuryMoves(moves);
-    }
-
-    let dataToSave = dedup.cleaned.map(s => {
-        let temp = { ...s };
-        if (temp.name) temp.name = String(temp.name).trim();
-        delete temp.balance;
-        delete temp.calculatedBalance;
-        delete temp.netBalanceVal;
-        delete temp.isNetDebt;
-        delete temp.deferredInvoicesTotal;
-        delete temp.displayCurrentBalance;
-        delete temp.isCurrentBalDebt;
-        if (!temp._lastModified) temp._lastModified = Date.now();
-        return temp;
-    });
-    localStorage.setItem('seraj_suppliers', JSON.stringify(dataToSave)); 
-    saveArrayToQueueSafely('suppliers', dataToSave); 
-},
 
 calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers = null) {
     let suppliers = preloadedSuppliers || safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
@@ -1891,7 +1858,7 @@ _buildUnifiedStatement: function(entityId, isSupplier = false, duration = 'allTi
 
     allItems.forEach(item => {
         if (!item.date) { combined.push(item); return; }
-        let itemDate = new Date(item.date);
+        let itemDate = new Date(window.Utils.getSafeTime(item.date) || item.date);
         let includeInCurrent = false;
 
         if (duration === 'allTime') {
@@ -1934,7 +1901,7 @@ _buildUnifiedStatement: function(entityId, isSupplier = false, duration = 'allTi
     combined.sort((a, b) => {
         let dateDiff = window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date);
         if (dateDiff !== 0) return dateDiff;
-        return String(a.id).localeCompare(String(b.id));
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
     });
 
     let totalLeh = 0, totalAleih = 0;
@@ -1964,10 +1931,6 @@ getSupplierStatement: function(supplierId, duration = 'allTime', customStartDate
     return this._buildUnifiedStatement(supplierId, true, duration, customStartDate, customEndDate);
 },
 
-getSalesInvoices: function(includeCanceled = true) { 
-    let invs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []); 
-    return includeCanceled ? invs : invs.filter(inv => inv && !inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
-},
 
 getSalesInvoices: function(includeCanceled = true) { 
     let invs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []); 
