@@ -133,7 +133,8 @@
         <div class="bottom-capsules">
             <div class="capsule" onclick="toggleDurationMenu(event)">
                 📅 <span id="currentDurationLabelOutside">اليوم</span>
-                <div class="dropdown-menu" id="durationDropdownOutside">
+                                <div class="dropdown-menu" id="durationDropdownOutside">
+                    <div class="dropdown-menu-item" onclick="filterByDate('أحدث 50 فاتورة')">أحدث 50 فاتورة</div>
                     <div class="dropdown-menu-item" onclick="filterByDate('اليوم')">اليوم</div>
                     <div class="dropdown-menu-item" onclick="filterByDate('أمس')">أمس</div>
                     <div class="dropdown-menu-item" onclick="filterByDate('اخر 7 ايام')">اخر 7 ايام</div>
@@ -428,7 +429,7 @@
 
     let dateFilterRange = { type: 'all' }; 
     
-    function filterByDate(rangeLabel) {
+        function filterByDate(rangeLabel) {
         if (window.event && (window.event.type === 'click' || window.event.type === 'touchstart')) {
             window.event.stopPropagation();
         }
@@ -436,14 +437,35 @@
         closeAllMenus();
         document.getElementById('currentDurationLabelOutside').innerText = rangeLabel;
         const today = new Date();
-        const getStr = (d) => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+        const getStr = (d) => {
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        };
         
-        if(rangeLabel === 'مدى العمل' || rangeLabel === 'مدى العمل (الكل)') dateFilterRange = { type: 'all' };
+        if(rangeLabel === 'أحدث 50 فاتورة' || rangeLabel === 'الافتراضي') dateFilterRange = { type: 'latest50' };
+        else if(rangeLabel === 'مدى العمل' || rangeLabel === 'مدى العمل (الكل)') dateFilterRange = { type: 'all' };
         else if(rangeLabel === 'اليوم') dateFilterRange = { type: 'exact', value: getStr(today) };
-        else if(rangeLabel === 'أمس') { let y = new Date(today); y.setDate(y.getDate()-1); dateFilterRange = { type: 'exact', value: getStr(y) }; }
-        else if(rangeLabel === 'اخر 7 ايام') { let lastWeek = new Date(today); lastWeek.setDate(lastWeek.getDate()-7); dateFilterRange = { type: 'range', from: getStr(lastWeek), to: getStr(today) }; }
-        else if(rangeLabel === 'اخر 30 يوم') { let lastMonth = new Date(today); lastMonth.setDate(lastMonth.getDate()-30); dateFilterRange = { type: 'range', from: getStr(lastMonth), to: getStr(today) }; }
-        else if(rangeLabel === 'هذا الشهر') { let firstDay = new Date(today.getFullYear(), today.getMonth(), 1); dateFilterRange = { type: 'range', from: getStr(firstDay), to: getStr(today) }; }
+        else if(rangeLabel === 'أمس') { 
+            let y = new Date(today); 
+            y.setDate(y.getDate()-1); 
+            dateFilterRange = { type: 'exact', value: getStr(y) }; 
+        }
+        else if(rangeLabel === 'اخر 7 ايام') { 
+            let lastWeek = new Date(today); 
+            lastWeek.setDate(lastWeek.getDate()-7); 
+            dateFilterRange = { type: 'range', from: getStr(lastWeek), to: getStr(today) }; 
+        }
+        else if(rangeLabel === 'اخر 30 يوم') { 
+            let lastMonth = new Date(today); 
+            lastMonth.setDate(lastMonth.getDate()-30); 
+            dateFilterRange = { type: 'range', from: getStr(lastMonth), to: getStr(today) }; 
+        }
+        else if(rangeLabel === 'هذا الشهر') { 
+            let firstDay = new Date(today.getFullYear(), today.getMonth(), 1); 
+            dateFilterRange = { type: 'range', from: getStr(firstDay), to: getStr(today) }; 
+        }
         
         if (typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
     }
@@ -517,20 +539,25 @@
         return idStr;
     }
 
-    function getFilteredInvoices() {
+        function getFilteredInvoices() {
         const filterType = document.getElementById('invoiceTypeFilter').value;
         const searchQuery = document.getElementById('historySearchInput').value.trim().toLowerCase();
         const searchTypeRadio = document.querySelector('input[name="searchType"]:checked');
         const searchType = searchTypeRadio ? searchTypeRadio.value : 'customer';
         
+        // الترتيب الدقيق: الأحدث زمنياً أولاً، ثم الرقم الأكبر في حال تساوي الوقت (Tie-breaker)
         let sortedInvoices = [...invoicesDB].sort((a, b) => {
-            let timeA = a.timestamp || new Date(a.date || 0).getTime();
-            let timeB = b.timestamp || new Date(b.date || 0).getTime();
+            let timeA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
+            let timeB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
             if (timeB !== timeA) return timeB - timeA;
-            return (b.id || 0) - (a.id || 0);
+            
+            // معيار فاصل: الـ ID الأكبر (الأحدث) في الأعلى
+            let idA = parseInt(a.id) || 0;
+            let idB = parseInt(b.id) || 0;
+            return idB - idA;
         });
 
-        return sortedInvoices.filter(inv => {
+        let result = sortedInvoices.filter(inv => {
             if (!inv) return false;
             if (inv.isCanceled === true) return false;
 
@@ -558,12 +585,20 @@
                 if (searchType === 'date' && !invDate.includes(searchQuery)) return false;
             }
 
+            // فلاتر التاريخ الدقيقة (النصية الصريحة)
             let cleanInvDate = (inv.date || '').split('T')[0];
             if (dateFilterRange.type === 'exact' && cleanInvDate !== dateFilterRange.value) return false;
             if (dateFilterRange.type === 'range' && (cleanInvDate < dateFilterRange.from || cleanInvDate > dateFilterRange.to)) return false;
 
             return true;
         });
+
+        // عرض أحدث 50 فاتورة فقط في الوضع الافتراضي (latest50) ولم يتم إدخال بحث
+        if (dateFilterRange.type === 'latest50' && searchQuery === '') {
+            return result.slice(0, 50);
+        }
+        
+        return result;
     }
 
     window.renderInvoicesHistory = renderInvoicesHistory;
@@ -1818,7 +1853,8 @@
             if(cLabel) cLabel.innerText = 'فواتير آجلة (غير مسددة)';
         }
         
-        filterByDate('اليوم'); 
+                // الوضع الافتراضي: عرض أحدث 50 فاتورة لتسريع أداء الصفحة
+        filterByDate('أحدث 50 فاتورة'); 
     };
 </script>
 <script>

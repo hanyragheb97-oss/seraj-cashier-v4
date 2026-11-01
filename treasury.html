@@ -340,7 +340,7 @@
                 <span class="text">BACK</span>
             </button>
             <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Outside')">
-                <span id="currentDurationLabelOutside">اخر 30 يوم</span>
+                <span id="currentDurationLabelOutside">مدى العمل</span>
                 <span>▼</span>
                 <div class="dropdown-menu" id="durationDropdownOutside">
                     <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
@@ -432,7 +432,7 @@
                 <span class="text">BACK</span>
             </button>
             <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Inside')">
-                <span id="currentDurationLabelInside">اخر 30 يوم</span>
+                <span id="currentDurationLabelInside">مدى العمل</span>
                 <span>▼</span>
                 <div class="dropdown-menu" id="durationDropdownInside">
                     <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
@@ -508,7 +508,7 @@
                 <span class="text">BACK</span>
             </button>
             <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Form')">
-                <span id="currentDurationLabelForm">اخر 30 يوم</span>
+                <span id="currentDurationLabelForm">مدى العمل</span>
                 <span>▼</span>
                 <div class="dropdown-menu" id="durationDropdownForm">
                     <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
@@ -565,7 +565,7 @@
                 <span class="text">BACK</span>
             </button>
             <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'List')">
-                <span id="currentDurationLabelList">اخر 30 يوم</span>
+                <span id="currentDurationLabelList">مدى العمل</span>
                 <span>▼</span>
                 <div class="dropdown-menu" id="durationDropdownList">
                     <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
@@ -729,7 +729,7 @@ let vaultsDB = {};
         let currentExpVault = 'main';
         let currentMovementFilter = 'all';
         let currentVaultFilter = 'all';
-        let currentDurationFilter = '30days';
+        let currentDurationFilter = 'allTime';
         let customStartDate = '';
         let customEndDate = '';
         let selectedMovementId = null;
@@ -739,23 +739,36 @@ let vaultsDB = {};
         let renderLimitExpenses = 50;
         let searchDebounceTimeout;
 
-       // دالة الحماية للتواريخ
-function getSafeTime(dateString) {
-    if (!dateString) return 0;
-    let d = new Date(dateString).getTime();
-    if (!isNaN(d)) return d;
-    // لو التاريخ متسجل DD/MM/YYYY
-    if (dateString.includes('/')) {
-        let p = dateString.split('/');
-        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+       // ==========================================
+// دالة الحماية للتواريخ (المحسنة للتوافق مع db.js وضمان المطابقة المحلية)
+// ==========================================
+function getSafeTime(dateVal) {
+    if (!dateVal) return 0;
+    if (typeof dateVal === 'number') return dateVal;
+    let s = String(dateVal).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        let p = s.split('-');
+        return new Date(p[0], p[1]-1, p[2], 12, 0, 0).getTime();
     }
-    // لو متسجل DD-MM-YYYY
-    if (dateString.includes('-') && dateString.split('-')[0].length <= 2) {
-        let p = dateString.split('-');
-        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
+    let d = new Date(s);
+    if (isNaN(d.getTime())) {
+        let parts = s.match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/);
+        if (parts) {
+            let p1 = parseInt(parts[1]), p2 = parseInt(parts[2]), p3 = parseInt(parts[3]);
+            if (p1 > 1000) d = new Date(p1, p2 - 1, p3, 12, 0, 0); 
+            else if (p3 > 1000) d = new Date(p3, p2 - 1, p1, 12, 0, 0); 
+        }
     }
-    return 0;
-} 
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function getLocalDateStr(dateVal) {
+    let t = getSafeTime(dateVal);
+    if (!t) return "";
+    let d = new Date(t);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+ 
 
 // إغلاق أي قائمة مفتوحة وتحديث البيانات لحظياً
 document.addEventListener('click', function(e) {
@@ -1048,23 +1061,7 @@ function updateTreasuryUI() {
             }, 150);
         }
 
-// ==========================================
-// دالة الحماية للتواريخ
-// ==========================================
-function getSafeTime(dateString) {
-    if (!dateString) return 0;
-    let d = new Date(dateString).getTime();
-    if (!isNaN(d)) return d;
-    if (dateString.includes('/')) {
-        let p = dateString.split('/');
-        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
-    }
-    if (dateString.includes('-') && dateString.split('-')[0].length <= 2) {
-        let p = dateString.split('-');
-        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
-    }
-    return 0;
-}
+
 
 // ==========================================
 // 1. دالة عرض حركات الخزينة الشاملة
@@ -1081,6 +1078,14 @@ function renderMovementsTable() {
 
     let list = [...treasuryMovements];
 
+    // ترتيب الحركات بالأحدث أولاً بناءً على التاريخ والمعرف
+    list.sort((a, b) => {
+        let timeA = getSafeTime(a.date || a.timestamp);
+        let timeB = getSafeTime(b.date || b.timestamp);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.id || 0) - (a.id || 0);
+    });
+
     if(currentMovementFilter !== 'all') {
         if(currentMovementFilter === 'customers') {
             list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
@@ -1095,50 +1100,62 @@ function renderMovementsTable() {
         list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
     }
 
-// دالة مساعدة لاستخراج التاريخ المحلي (YYYY-MM-DD) لتجنب فروق الساعات
-const getLocalStr = (d = new Date()) => {
-        let month = '' + (d.getMonth() + 1), day = '' + d.getDate(), year = d.getFullYear();
-        if (month.length < 2) month = '0' + month;
-        if (day.length < 2) day = '0' + day;
-        return [year, month, day].join('-');
-    };
-
-    const todayStr = getLocalStr();
-    let yDate = new Date(); yDate.setDate(yDate.getDate() - 1);
-    const yesterdayStr = getLocalStr(yDate);
+    const now = new Date();
+    const todayStr = getLocalDateStr(now);
+    let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yestStr = getLocalDateStr(yestDate);
 
     list = list.filter(m => {
-        let mDate = m.date || todayStr;
-        let itemTime = getSafeTime(mDate);
-        
-        if(currentDurationFilter === 'today') return mDate === todayStr;
-        if(currentDurationFilter === 'yesterday') return mDate === yesterdayStr;
-        if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); return itemTime >= getSafeTime(getLocalStr(d)); }
-        if(currentDurationFilter === 'thisMonth') return mDate.slice(0,7) === todayStr.slice(0,7);
-        if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); return itemTime >= getSafeTime(getLocalStr(d)); }
-        if(currentDurationFilter === 'lastMonth') {
-            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-            return mDate.slice(0,7) === getLocalStr(lastM).slice(0,7);
+        let itemTime = getSafeTime(m.date || m.timestamp);
+        let itemDateStr = getLocalDateStr(itemTime);
+
+        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+        if(currentDurationFilter === '7days') { 
+            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime(); 
         }
-        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) return itemTime >= getSafeTime(customStartDate) && itemTime <= getSafeTime(customEndDate);
+        if(currentDurationFilter === 'thisMonth') {
+            let d = new Date(itemTime);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        if(currentDurationFilter === '30days') {
+            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime();
+        }
+        if(currentDurationFilter === 'lastMonth') {
+            let d = new Date(itemTime);
+            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+        }
+        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+            let sTime = getSafeTime(customStartDate);
+            let eTime = getSafeTime(customEndDate) + 86399999;
+            return itemTime >= sTime && itemTime <= eTime;
+        }
         return true;
     });
 
-    let totalAdd = 0, totalDeduct = 0;
+    // 1. حساب الإجماليات على 100% من البيانات
+    let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
+    let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
 
+    document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+    document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+    let net = totalAdd - totalDeduct;
+    let netEl = document.getElementById('sumNetVal');
+    netEl.innerText = net.toFixed(2);
+    netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+
+    tbody.innerHTML = '';
     if(list.length === 0) {
         tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
-        document.getElementById('sumAddVal').innerText = "0.00";
-        document.getElementById('sumDeductVal').innerText = "0.00";
-        document.getElementById('sumNetVal').innerText = "0.00";
         return;
     }
 
-    // ترتيب مطلق بالأحدثية (يضع أحدث حركة تم تسجيلها في الأعلى دائماً)
-    list.sort((a, b) => (b.id || 0) - (a.id || 0));
-
     // 2. تطبيق الحد الأقصى (Render Limit 50) والحقن المجمع (DocumentFragment)
     const fragment = document.createDocumentFragment();
+
     let paginatedList = list.slice(0, renderLimitMovements);
 
     paginatedList.forEach(m => {
@@ -1196,6 +1213,14 @@ function renderExpensesList() {
 
     let expenses = treasuryMovements.filter(m => m.type === 'expenses');
 
+    // ترتيب المصروفات بالأحدث أولاً
+    expenses.sort((a, b) => {
+        let timeA = getSafeTime(a.date || a.timestamp);
+        let timeB = getSafeTime(b.date || b.timestamp);
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.id || 0) - (a.id || 0);
+    });
+
     let selectedVault = document.getElementById('expVaultFilter');
     if(selectedVault && selectedVault.value !== 'all') {
         expenses = expenses.filter(e => (e.vault || 'main') === selectedVault.value);
@@ -1206,48 +1231,55 @@ function renderExpensesList() {
 
     if(query) {
         expenses = expenses.filter(e => {
-            if(searchMode === 'date') return e.date === query;
+            if(searchMode === 'date') return getLocalDateStr(e.date) === query;
             else return e.notes.toLowerCase().includes(query);
         });
     }
 
-    const getLocalStr = (d = new Date()) => {
-        let month = '' + (d.getMonth() + 1), day = '' + d.getDate(), year = d.getFullYear();
-        if (month.length < 2) month = '0' + month;
-        if (day.length < 2) day = '0' + day;
-        return [year, month, day].join('-');
-    };
-
-    const todayStr = getLocalStr();
-    let yDate = new Date(); yDate.setDate(yDate.getDate() - 1);
-    const yesterdayStr = getLocalStr(yDate);
+    const now = new Date();
+    const todayStr = getLocalDateStr(now);
+    let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yestStr = getLocalDateStr(yestDate);
 
     expenses = expenses.filter(m => {
-        let mDate = m.date || todayStr;
-        let itemTime = getSafeTime(mDate);
-        
-        if(currentDurationFilter === 'today') return mDate === todayStr;
-        if(currentDurationFilter === 'yesterday') return mDate === yesterdayStr;
-        if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); return itemTime >= getSafeTime(getLocalStr(d)); }
-        if(currentDurationFilter === 'thisMonth') return mDate.slice(0,7) === todayStr.slice(0,7);
-        if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); return itemTime >= getSafeTime(getLocalStr(d)); }
-        if(currentDurationFilter === 'lastMonth') {
-            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-            return mDate.slice(0,7) === getLocalStr(lastM).slice(0,7);
+        let itemTime = getSafeTime(m.date || m.timestamp);
+        let itemDateStr = getLocalDateStr(itemTime);
+
+        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+        if(currentDurationFilter === '7days') { 
+            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime(); 
         }
-        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) return itemTime >= getSafeTime(customStartDate) && itemTime <= getSafeTime(customEndDate);
+        if(currentDurationFilter === 'thisMonth') {
+            let d = new Date(itemTime);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        if(currentDurationFilter === '30days') {
+            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime();
+        }
+        if(currentDurationFilter === 'lastMonth') {
+            let d = new Date(itemTime);
+            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+        }
+        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+            let sTime = getSafeTime(customStartDate);
+            let eTime = getSafeTime(customEndDate) + 86399999;
+            return itemTime >= sTime && itemTime <= eTime;
+        }
         return true;
     });
 
+    container.innerHTML = '';
     if(expenses.length === 0) {
         container.innerHTML = `<div style="text-align:center; padding:30px; background:var(--card-bg); border-radius:16px; border:2px solid var(--neon-border);">لا توجد مصروفات مطابقة للبحث</div>`;
         return;
     }
 
-    // ترتيب مطلق للمصروفات بالأحدثية
-    expenses.sort((a, b) => (b.id || 0) - (a.id || 0));
-
     const fragment = document.createDocumentFragment();
+
     let paginatedExpenses = expenses.slice(0, renderLimitExpenses);
 
     paginatedExpenses.forEach(exp => {
@@ -1469,89 +1501,68 @@ function renderExpensesList() {
             }
         }
 
-// دالة مساعدة لتوليد التاريخ المحلي لمصر (بتعالج مشكلة اختفاء اليوم والأمس)
-function getLocalDateStr(d = new Date()) {
-            let month = '' + (d.getMonth() + 1), day = '' + d.getDate(), year = d.getFullYear();
-            if (month.length < 2) month = '0' + month;
-            if (day.length < 2) day = '0' + day;
-            return [year, month, day].join('-');
-        }
-
-// دالة مساعدة لتوليد التاريخ المحلي لمصر (بتعالج مشكلة اختفاء اليوم والأمس)
-function getLocalDateStr(d = new Date()) {
-            let month = '' + (d.getMonth() + 1), day = '' + d.getDate(), year = d.getFullYear();
-            if (month.length < 2) month = '0' + month;
-            if (day.length < 2) day = '0' + day;
-            return [year, month, day].join('-');
-        }
-
-        function printThermalStatement() { 
+                function printThermalStatement() { 
             closeAllMenus(); 
-            let list = [...treasuryMovements];
-            let activeView = document.querySelector('.active-view') ? document.querySelector('.active-view').id : 'treasury-main-view';
-            let reportTitle = "تقرير الخزينة والمصروفات";
+            let list = [...treasuryMovements], activeView = document.querySelector('.active-view').id, reportTitle = "تقرير حركة الخزينة والمصروفات";
             
-            // 1. فلترة الأنواع (مضاف إليها فواتير الشراء)
+            const now = new Date();
+            const todayStr = getLocalDateStr(now);
+            let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+            const yestStr = getLocalDateStr(yestDate);
+
             if(activeView === 'treasury-expense-list-view' || activeView === 'treasury-expense-form-view') {
-                list = list.filter(m => m.type === 'expenses'); 
-                reportTitle = "تقرير المصروفات النثرية";
+                list = list.filter(m => m.type === 'expenses'); reportTitle = "تقرير المصروفات النثرية";
             } else {
-                if(currentMovementFilter !== 'all') {
-                    if(currentMovementFilter === 'customers') {
-                        list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
-                    } else if (currentMovementFilter === 'suppliers') {
-                        list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
-                    } else if (currentMovementFilter === 'purchase') {
-                        list = list.filter(m => m.type === 'purchase' || m.type === 'purchases' || m.type === 'purchase_return');
-                    } else {
-                        list = list.filter(m => m.type === currentMovementFilter);
-                    }
-                }
+                if(currentMovementFilter !== 'all') list = list.filter(m => m.type === currentMovementFilter);
                 if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
             }
 
-            // 2. فلترة التواريخ (معدلة بالتوقيت المحلي)
-            const todayStr = getLocalDateStr();
-            let y = new Date(); y.setDate(y.getDate()-1);
-            const yesterdayStr = getLocalDateStr(y);
-
             list = list.filter(m => {
-                let mDate = m.date || todayStr;
-                let itemTime = getSafeTime(mDate);
-                
-                if(currentDurationFilter === 'today') return mDate === todayStr;
-                if(currentDurationFilter === 'yesterday') return mDate === yesterdayStr;
-                if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); return itemTime >= getSafeTime(getLocalDateStr(d)); }
-                if(currentDurationFilter === 'thisMonth') return mDate.slice(0,7) === todayStr.slice(0,7);
-                if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); return itemTime >= getSafeTime(getLocalDateStr(d)); }
-                if(currentDurationFilter === 'lastMonth') {
-                    let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-                    return mDate.slice(0,7) === getLocalDateStr(lastM).slice(0,7);
+                let itemTime = getSafeTime(m.date || m.timestamp);
+                let itemDateStr = getLocalDateStr(itemTime);
+
+                if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+                if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+                if(currentDurationFilter === '7days') { 
+                    let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime(); 
                 }
-                if(currentDurationFilter === 'custom' && customStartDate && customEndDate) return itemTime >= getSafeTime(customStartDate) && itemTime <= getSafeTime(customEndDate);
+                if(currentDurationFilter === 'thisMonth') {
+                    let d = new Date(itemTime);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }
+                if(currentDurationFilter === '30days') {
+                    let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime();
+                }
+                if(currentDurationFilter === 'lastMonth') {
+                    let d = new Date(itemTime);
+                    let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+                    return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+                }
+                if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+                    let sTime = getSafeTime(customStartDate);
+                    let eTime = getSafeTime(customEndDate) + 86399999;
+                    return itemTime >= sTime && itemTime <= eTime;
+                }
                 return true;
             });
 
-            // 3. ترتيب أحدثية مطلق (يضع أحدث حركة فوق دائماً بناءً على رقم الـ ID الذي يمثل التوقيت الفعلي)
-            list.sort((a, b) => (b.id || 0) - (a.id || 0));
+            // ترتيب للطباعة: الأحدث أولاً
+            list.sort((a, b) => getSafeTime(b.date || b.timestamp) - getSafeTime(a.date || a.timestamp));
 
-            // تجهيز الطباعة
-            document.getElementById('printDate').innerText = `التاريخ: ${todayStr}`;
+            document.getElementById('printDate').innerText = `التاريخ: ${new Date().toISOString().slice(0,10)}`;
+
             document.querySelector('#thermalPrintArea div:nth-child(2)').innerText = reportTitle;
 
             let itemsHtml = '', tAdd = 0, tDed = 0;
             list.forEach(m => {
-                tAdd += (parseFloat(m.amountAdd) || 0); tDed += (parseFloat(m.amountDeduct) || 0);
-                
-                // سحب رقم فاتورة الشراء لو موجود عشان يظهر في الملاحظات
-                let invoiceNum = m.invoiceNo || m.purchaseId || m.billId || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
-                let invNoStr = invoiceNum ? ` (#${invoiceNum})` : '';
-
+                tAdd += (m.amountAdd || 0); tDed += (m.amountDeduct || 0);
                 itemsHtml += `<div style="margin-bottom:8px; border-bottom:1px dotted #ccc; padding-bottom:4px;">
-                    <div>${m.notes}${invNoStr}</div>
+                    <div>${m.notes}</div>
                     <div style="display:flex; justify-content:space-between; font-size:11px;">
-                        <span>إضافة: ${(parseFloat(m.amountAdd)||0).toFixed(2)}</span>
-                        <span>خصم: ${(parseFloat(m.amountDeduct)||0).toFixed(2)}</span>
+                        <span>إضافة: ${(m.amountAdd||0).toFixed(2)}</span>
+                        <span>خصم: ${(m.amountDeduct||0).toFixed(2)}</span>
                     </div>
                 </div>`;
             });
@@ -1562,15 +1573,14 @@ function getLocalDateStr(d = new Date()) {
 
         function handlePdfMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات PDF"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; window.print(); }; document.getElementById('ioModal').style.display = 'flex'; }
         function handleExcelMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات Excel"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; exportExcel(); }; document.getElementById('ioModal').style.display = 'flex'; }
-        
         async function exportExcel() {
-            if(treasuryMovements.length === 0) return await SerajAlert("لا توجد بيانات لتصديرها!");
-            if(typeof exportToExcel === 'function') {
-                exportToExcel(treasuryMovements, "تقرير_حركة_الخزينة");
-            } else {
-                await SerajAlert("ملف print_manager.js غير متصل أو الدالة غير موجودة!");
-            }
-        }
+    if(treasuryMovements.length === 0) return await SerajAlert("لا توجد بيانات لتصديرها!");
+    if(typeof exportToExcel === 'function') {
+        exportToExcel(treasuryMovements, "تقرير_حركة_الخزينة");
+    } else {
+        await SerajAlert("ملف print_manager.js غير متصل أو الدالة غير موجودة!");
+    }
+}
 
         window.onload = () => {
             applySavedTheme();
