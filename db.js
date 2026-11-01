@@ -1462,6 +1462,7 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
     let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
     let invoices = this.getSalesInvoices(true);
     let allMoves = this.getTreasuryMoves(false);
+    let invoicesNeedSave = false;
 
     const getDayStartMs = (dateVal, fallbackTs) => {
         let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
@@ -1571,11 +1572,14 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
         timelineEvents.forEach(ev => {
             if (ev.kind === 'invoice') {
                 let inv = ev.data;
+                if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
+                    inv.initialRemaining = parseFloat(inv.remaining) || 0;
+                }
                 let totalVal = parseFloat(inv.total) || 0;
                 let discVal = parseFloat(inv.discount) || 0;
                 let paidVal = parseFloat(inv.paid) || 0;
-                let remVal = parseFloat(inv.remaining) || 0;
-                let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                let origRemVal = (inv.initialRemaining !== undefined) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
+                let req = (Math.abs((paidVal + origRemVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
                 if (req < 0) req = 0;
 
                 let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
@@ -1589,14 +1593,13 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
                     cCredit += checkoutPaid;
                     let postCheckoutRem = req - checkoutPaid;
                     if (postCheckoutRem > 0) {
+                        let invEntry = { invRef: inv, currentRem: postCheckoutRem };
+                        openInvoices.push(invEntry);
                         // إذا كان للعميل رصيد دائن سابق (له)، يخصم من الفاتورة الجديدة تلقائياً
                         if (currentBal < 0) {
-                            let useCredit = Math.min(-currentBal, postCheckoutRem);
+                            let useCredit = Math.min(-currentBal, invEntry.currentRem);
                             currentBal += useCredit;
-                            postCheckoutRem -= useCredit;
-                        }
-                        if (postCheckoutRem > 0) {
-                            openInvoices.push({ invRef: inv, currentRem: postCheckoutRem });
+                            invEntry.currentRem -= useCredit;
                         }
                     } else if (postCheckoutRem < 0) {
                         applyPaymentReduction(Math.abs(postCheckoutRem));
@@ -1630,10 +1633,18 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
 
         let netDebt = Math.round((cDebit - cCredit) * 100) / 100;
 
+        // تحديث الفواتير الآجلة في الذاكرة وحفظ المتبقي الجديد داخل الفاتورة ليظهر في الجدول السفلي
         let actualDeferred = 0;
         openInvoices.forEach(oi => {
             let roundedRem = Math.round(oi.currentRem * 100) / 100;
             oi.invRef.calculatedRemaining = roundedRem;
+
+            let oldRem = parseFloat(oi.invRef.remaining) || 0;
+            if (Math.abs(oldRem - roundedRem) > 0.001) {
+                oi.invRef.remaining = roundedRem;
+                invoicesNeedSave = true;
+            }
+
             actualDeferred += roundedRem;
         });
 
@@ -1648,6 +1659,10 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
         c.displayCurrentBalance = Math.abs(currentBal); 
         c.isCurrentBalDebt = currentBal > 0; 
     });
+
+    if (invoicesNeedSave && typeof this.saveSalesInvoices === 'function') {
+        this.saveSalesInvoices(invoices);
+    }
 
     if (targetCustomerId !== null && targetCustomerId !== undefined) {
         return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
@@ -1769,11 +1784,14 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
         timelineEvents.forEach(ev => {
             if (ev.kind === 'invoice') {
                 let inv = ev.data;
+                if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
+                    inv.initialRemaining = parseFloat(inv.remaining) || 0;
+                }
                 let totalVal = parseFloat(inv.total) || 0;
                 let discVal = parseFloat(inv.discount) || 0;
                 let paidVal = parseFloat(inv.paid) || 0;
-                let remVal = parseFloat(inv.remaining) || 0;
-                let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                let origRemVal = (inv.initialRemaining !== undefined) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
+                let req = (Math.abs((paidVal + origRemVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
                 if (req < 0) req = 0;
 
                 let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
@@ -1787,13 +1805,12 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
                     sTotalPaid += checkoutPaid;
                     let postCheckoutRem = req - checkoutPaid;
                     if (postCheckoutRem > 0) {
+                        let invEntry = { invRef: inv, currentRem: postCheckoutRem };
+                        openInvoices.push(invEntry);
                         if (currentBal < 0) {
-                            let useCredit = Math.min(-currentBal, postCheckoutRem);
+                            let useCredit = Math.min(-currentBal, invEntry.currentRem);
                             currentBal += useCredit;
-                            postCheckoutRem -= useCredit;
-                        }
-                        if (postCheckoutRem > 0) {
-                            openInvoices.push({ invRef: inv, currentRem: postCheckoutRem });
+                            invEntry.currentRem -= useCredit;
                         }
                     } else if (postCheckoutRem < 0) {
                         applySupplierPaymentReduction(Math.abs(postCheckoutRem));
