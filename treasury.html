@@ -273,21 +273,20 @@
     <!-- الشاشة 1: لوحة الخزينة الرئيسية -->
     <div id="treasury-main-view" class="view-section">
         <div class="header">
-            <span class="header-title-left">الخزينة</span>
-            <button class="header-action-btn" onclick="openMovementsWithVault(currentSelectedVault)">الحركة 📋</button>
+            <span>الخزينة</span>
         </div>
 
         <div class="treasury-container">
             <div class="vault-cards-row">
-                <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main')">
+                <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main', true)">
                     <div class="v-title">الرئيسية (كاش)</div>
                     <div class="v-val" id="vaultMainBal">0.00</div>
                 </div>
-                <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta')">
+                <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta', true)">
                     <div class="v-title">إنستا (InstaPay)</div>
                     <div class="v-val" id="vaultInstaBal">0.00</div>
                 </div>
-                <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet')">
+                <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet', true)">
                     <div class="v-title">المحفظة الإلكترونية</div>
                     <div class="v-val" id="vaultWalletBal">0.00</div>
                 </div>
@@ -971,9 +970,23 @@ function updateTreasuryUI() {
         }
 
         // ==========================================
-        // دوال الاختيار وتغيير الخزائن
+        // دوال الاختيار وتغيير الخزائن (مع دعم الضغطتين السريعتين للدخول للحركة)
         // ==========================================
-        function selectVault(vaultKey) {
+        let lastVaultTapTime = 0;
+        let lastVaultTapKey = '';
+
+        function selectVault(vaultKey, isUserClick = false) {
+            if (isUserClick) {
+                let now = Date.now();
+                if (lastVaultTapKey === vaultKey && (now - lastVaultTapTime) < 350) {
+                    lastVaultTapTime = 0;
+                    openMovementsWithVault(vaultKey);
+                    return;
+                }
+                lastVaultTapTime = now;
+                lastVaultTapKey = vaultKey;
+            }
+
             currentSelectedVault = vaultKey;
             document.querySelectorAll('#treasury-main-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
             if(vaultKey === 'main') document.getElementById('cardVaultMain').classList.add('active-vault');
