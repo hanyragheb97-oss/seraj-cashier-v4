@@ -1459,7 +1459,6 @@ saveSuppliers: function(data) {
 },
 
 calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers = null) {
-    let invoicesNeedSave = false;
     let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
     let invoices = this.getSalesInvoices(true);
     let allMoves = this.getTreasuryMoves(false);
@@ -1562,19 +1561,11 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
             }
         }
 
-        // تحديث الفواتير الآجلة لتعرض في الجداول ولتُحفظ في قاعدة البيانات
+        // تحديث الفواتير الآجلة لتعرض في الجداول
         let actualDeferred = 0;
         openInvoices.forEach(oi => {
-            let roundedRem = Math.round(oi.currentRem * 100) / 100;
-            oi.invRef.calculatedRemaining = roundedRem;
-            
-            // التحديث الفعلي لحقل المتبقي في الفاتورة
-            let oldRem = parseFloat(oi.invRef.remaining) || 0;
-            if (Math.abs(oldRem - roundedRem) > 0.001) {
-                oi.invRef.remaining = roundedRem;
-                invoicesNeedSave = true;
-            }
-            actualDeferred += roundedRem;
+            oi.invRef.calculatedRemaining = oi.currentRem; 
+            actualDeferred += oi.currentRem;
         });
         
         actualDeferred = Math.round(actualDeferred * 100) / 100;
@@ -1590,11 +1581,6 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
         c.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
         c.isCurrentBalDebt = currentBal > 0; 
     });
-
-    // حفظ فواتير المبيعات مركزياً في قاعدة البيانات إذا حدث أي إطفاء أو تعديل
-    if (invoicesNeedSave && typeof this.saveSalesInvoices === 'function') {
-        this.saveSalesInvoices(invoices);
-    }
 
     if (targetCustomerId !== null && targetCustomerId !== undefined) {
         return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
