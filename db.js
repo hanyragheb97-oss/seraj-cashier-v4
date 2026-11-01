@@ -593,19 +593,6 @@ let localCollectionsCache = {};
 let renderTimers = {};
 let _bgSaveTimers = {};
 
-function _stripRuntimeFields(obj) {
-    if (!obj || typeof obj !== 'object') return obj;
-    let copy = { ...obj };
-    delete copy._lastModified;
-    delete copy.balance;
-    delete copy.calculatedBalance;
-    delete copy.netBalanceVal;
-    delete copy.isNetDebt;
-    delete copy.deferredInvoicesTotal;
-    delete copy.displayCurrentBalance;
-    delete copy.isCurrentBalDebt;
-    return copy;
-}
 
 function saveArrayToQueueSafely(colName, newArray) {
     if (!Array.isArray(newArray)) newArray = [];
@@ -616,7 +603,7 @@ function saveArrayToQueueSafely(colName, newArray) {
         
         if (!rawOldCache) {
             localStorage.setItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
-            let newest = getNewestItems(newArray, 25);
+            let newest = [...newArray].slice(0, 25);
             newest.forEach(item => addToSyncQueue(colName, item));
             emitSerajUpdate(colName, 'local');
             return;
@@ -695,12 +682,23 @@ function startSmartRadars() {
         }
     });
 
-    let voiceRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/voice_config');
+    let voiceRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/voice_studio_v4');
     voiceRef.off();
     voiceRef.on('value', snapshot => {
         if (snapshot.exists()) {
             let vCfg = snapshot.val();
-            if (vCfg.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings'), JSON.stringify(vCfg.settings));
+            if (vCfg.sales) {
+                if (vCfg.sales.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'sales'), JSON.stringify(vCfg.sales.settings));
+                if (vCfg.sales.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'sales'), JSON.stringify(vCfg.sales.pipeline));
+            }
+            if (vCfg.purchases) {
+                if (vCfg.purchases.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'purchases'), JSON.stringify(vCfg.purchases.settings));
+                if (vCfg.purchases.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'purchases'), JSON.stringify(vCfg.purchases.pipeline));
+            }
+            if (vCfg.inventory) {
+                if (vCfg.inventory.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'inventory'), JSON.stringify(vCfg.inventory.settings));
+                if (vCfg.inventory.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'inventory'), JSON.stringify(vCfg.inventory.pipeline));
+            }
             if (vCfg.units) localStorage.setItem(window.DB._getVoiceStorageKey('units'), JSON.stringify(vCfg.units));
             if (vCfg.dictionary) localStorage.setItem(window.DB._getVoiceStorageKey('dict'), JSON.stringify(vCfg.dictionary));
             if (typeof SmartVoice !== 'undefined') SmartVoice._invalidateShadowCache();
@@ -842,7 +840,7 @@ function removeLocalSingleItem(col, docId) {
 
 function saveAndRenderLocal(col, localArray) {
     if (col.includes('invoices') || col === 'treasury_moves') {
-        localArray.sort((a, b) => window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date) || String(b.id).localeCompare(String(a.id)));
+        localArray.sort((a, b) => window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date) || (Number(b.id) || 0) - (Number(a.id) || 0));
     }
     localStorage.setItem('seraj_' + col, JSON.stringify(localArray));
     localStorage.setItem('seraj_cloud_cache_' + col, JSON.stringify(localArray)); 
@@ -909,6 +907,9 @@ window.DB = {
 
                         localStorage.setItem('seraj_treasury_moves', JSON.stringify(safeArray(data.treasury_moves)));
                         localStorage.setItem('seraj_cloud_cache_treasury_moves', JSON.stringify(safeArray(data.treasury_moves)));
+
+                        localStorage.setItem('seraj_smart_notes', JSON.stringify(safeArray(data.smart_notes)));
+                        localStorage.setItem('seraj_cloud_cache_smart_notes', JSON.stringify(safeArray(data.smart_notes)));
 
                         if (data.vaults_v2) {
                             localStorage.setItem('seraj_vaults_v2', JSON.stringify(data.vaults_v2));
@@ -1462,6 +1463,20 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
     let invoices = this.getSalesInvoices(true);
     let allMoves = this.getTreasuryMoves(false);
 
+    const getDayStartMs = (dateVal, fallbackTs) => {
+        let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
+        if (!t) return 0;
+        let d = new Date(t);
+        if (isNaN(d.getTime())) return 0;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    };
+
+    const getOrderSeq = (idVal, idx) => {
+        let num = parseInt(String(idVal || '').replace(/\D/g, ''), 10);
+        if (isNaN(num)) return idx;
+        return (num >= 1000 && num < 100000000) ? (9000000000000 + num) : num;
+    };
+
     customers.forEach(c => {
         let cIdStr = String(c.id);
         let cNorm = window.Utils.normalizeName(c.name || '');
@@ -1483,10 +1498,6 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
             return isMatch && isValid;
         });
 
-        // ترتيب الفواتير من الأقدم للأحدث لإطفائها بالترتيب
-        cInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
-
-        // تجميع السندات مع استرجاع المفقود منها
         let validTransactions = this._collectUnifiedEntityTransactions(c, allMoves, false);
         if (validTransactions.some(t => t._restoredFromTreasury)) {
             c.transactions = validTransactions.map(t => {
@@ -1496,88 +1507,145 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
             });
         }
 
-        // ميزان العميل (مدين: عليه / دائن: له)
         let cDebit = parseFloat(c.openingBalance) || 0; 
         let cCredit = 0;
-        let rawDeferredTotal = 0;
-        let openInvoices = []; 
+        let currentBal = parseFloat(c.openingBalance) || 0; // الرصيد الحالي (موجب = عليه، سالب = له)
+        let openInvoices = [];
+        let timelineEvents = [];
 
-        validTransactions.forEach(t => {
-            if (t.type === 'payment') cDebit += (parseFloat(t.amount) || 0); // فلوس عطيناها للعميل (عليه)
-            if (t.type === 'receipt') cCredit += (parseFloat(t.amount) || 0); // فلوس دفعها العميل (له)
-        });
+        // دالة خصم السداد: تخصم من الرصيد الحالي أولاً ثم الفواتير الآجلة الأقدم فالأقدم
+        const applyPaymentReduction = (amount) => {
+            let rem = parseFloat(amount) || 0;
+            if (rem <= 0) return;
 
-        cInvs.forEach(inv => {
-            let totalVal = parseFloat(inv.total) || 0;
-            let discVal = parseFloat(inv.discount) || 0;
-            let paidVal = parseFloat(inv.paid) || 0;
-            let remVal = parseFloat(inv.remaining) || 0;
-            let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
-            if (req < 0) req = 0;
-            
-            let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-
-            let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
-            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-                ? Math.max(0, parseFloat(inv.initialPaid))
-                : Math.max(0, paidVal - appliedAmount);
-
-            let totalPaidForThisInvoice = checkoutPaid + appliedAmount;
-            let invoiceRemaining = req - totalPaidForThisInvoice;
-
-            if (!isReturn) {
-                if (invoiceRemaining > 0) {
-                    openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
-                    rawDeferredTotal += invoiceRemaining;
-                }
-                cDebit += req; // قيمة الفاتورة (عليه)
-                cCredit += checkoutPaid; // اللي دفعه كاش وقت الفاتورة (له)، سواء أقل أو أكتر
-            } else {
-                cCredit += req; // قيمة المرتجع (له)
-                cDebit += checkoutPaid; // فلوس المرتجع اللي أخدها كاش (عليه)
+            if (currentBal > 0) {
+                let payCurr = Math.min(currentBal, rem);
+                currentBal -= payCurr;
+                rem -= payCurr;
             }
+
+            if (rem > 0) {
+                for (let i = 0; i < openInvoices.length; i++) {
+                    if (rem <= 0) break;
+                    let oi = openInvoices[i];
+                    if (oi.currentRem > 0) {
+                        let deduct = Math.min(oi.currentRem, rem);
+                        oi.currentRem -= deduct;
+                        rem -= deduct;
+                    }
+                }
+            }
+
+            if (rem > 0) {
+                currentBal -= rem; // فائض للعميل (له)
+            }
+        };
+
+        cInvs.forEach((inv, idx) => {
+            inv.calculatedRemaining = 0;
+            timelineEvents.push({
+                kind: 'invoice',
+                priority: 1,
+                dayMs: getDayStartMs(inv.date, inv.timestamp),
+                seq: getOrderSeq(inv.id, idx),
+                data: inv
+            });
         });
-        
-        // الصافي (المديونية الكلية للعميل)
-        let netDebt = cDebit - cCredit;
-        netDebt = Math.round(netDebt * 100) / 100;
-        
-        // الحسبة السحرية: الفلوس الفايضة اللي هتصفي الفواتير القديمة (الرصيد العائم)
-        let floatBalance = rawDeferredTotal - netDebt;
-        
-        if (floatBalance > 0) {
-            for (let i = 0; i < openInvoices.length; i++) {
-                if (floatBalance <= 0) break;
-                
-                let oi = openInvoices[i];
-                if (floatBalance >= oi.currentRem) {
-                    floatBalance -= oi.currentRem;
-                    oi.currentRem = 0; // الفاتورة اتسددت بالكامل من الفايض
+
+        validTransactions.forEach((t, idx) => {
+            timelineEvents.push({
+                kind: 'voucher',
+                priority: 2,
+                dayMs: getDayStartMs(t.date, t.timestamp),
+                seq: getOrderSeq(t.id, idx),
+                data: t
+            });
+        });
+
+        timelineEvents.sort((a, b) => {
+            if (a.dayMs !== b.dayMs) return a.dayMs - b.dayMs;
+            if (a.priority !== b.priority) return a.priority - b.priority;
+            return a.seq - b.seq;
+        });
+
+        timelineEvents.forEach(ev => {
+            if (ev.kind === 'invoice') {
+                let inv = ev.data;
+                let totalVal = parseFloat(inv.total) || 0;
+                let discVal = parseFloat(inv.discount) || 0;
+                let paidVal = parseFloat(inv.paid) || 0;
+                let remVal = parseFloat(inv.remaining) || 0;
+                let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                if (req < 0) req = 0;
+
+                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
+                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                    ? Math.max(0, parseFloat(inv.initialPaid))
+                    : Math.max(0, paidVal - appliedAmount);
+
+                if (!isReturn) {
+                    cDebit += req;
+                    cCredit += checkoutPaid;
+                    let postCheckoutRem = req - checkoutPaid;
+                    if (postCheckoutRem > 0) {
+                        // إذا كان للعميل رصيد دائن سابق (له)، يخصم من الفاتورة الجديدة تلقائياً
+                        if (currentBal < 0) {
+                            let useCredit = Math.min(-currentBal, postCheckoutRem);
+                            currentBal += useCredit;
+                            postCheckoutRem -= useCredit;
+                        }
+                        if (postCheckoutRem > 0) {
+                            openInvoices.push({ invRef: inv, currentRem: postCheckoutRem });
+                        }
+                    } else if (postCheckoutRem < 0) {
+                        applyPaymentReduction(Math.abs(postCheckoutRem));
+                    }
                 } else {
-                    oi.currentRem -= floatBalance;
-                    floatBalance = 0; // الفلوس خلصت
+                    cCredit += req;
+                    cDebit += checkoutPaid;
+                    let netReturnCredit = req - checkoutPaid;
+                    if (netReturnCredit > 0) {
+                        applyPaymentReduction(netReturnCredit);
+                    } else if (netReturnCredit < 0) {
+                        currentBal += Math.abs(netReturnCredit);
+                    }
+                }
+            } else {
+                let t = ev.data;
+                let amt = parseFloat(t.amount) || 0;
+                if (amt <= 0) return;
+
+                if (t.type === 'payment') {
+                    // أي فلوس يأخذها العميل تصب مباشرة في الرصيد الحالي دون لمس الفواتير الآجلة
+                    cDebit += amt;
+                    currentBal += amt;
+                } else if (t.type === 'receipt') {
+                    // أي فلوس يسددها العميل تخصم من الرصيد الحالي أولاً ثم الفواتير الآجلة
+                    cCredit += amt;
+                    applyPaymentReduction(amt);
                 }
             }
-        }
+        });
 
-        // تحديث الفواتير الآجلة لتعرض في الجداول
+        let netDebt = Math.round((cDebit - cCredit) * 100) / 100;
+
         let actualDeferred = 0;
         openInvoices.forEach(oi => {
-            oi.invRef.calculatedRemaining = oi.currentRem; 
-            actualDeferred += oi.currentRem;
+            let roundedRem = Math.round(oi.currentRem * 100) / 100;
+            oi.invRef.calculatedRemaining = roundedRem;
+            actualDeferred += roundedRem;
         });
-        
+
         actualDeferred = Math.round(actualDeferred * 100) / 100;
-        
+        currentBal = Math.round((netDebt - actualDeferred) * 100) / 100;
+
         c.balance = -netDebt;              
         c.calculatedBalance = -netDebt;    
         c.netBalanceVal = Math.abs(netDebt);
         c.isNetDebt = netDebt > 0;
-        
         c.deferredInvoicesTotal = actualDeferred; 
-        
-        let currentBal = netDebt - actualDeferred;
-        c.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
+        c.displayCurrentBalance = Math.abs(currentBal); 
         c.isCurrentBalDebt = currentBal > 0; 
     });
 
@@ -1587,60 +1655,25 @@ calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers 
     return customers;
 },
 
-getSuppliers: function(rawOnly = false) { 
-    let suppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
-    if (rawOnly) return suppliers;
-    return this.calculateSupplierBalances(null, suppliers);
-},
-
-saveSuppliers: function(data) { 
-    if (!Array.isArray(data)) return;
-    let dedup = this._deduplicateEntities(data, 'suppliers');
-
-    if (dedup.changed && dedup.idRedirectMap.size > 0) {
-        let purchases = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
-        let pChanged = false;
-        purchases.forEach(inv => {
-            if (inv && inv.supplierId && dedup.idRedirectMap.has(String(inv.supplierId))) {
-                inv.supplierId = dedup.idRedirectMap.get(String(inv.supplierId));
-                pChanged = true;
-            }
-        });
-        if (pChanged) this.savePurchaseInvoices(purchases);
-
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-        let mChanged = false;
-        moves.forEach(m => {
-            if (m && m.supplierId && dedup.idRedirectMap.has(String(m.supplierId))) {
-                m.supplierId = dedup.idRedirectMap.get(String(m.supplierId));
-                mChanged = true;
-            }
-        });
-        if (mChanged) this.saveTreasuryMoves(moves);
-    }
-
-    let dataToSave = dedup.cleaned.map(s => {
-        let temp = { ...s };
-        if (temp.name) temp.name = String(temp.name).trim();
-        delete temp.balance;
-        delete temp.calculatedBalance;
-        delete temp.netBalanceVal;
-        delete temp.isNetDebt;
-        delete temp.deferredInvoicesTotal;
-        delete temp.displayCurrentBalance;
-        delete temp.isCurrentBalDebt;
-        if (!temp._lastModified) temp._lastModified = Date.now();
-        return temp;
-    });
-    localStorage.setItem('seraj_suppliers', JSON.stringify(dataToSave)); 
-    saveArrayToQueueSafely('suppliers', dataToSave); 
-},
-
 calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers = null) {
     let suppliers = preloadedSuppliers || safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
     let invoices = this.getPurchaseInvoices(true);
     let allMoves = this.getTreasuryMoves(false);
     let invoicesNeedSave = false;
+
+    const getDayStartMs = (dateVal, fallbackTs) => {
+        let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
+        if (!t) return 0;
+        let d = new Date(t);
+        if (isNaN(d.getTime())) return 0;
+        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    };
+
+    const getOrderSeq = (idVal, idx) => {
+        let num = parseInt(String(idVal || '').replace(/\D/g, ''), 10);
+        if (isNaN(num)) return idx;
+        return (num >= 1000 && num < 100000000) ? (9000000000000 + num) : num;
+    };
     
     suppliers.forEach(s => {
         let sIdStr = String(s.id);
@@ -1663,9 +1696,6 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
             return isMatch && isValid;
         });
 
-        // ترتيب الفواتير من الأقدم للأحدث لإطفائها بالترتيب
-        sInvs.sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0)); 
-
         let validTransactions = this._collectUnifiedEntityTransactions(s, allMoves, true);
         if (validTransactions.some(t => t._restoredFromTreasury)) {
             s.transactions = validTransactions.map(t => {
@@ -1677,74 +1707,131 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
 
         let sTotalReq = parseFloat(s.openingBalance) || 0; 
         let sTotalPaid = 0;
-        let rawDeferredTotal = 0;
+        let currentBal = parseFloat(s.openingBalance) || 0; // الرصيد الحالي للمورد
         let openInvoices = [];
+        let timelineEvents = [];
 
-        validTransactions.forEach(t => {
-            if (t.type === 'payment' || t.type === 'purchase_payment') sTotalPaid += (parseFloat(t.amount) || 0); 
-            if (t.type === 'receipt' || t.type === 'supplier_receipt') sTotalReq += (parseFloat(t.amount) || 0); 
-        });
+        // دالة خصم السداد للمورد: تخصم من الرصيد الحالي أولاً ثم فواتير الشراء الأقدم فالأقدم
+        const applySupplierPaymentReduction = (amount) => {
+            let rem = parseFloat(amount) || 0;
+            if (rem <= 0) return;
 
-        sInvs.forEach(inv => {
-            let totalVal = parseFloat(inv.total) || 0;
-            let discVal = parseFloat(inv.discount) || 0;
-            let paidVal = parseFloat(inv.paid) || 0;
-            let remVal = parseFloat(inv.remaining) || 0;
-            let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
-            if (req < 0) req = 0;
-            
-            let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
-
-            let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
-            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-                ? Math.max(0, parseFloat(inv.initialPaid))
-                : Math.max(0, paidVal - appliedAmount);
-
-            let totalPaidForThisInvoice = checkoutPaid + appliedAmount;
-            let invoiceRemaining = req - totalPaidForThisInvoice;
-
-            if (!isReturn) {
-                if (invoiceRemaining > 0) {
-                    openInvoices.push({ invRef: inv, currentRem: invoiceRemaining });
-                    rawDeferredTotal += invoiceRemaining; 
-                }
-                sTotalReq += req; 
-                sTotalPaid += checkoutPaid; 
-            } else {
-                sTotalReq -= req; 
-                sTotalPaid -= checkoutPaid; 
+            if (currentBal > 0) {
+                let payCurr = Math.min(currentBal, rem);
+                currentBal -= payCurr;
+                rem -= payCurr;
             }
+
+            if (rem > 0) {
+                for (let i = 0; i < openInvoices.length; i++) {
+                    if (rem <= 0) break;
+                    let oi = openInvoices[i];
+                    if (oi.currentRem > 0) {
+                        let deduct = Math.min(oi.currentRem, rem);
+                        oi.currentRem -= deduct;
+                        rem -= deduct;
+                    }
+                }
+            }
+
+            if (rem > 0) {
+                currentBal -= rem; // فائض لنا عند المورد (عليه)
+            }
+        };
+
+        sInvs.forEach((inv, idx) => {
+            inv.calculatedRemaining = 0;
+            timelineEvents.push({
+                kind: 'invoice',
+                priority: 1,
+                dayMs: getDayStartMs(inv.date, inv.timestamp),
+                seq: getOrderSeq(inv.id, idx),
+                data: inv
+            });
         });
 
-        let netDebt = sTotalReq - sTotalPaid; 
-        netDebt = Math.round(netDebt * 100) / 100;
+        validTransactions.forEach((t, idx) => {
+            timelineEvents.push({
+                kind: 'voucher',
+                priority: 2,
+                dayMs: getDayStartMs(t.date, t.timestamp),
+                seq: getOrderSeq(t.id, idx),
+                data: t
+            });
+        });
 
-        // الرصيد العائم (الفلوس الإضافية المدفوعة للمورد التي ستطفئ الفواتير القديمة)
-        let floatBalance = rawDeferredTotal - netDebt;
-        
-        // إطفاء الفواتير من الأقدم للأحدث (Knock-off)
-        if (floatBalance > 0) {
-            for (let i = 0; i < openInvoices.length; i++) {
-                if (floatBalance <= 0) break;
-                
-                let oi = openInvoices[i];
-                if (floatBalance >= oi.currentRem) {
-                    floatBalance -= oi.currentRem;
-                    oi.currentRem = 0; 
+        timelineEvents.sort((a, b) => {
+            if (a.dayMs !== b.dayMs) return a.dayMs - b.dayMs;
+            if (a.priority !== b.priority) return a.priority - b.priority;
+            return a.seq - b.seq;
+        });
+
+        timelineEvents.forEach(ev => {
+            if (ev.kind === 'invoice') {
+                let inv = ev.data;
+                let totalVal = parseFloat(inv.total) || 0;
+                let discVal = parseFloat(inv.discount) || 0;
+                let paidVal = parseFloat(inv.paid) || 0;
+                let remVal = parseFloat(inv.remaining) || 0;
+                let req = (Math.abs((paidVal + remVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                if (req < 0) req = 0;
+
+                let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+                let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
+                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                    ? Math.max(0, parseFloat(inv.initialPaid))
+                    : Math.max(0, paidVal - appliedAmount);
+
+                if (!isReturn) {
+                    sTotalReq += req;
+                    sTotalPaid += checkoutPaid;
+                    let postCheckoutRem = req - checkoutPaid;
+                    if (postCheckoutRem > 0) {
+                        if (currentBal < 0) {
+                            let useCredit = Math.min(-currentBal, postCheckoutRem);
+                            currentBal += useCredit;
+                            postCheckoutRem -= useCredit;
+                        }
+                        if (postCheckoutRem > 0) {
+                            openInvoices.push({ invRef: inv, currentRem: postCheckoutRem });
+                        }
+                    } else if (postCheckoutRem < 0) {
+                        applySupplierPaymentReduction(Math.abs(postCheckoutRem));
+                    }
                 } else {
-                    oi.currentRem -= floatBalance;
-                    floatBalance = 0; 
+                    sTotalReq -= req;
+                    sTotalPaid -= checkoutPaid;
+                    let netReturnReduction = req - checkoutPaid;
+                    if (netReturnReduction > 0) {
+                        applySupplierPaymentReduction(netReturnReduction);
+                    } else if (netReturnReduction < 0) {
+                        currentBal += Math.abs(netReturnReduction);
+                    }
+                }
+            } else {
+                let t = ev.data;
+                let amt = parseFloat(t.amount) || 0;
+                if (amt <= 0) return;
+
+                if (t.type === 'receipt' || t.type === 'supplier_receipt') {
+                    // أي فلوس نستلمها من المورد تصب مباشرة في الرصيد الحالي دون زيادة الفواتير الآجلة
+                    sTotalReq += amt;
+                    currentBal += amt;
+                } else if (t.type === 'payment' || t.type === 'purchase_payment') {
+                    // أي فلوس نسددها للمورد تخصم من الرصيد الحالي أولاً ثم الفواتير الآجلة
+                    sTotalPaid += amt;
+                    applySupplierPaymentReduction(amt);
                 }
             }
-        }
+        });
 
-        // تحديث الحفظ الفعلي داخل الفواتير نفسها لتتغير لحظياً في كل الشاشات
+        let netDebt = Math.round((sTotalReq - sTotalPaid) * 100) / 100;
+
         let actualDeferred = 0;
         openInvoices.forEach(oi => {
             let roundedRem = Math.round(oi.currentRem * 100) / 100;
             oi.invRef.calculatedRemaining = roundedRem;
             
-            // التحديث الفعلي لحقل المتبقي في الفاتورة إذا حدث تغيير لتخزينه في الـ DB
             let oldRem = parseFloat(oi.invRef.remaining) || 0;
             if (Math.abs(oldRem - roundedRem) > 0.001) {
                 oi.invRef.remaining = roundedRem;
@@ -1755,20 +1842,17 @@ calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers 
         });
 
         actualDeferred = Math.round(actualDeferred * 100) / 100;
+        currentBal = Math.round((netDebt - actualDeferred) * 100) / 100;
 
         s.balance = -netDebt;              
         s.calculatedBalance = -netDebt;    
         s.netBalanceVal = Math.abs(netDebt);
         s.isNetDebt = netDebt > 0;
-
         s.deferredInvoicesTotal = actualDeferred; 
-
-        let currentBal = netDebt - actualDeferred;
-        s.displayCurrentBalance = Math.abs(Math.round(currentBal * 100) / 100); 
+        s.displayCurrentBalance = Math.abs(currentBal); 
         s.isCurrentBalDebt = currentBal > 0; 
     });
 
-    // حفظ فواتير المشتريات مركزياً في قاعدة البيانات إذا حدث أي إطفاء أو تعديل
     if (invoicesNeedSave && typeof this.savePurchaseInvoices === 'function') {
         this.savePurchaseInvoices(invoices);
     }
@@ -1891,7 +1975,7 @@ _buildUnifiedStatement: function(entityId, isSupplier = false, duration = 'allTi
 
     allItems.forEach(item => {
         if (!item.date) { combined.push(item); return; }
-        let itemDate = new Date(item.date);
+        let itemDate = new Date(window.Utils.getSafeTime(item.date) || item.date);
         let includeInCurrent = false;
 
         if (duration === 'allTime') {
@@ -1934,7 +2018,7 @@ _buildUnifiedStatement: function(entityId, isSupplier = false, duration = 'allTi
     combined.sort((a, b) => {
         let dateDiff = window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date);
         if (dateDiff !== 0) return dateDiff;
-        return String(a.id).localeCompare(String(b.id));
+        return (Number(a.id) || 0) - (Number(b.id) || 0);
     });
 
     let totalLeh = 0, totalAleih = 0;
@@ -1964,10 +2048,6 @@ getSupplierStatement: function(supplierId, duration = 'allTime', customStartDate
     return this._buildUnifiedStatement(supplierId, true, duration, customStartDate, customEndDate);
 },
 
-getSalesInvoices: function(includeCanceled = true) { 
-    let invs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []); 
-    return includeCanceled ? invs : invs.filter(inv => inv && !inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
-},
 
 getSalesInvoices: function(includeCanceled = true) { 
     let invs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []); 
