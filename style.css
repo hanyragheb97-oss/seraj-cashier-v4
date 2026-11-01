@@ -369,10 +369,9 @@ body.page-records .header, .header.header-records, .seraj-header-records {
     background-color: var(--bg-dark-1) !important;
     border: 2px solid var(--neon-border);
     border-radius: 0 0 16px 16px;
-    max-height: 72vh !important;
+    max-height: 250px !important;
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
-    scroll-behavior: smooth;
     z-index: 9999 !important;
     display: none;
     box-shadow: 0 15px 35px var(--shadow-dark);
@@ -380,61 +379,55 @@ body.page-records .header, .header.header-records, .seraj-header-records {
 
 /* تصميم كل سطر داخل القائمة المنسدلة (يدعم تقسيمة 3 أعمدة على خط واحد) */
 .dropdown-item, .seraj-dropdown-item, .list-search-item {
-    padding: 16px 15px;
+    padding: 12px 15px;
     border-bottom: 1px solid var(--neon-border-soft);
     cursor: pointer;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     color: var(--text-white);
     font-weight: bold;
-    font-size: 18px;
+    font-size: 16px;
     background-color: var(--bg-dark-1) !important;
-    transition: background 0.2s ease;
 }
 
-.dropdown-item:hover, .seraj-dropdown-item:hover, .list-search-item:hover,
 .dropdown-item:active, .seraj-dropdown-item:active, .list-search-item:active {
     background-color: var(--row-active-bg) !important;
-    color: var(--accent-green) !important;
 }
 
 /* تقسيمة الثلاثة أعمدة الموحدة في البحث: (اسم الصنف يمين - السعر وسط - الرصيد يسار) */
 .search-col-name {
-    flex: 2.5;
+    flex: 2;
     display: flex;
     align-items: center;
     gap: 10px;
     text-align: right;
-    line-height: 1.3;
+    line-height: 1.4;
     word-break: break-word;
-    font-size: 18px;
 }
 
 .search-item-img {
-    width: 42px;
-    height: 42px;
-    border-radius: 8px;
+    width: 35px;
+    height: 35px;
+    border-radius: 6px;
     border: 1px solid var(--neon-border);
     object-fit: cover;
     flex-shrink: 0;
 }
 
 .search-col-price {
-    flex: 1.2;
+    flex: 1;
     text-align: center;
     font-weight: bold;
-    font-size: 20px;
+    font-size: 17px;
     direction: ltr;
-    color: var(--accent-yellow);
 }
 
 .search-col-stock {
     flex: 1;
     text-align: left;
     direction: ltr;
-    font-size: 16px;
 }
 
 /* دعم القوائم التي تستخدم span مباشر */
@@ -2093,97 +2086,7 @@ table tr:active, .seraj-table tr:active {
     .summary-box .val-red {
         font-size: 15px !important;
     }
-/* ... (نهاية الملف السابق) ... */
 
-/* ========================================================================== */
-/* 💳 مكونات واجهة الخزينة والمصروفات (Treasury & Expenses UI)                */
-/* ========================================================================== */
-
-/* تحسينات عامة لصفحة الخزينة */
-.treasury-page-active { overflow: auto !important; }
-
-.treasury-container, .expense-form-container, .expenses-list-container, .movements-container { 
-    max-width: 800px; margin: auto; padding: 15px; width: 100%; box-sizing: border-box;
-}
-
-/* كروت الخزائن العلوية (Mini Cards) */
-.vault-cards-row { display: flex; gap: 8px; margin-bottom: 15px; width: 100%; overflow-x: auto; padding-bottom: 5px; }
-.vault-mini-card { 
-    background-color: var(--card-bg-alt); 
-    border: 2px solid var(--neon-border); 
-    border-radius: 12px; 
-    padding: 12px 8px; 
-    flex: 1; 
-    min-width: 100px;
-    text-align: center; 
-    cursor: pointer; 
-    transition: all 0.15s ease; 
-    box-shadow: 0 2px 5px var(--shadow-dark); 
-}
-.vault-mini-card.active-vault { 
-    border-color: var(--accent-green); 
-    background-color: var(--bg-dark-solid); 
-    box-shadow: 0 0 10px var(--btn-save-glow); 
-    transform: translateY(-2px); 
-}
-.vault-mini-card .v-title { font-size: 13px; color: var(--text-white); font-weight: bold; }
-.vault-mini-card .v-val { font-size: 16px; color: var(--accent-green); font-weight: bold; margin-top: 5px; text-shadow: 0 0 8px var(--btn-save-glow); direction: ltr;}
-
-/* كارت العمليات المركزي */
-.treasury-card { 
-    background-color: var(--card-bg-alt); 
-    border: 2px solid var(--neon-border); 
-    border-radius: 16px; 
-    padding: 20px; 
-    box-shadow: 0 2px 10px var(--shadow-dark); 
-    margin-bottom: 15px;
-}
-.treasury-label { font-size: 13px; color: var(--text-white); font-weight: bold; margin-bottom: 10px; text-align: center; line-height: 1.4; }
-
-/* صندوق الرصيد الكبير */
-.balance-box { 
-    background-color: var(--bg-dark-solid); 
-    border: 2px solid var(--neon-border); 
-    border-radius: 12px; 
-    text-align: center; 
-    padding: 15px; 
-    margin-bottom: 20px; 
-    box-shadow: 0 0 12px var(--neon-glow);
-}
-.balance-title { font-size: 14px; color: var(--text-white); font-weight: bold; }
-.balance-value { font-size: 28px; color: var(--accent-green); font-weight: bold; margin-top: 5px; text-shadow: 0 0 12px var(--btn-save-glow); direction: ltr;}
-
-/* الأزرار والإضافات */
-.main-action-btn { 
-    background-color: var(--btn-save-bg); color: var(--text-white); width: 100%; 
-    padding: 15px; border: 2px solid var(--btn-save-border); border-radius: 12px; 
-    font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px var(--btn-save-glow); margin-bottom: 10px;
-}
-.expense-trigger-btn { 
-    background-color: var(--card-bg-solid); color: var(--accent-red); border: 2px solid var(--accent-red); 
-    width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; 
-    font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--btn-cancel-glow); margin-bottom: 10px;
-}
-.program-settings-btn { 
-    background-color: var(--card-bg-solid); color: var(--neon-border); border: 2px solid var(--neon-border); 
-    width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; 
-    font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--neon-glow); margin-bottom: 20px;
-}
-
-/* فلاتر الحركة */
-.totals-summary-bar { 
-    background-color: var(--card-bg-alt); border: 2px solid var(--neon-border); 
-    border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 8px; 
-    align-items: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; 
-    box-shadow: 0 0 20px var(--neon-glow); color: var(--text-white);
-}
-
-/* حماية القوائم المنسدلة في الخزينة */
-.unified-bottom-bar .dropdown-menu {
-    top: auto !important;
-    bottom: 100% !important;
-    margin-bottom: 12px !important;
-}
     .summary-total-row, .net-balance-box {
         font-size: 16px !important;
         padding: 6px 10px !important;
