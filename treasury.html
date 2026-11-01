@@ -788,7 +788,13 @@ document.addEventListener('click', function(e) {
 
         // الاستماع للتحديثات المركزية من السحابة أو الصفحات الأخرى
         window.addEventListener('seraj:updated', (e) => {
+            if (window.DB && typeof window.DB.getTreasuryMoves === 'function') {
+                treasuryMovements = window.DB.getTreasuryMoves(true) || [];
+            }
             updateTreasuryUI();
+            if (e && e.detail && e.detail.collection === 'treasury_moves') {
+                renderMovementsTable();
+            }
             let activeView = document.querySelector('.active-view');
             if(activeView) {
                 if(activeView.id === 'treasury-movements-view') renderMovementsTable();
@@ -923,6 +929,7 @@ function updateTreasuryUI() {
                 document.getElementById('trAmount').value = '';
                 document.getElementById('trNotes').value = '';
                 updateTreasuryUI();
+                renderMovementsTable();
             });
         }
 
@@ -1067,9 +1074,9 @@ function updateTreasuryUI() {
 // 1. دالة عرض حركات الخزينة الشاملة
 // ==========================================
 function renderMovementsTable() {
-    // قراءة البيانات من الرام مباشرة إذا كانت متوفرة لتقليل الضغط
-    if (typeof DB !== 'undefined' && treasuryMovements.length === 0) {
-        treasuryMovements = DB.getTreasuryMoves() || [];
+    // جلب أحدث الحركات دائماً لضمان التحديث الفوري دون الحاجة لعمل Refresh
+    if (typeof DB !== 'undefined') {
+        treasuryMovements = DB.getTreasuryMoves(true) || [];
         vaultsDB = DB.getVaults() || {};
     }
 
@@ -1078,12 +1085,13 @@ function renderMovementsTable() {
 
     let list = [...treasuryMovements];
 
-    // ترتيب الحركات بالأحدث أولاً بناءً على التاريخ والمعرف
+    // الترتيب الزمني الدقيق (بالأحدث مطلقاً بناءً على الـ timestamp ثم التاريخ ثم رقم الحركة)
+    const calcTime = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? window.Utils.getSafeTime : getSafeTime;
     list.sort((a, b) => {
-        let timeA = getSafeTime(a.date || a.timestamp);
-        let timeB = getSafeTime(b.date || b.timestamp);
+        let timeA = calcTime(a.timestamp || a.date);
+        let timeB = calcTime(b.timestamp || b.date);
         if (timeB !== timeA) return timeB - timeA;
-        return (b.id || 0) - (a.id || 0);
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
     if(currentMovementFilter !== 'all') {
@@ -1204,8 +1212,8 @@ function renderMovementsTable() {
 // 2. دالة عرض المصروفات
 // ==========================================
 function renderExpensesList() {
-    if (typeof DB !== 'undefined' && treasuryMovements.length === 0) {
-        treasuryMovements = DB.getTreasuryMoves() || [];
+    if (typeof DB !== 'undefined') {
+        treasuryMovements = DB.getTreasuryMoves(true) || [];
     }
 
     const container = document.getElementById('expensesListContainer');
@@ -1213,12 +1221,13 @@ function renderExpensesList() {
 
     let expenses = treasuryMovements.filter(m => m.type === 'expenses');
 
-    // ترتيب المصروفات بالأحدث أولاً
+    // ترتيب المصروفات بالأحدث مطلقاً
+    const calcTime = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? window.Utils.getSafeTime : getSafeTime;
     expenses.sort((a, b) => {
-        let timeA = getSafeTime(a.date || a.timestamp);
-        let timeB = getSafeTime(b.date || b.timestamp);
+        let timeA = calcTime(a.timestamp || a.date);
+        let timeB = calcTime(b.timestamp || b.date);
         if (timeB !== timeA) return timeB - timeA;
-        return (b.id || 0) - (a.id || 0);
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
     let selectedVault = document.getElementById('expVaultFilter');
