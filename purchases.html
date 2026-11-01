@@ -259,7 +259,7 @@
         </div>
     </div>
 
-    <!-- 4. قارئ الباركود -->
+        <!-- نافذة قراءة الباركود -->
     <div class="seraj-modal-overlay modal-overlay" id="scannerModal">
         <div class="seraj-modal compact-modal">
             <div class="compact-header"><h3>📷 توجيه الكاميرا للباركود</h3></div>
@@ -270,7 +270,20 @@
         </div>
     </div>
 
+    <!-- نافذة السؤال بعد الحفظ (طباعة أو إلغاء) -->
+    <div class="modal-overlay" id="postSavePrintModal">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>🖨️ تم حفظ الفاتورة بنجاح</h3></div>
+            <p>هل تريد طباعة الفاتورة الحرارية الآن؟</p>
+            <div class="compact-btns">
+                <button type="button" class="btn-save-ai" onclick="executePostSavePrint()">🖨️ طباعة</button>
+                <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="closePostSavePrintModal()">❌ إلغاء</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 5. نافذة تكبير الصورة -->
+
     <div class="seraj-modal-overlay modal-overlay" id="fullImageModal" onclick="closeModals()">
         <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header">
@@ -953,20 +966,22 @@
 
             // ⚡ 2. إغلاق النافذة وتفريغ الجدول فوراً قبل الحفظ الثقيل ⚡
             localStorage.removeItem('seraj_draft_purchase'); 
-            localStorage.removeItem('seraj_draft_supplier');
+                        localStorage.removeItem('seraj_draft_supplier');
             if (suppInputEl) suppInputEl.value = "";
             if (suppIdEl) suppIdEl.value = "";
             invoice = [];
             renderTable(); 
             closeModals();
 
-            let printBar = document.getElementById('bottomPrintBar');
-            if (printBar) {
-                printBar.style.display = 'flex';
-                setTimeout(() => { printBar.style.display = 'none'; }, 8000);
+            let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
+            let printModalEl = document.getElementById('postSavePrintModal');
+            if (printSetting === 'ask' && printModalEl) {
+                history.pushState({ modalOpen: true }, '');
+                printModalEl.style.display = 'flex';
             }
 
             // 🔄 3. تنفيذ حفظ الموردين والمخزن والخزينة والفاتورة في الخلفية (V4 Clean) 🔄
+
             setTimeout(() => {
                 try {
                     loadDB();
@@ -1097,7 +1112,22 @@
             }, 15);
         }
 
+                function executePostSavePrint() {
+            let modalEl = document.getElementById('postSavePrintModal');
+            if (modalEl) modalEl.style.display = 'none';
+            
+            if (typeof printLastInvoice === 'function') {
+                printLastInvoice();
+            }
+        }
+
+        function closePostSavePrintModal() {
+            let modalEl = document.getElementById('postSavePrintModal');
+            if (modalEl) modalEl.style.display = 'none';
+        }
+
         function togglePrintMenu(e) {
+
             if (e) e.stopPropagation();
             let m = document.getElementById('printDropdownMenu');
             if(m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
