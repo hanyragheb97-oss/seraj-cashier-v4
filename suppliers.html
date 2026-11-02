@@ -999,7 +999,7 @@ function renderStatementTable(supplier) {
 // 4. الرصيد الصافي النهائي المعتمد مباشرة من المركز للمورد
     let net = stmt.netDebt;
     let netColor = net > 0 ? "#ff1a40" : (net < 0 ? "#00ff66" : "var(--text-main)");
-    let netText = net > 0 ? `له مديونية علينا ${Math.abs(net).toFixed(2)}` : (net < 0 ? `عليه تسديد لنا ${Math.abs(net).toFixed(2)}` : `الرصيد مصفر (0.00)`);
+    let netText = net > 0 ? `عليه تسديد لنا ${Math.abs(net).toFixed(2)}` : (net < 0 ?  `له مديونية علينا ${Math.abs(net).toFixed(2)}` : `الرصيد مصفر (0.00)`);
     let netShadow = net > 0 ? "rgba(255, 26, 64, 0.9)" : (net < 0 ? "rgba(0, 255, 102, 0.9)" : "none");
 
     const trNet = document.createElement('tr');
