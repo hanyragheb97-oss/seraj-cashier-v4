@@ -919,12 +919,12 @@ function renderStatementTable(supplier) {
             table.prepend(thead);
         }
         // التعديل الأول: بناء رأس الجدول بـ 3 أعمدة بدلاً من 4 وضبط المسافات
-thead.innerHTML = `
-            <tr style="background: var(--bg-dark-1); color: #fff;">
+        thead.innerHTML = `
+                    <tr>
                 <th style="padding:12px 8px; text-align:right; width: 65%;">البيان، التاريخ والملاحظات</th>
-                                <th class="val-green" style="padding:12px 4px; text-align:center; width: 17.5%; border-bottom: 3px solid #00ff66;">(مديونية علينا)</th>
-                <th class="val-red" style="padding:12px 4px; text-align:center; width: 17.5%; border-bottom: 3px solid #ff1a40;">(تسديد منا)</th>
-            </tr>
+                <th style="padding:12px 4px; text-align:center; color:#ff1a40; width: 17.5%; border-bottom: 3px solid #ff1a40;">(تسديد منا)</th>
+                <th style="padding:12px 4px; text-align:center; color:#00ff66; width: 17.5%; border-bottom: 3px solid #00ff66;">(مديونية علينا)</th>
+                    </tr>
         `;
     }
 
