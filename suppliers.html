@@ -102,8 +102,8 @@
                     <tr>
                         <th>البيان والتاريخ</th>
                         <th>الملاحظات</th>
-                        <th class="val-red">له (مديونية علينا)</th>
-                        <th class="val-green">عليه (تسديد لنا)</th>
+                        <th class="val-red"> (مدفوع منا)</th>
+                        <th class="val-green">(له علينا)</th>
                     </tr>
                 </thead>
                 <tbody id="statementTableBody"></tbody>
@@ -206,11 +206,18 @@
         
         <div class="compact-row">
             <label>الخزينة (التأثير):</label>
-            <select id="transTreasurySelect" class="treasury-select">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
-            </select>
+            <input type="hidden" id="transTreasurySelect" value="main">
+            <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCustomSelect(event, 'transTreasuryDropdown')">
+                <span style="font-size: 12px; color: var(--neon-border);">▼</span>
+                <span id="transTreasuryLabel">الخزينة الرئيسية (كاش)</span>
+                <span></span>
+                
+                <div class="dropdown-list" id="transTreasuryDropdown" style="bottom: 100%; top: auto; margin-bottom: 8px; border-radius: 12px; width: 100%; box-shadow: 0 -10px 25px var(--shadow-dark);">
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('transTreasurySelect', 'transTreasuryLabel', 'main', 'الخزينة الرئيسية (كاش)', event)">الخزينة الرئيسية (كاش)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('transTreasurySelect', 'transTreasuryLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('transTreasurySelect', 'transTreasuryLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                </div>
+            </div>
         </div>
         
         <div class="compact-btns">
@@ -231,11 +238,18 @@
         <div class="compact-row"><label>التاريخ:</label><input type="date" id="payModalDateInput"></div>
         <div class="compact-row">
             <label>الخزينة المسحوب منها:</label>
-            <select id="payModalTreasurySelect" class="treasury-select">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
-            </select>
+            <input type="hidden" id="payModalTreasurySelect" value="main">
+            <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCustomSelect(event, 'payModalTreasuryDropdown')">
+                <span style="font-size: 12px; color: var(--neon-border);">▼</span>
+                <span id="payModalTreasuryLabel">الخزينة الرئيسية (كاش)</span>
+                <span></span>
+                
+                <div class="dropdown-list" id="payModalTreasuryDropdown" style="bottom: 100%; top: auto; margin-bottom: 8px; border-radius: 12px; width: 100%; box-shadow: 0 -10px 25px var(--shadow-dark);">
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('payModalTreasurySelect', 'payModalTreasuryLabel', 'main', 'الخزينة الرئيسية (كاش)', event)">الخزينة الرئيسية (كاش)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('payModalTreasurySelect', 'payModalTreasuryLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('payModalTreasurySelect', 'payModalTreasuryLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                </div>
+            </div>
         </div>
         <button type="button" class="details-toggle-btn" onclick="openViewModalFromOpt(event)">📄 عرض الفاتورة وأصنافها</button>
         <div class="compact-btns">
@@ -275,11 +289,18 @@
         <div class="compact-row"><label>التاريخ:</label><input type="date" id="editTransDate"></div>
         <div class="compact-row">
             <label>الخزينة المحولة:</label>
-            <select id="editTransTreasurySelect">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
-            </select>
+            <input type="hidden" id="editTransTreasurySelect" value="main">
+            <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCustomSelect(event, 'editTransTreasuryDropdown')">
+                <span style="font-size: 12px; color: var(--neon-border);">▼</span>
+                <span id="editTransTreasuryLabel">الخزينة الرئيسية (كاش)</span>
+                <span></span>
+                
+                <div class="dropdown-list" id="editTransTreasDropdown" style="bottom: 100%; top: auto; margin-bottom: 8px; border-radius: 12px; width: 100%; box-shadow: 0 -10px 25px var(--shadow-dark);">
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('editTransTreasurySelect', 'editTransTreasuryLabel', 'main', 'الخزينة الرئيسية (كاش)', event)">الخزينة الرئيسية (كاش)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('editTransTreasurySelect', 'editTransTreasuryLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('editTransTreasurySelect', 'editTransTreasuryLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                </div>
+            </div>
         </div>
         <div class="compact-btns">
             <button type="button" class="btn-close-ai" onclick="closeModals(event)">إلغاء</button>
@@ -1795,5 +1816,25 @@ goBackSmart();
 }
 });
 </script>
-</body> 
+<script>
+    function toggleCustomSelect(event, dropdownId) {
+        event.stopPropagation();
+        const dropdown = document.getElementById(dropdownId);
+        const isVisible = dropdown.style.display === 'block';
+        document.querySelectorAll('.treasury-select .dropdown-list').forEach(list => list.style.display = 'none');
+        if (!isVisible) dropdown.style.display = 'block';
+    }
+
+    function setCustomSelect(inputId, labelId, value, text, event) {
+        event.stopPropagation();
+        document.getElementById(inputId).value = value;
+        document.getElementById(labelId).innerText = text;
+        event.target.closest('.dropdown-list').style.display = 'none';
+    }
+
+    document.addEventListener('click', function() {
+        document.querySelectorAll('.treasury-select .dropdown-list').forEach(list => list.style.display = 'none');
+    });
+</script>
+</body>
 </html>
