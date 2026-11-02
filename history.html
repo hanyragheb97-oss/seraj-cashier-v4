@@ -234,14 +234,22 @@
                 <input type="number" id="modalRemaining" class="val-red" value="0" readonly dir="ltr">
             </div>
 
-            <!-- 5. الخزينة -->
+            <!-- 5. الخزينة (قائمة مخصصة بألوان البرنامج) -->
             <div class="compact-row">
                 <label>الخزينة (دفع/استرداد)</label>
-                <select id="modalVaultSelect" class="treasury-select">
-                    <option value="main">الرئيسية (كاش)</option>
-                    <option value="insta">إنستا (InstaPay)</option>
-                    <option value="wallet">المحفظة الإلكترونية</option>
-                </select>
+                <div style="position: relative; width: 100%;">
+                    <div id="customVaultSelectBtn" class="treasury-select" onclick="toggleVaultMenu(event)" style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; background-color: rgba(19, 17, 44, 0.6);">
+                        <span id="customVaultLabel">الرئيسية (كاش)</span>
+                        <span style="font-size: 14px;">▼</span>
+                    </div>
+                    <div class="dropdown-list" id="customVaultDropdown" style="bottom: 100%; top: auto; margin-bottom: 5px; box-shadow: 0 -10px 25px rgba(0,0,0,0.5); z-index: 1000;">
+                        <div class="list-search-item" onclick="selectVaultOpt('main', 'الرئيسية (كاش)')">الرئيسية (كاش)</div>
+                        <div class="list-search-item" onclick="selectVaultOpt('insta', 'إنستا (InstaPay)')">إنستا (InstaPay)</div>
+                        <div class="list-search-item" onclick="selectVaultOpt('wallet', 'المحفظة الإلكترونية')">المحفظة الإلكترونية</div>
+                    </div>
+                </div>
+                <!-- حقل مخفي لحفظ القيمة عشان دالة الحفظ تقرأه بدون تعديل -->
+                <input type="hidden" id="modalVaultSelect" value="main">
             </div>
 
             <!-- 6. التاريخ -->
@@ -362,6 +370,19 @@
         menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
     }
 
+    function toggleVaultMenu(e) {
+        e.stopPropagation();
+        closeAllMenus();
+        const menu = document.getElementById('customVaultDropdown');
+        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function selectVaultOpt(val, label) {
+        document.getElementById('modalVaultSelect').value = val;
+        document.getElementById('customVaultLabel').innerText = label;
+        document.getElementById('customVaultDropdown').style.display = 'none';
+    }
+
     function applyCustomFilter(val, label) {
         document.getElementById('invoiceTypeFilter').value = val;
         document.getElementById('customFilterLabel').innerText = label;
@@ -377,6 +398,7 @@
         let d1 = document.getElementById('durationDropdownOutside'); if(d1) d1.style.display = 'none';
         let actMenu = document.getElementById('floatingPrintMenu'); if(actMenu) actMenu.style.display = 'none';
         let cFilter = document.getElementById('customFilterDropdown'); if(cFilter) cFilter.style.display = 'none';
+        let vDrop = document.getElementById('customVaultDropdown'); if(vDrop) vDrop.style.display = 'none';
         ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => { let el = document.getElementById(id); if(el) el.style.display = 'none'; });
     }
 
@@ -1147,7 +1169,11 @@
         document.getElementById('modalPaid').value = editingInvoiceData.paid || 0;
         document.getElementById('modalDate').value = editingInvoiceData.date || '';
         document.getElementById('modalCustomer').value = editingInvoiceData.customer || "";
-        document.getElementById('modalVaultSelect').value = editingInvoiceData.vault || "main";
+        let vVal = editingInvoiceData.vault || "main";
+        document.getElementById('modalVaultSelect').value = vVal;
+        let vaultNames = { 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
+        let customLabel = document.getElementById('customVaultLabel');
+        if(customLabel) customLabel.innerText = vaultNames[vVal] || 'الرئيسية (كاش)';
         
         let notesEl = document.getElementById('modalNotes');
         if (notesEl) notesEl.value = editingInvoiceData.notes || "";
