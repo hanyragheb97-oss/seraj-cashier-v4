@@ -854,9 +854,19 @@
             if(filtered.length > 0) {
                 resultsDiv.style.display = 'block';
                 filtered.forEach(s => {
+                    // حساب الرصيد وتطبيق الألوان والكلمات المعكوسة
+                    let sBal = parseFloat(s.calculatedBalance ?? s.balance ?? 0);
+                    let balText = "";
+                    if (sBal > 0) balText = `<span class="color-red-val" style="font-size:15px; font-weight:bold;">${sBal.toFixed(2)} (له)</span>`;
+                    else if (sBal < 0) balText = `<span class="color-green-val" style="font-size:15px; font-weight:bold;">${Math.abs(sBal).toFixed(2)} (عليه)</span>`;
+                    else balText = `<span style="font-size:14px; color:#aaa;">0.00 (صافي)</span>`;
+
                     const div = document.createElement('div'); 
                     div.className = 'dropdown-item'; 
-                    div.innerHTML = `<strong>${s.name}</strong>`;
+                    div.style.display = 'flex';
+                    div.style.justifyContent = 'space-between';
+                    div.style.alignItems = 'center';
+                    div.innerHTML = `<strong>${s.name}</strong> ${balText}`;
                     div.onmousedown = (e) => { 
                         e.preventDefault(); 
                         document.getElementById('supplierSearch').value = s.name; 
@@ -876,8 +886,9 @@
             if (supplier) {
                 let rawBal = parseFloat(supplier.calculatedBalance ?? supplier.balance ?? 0);
                 let net = rawBal.toFixed(2);
-                if (rawBal > 0) balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${net} (له)</span>`;
-                else if (rawBal < 0) balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${Math.abs(rawBal).toFixed(2)} (لنا)</span>`;
+                // تطبيق عكس الألوان والكلمات: الموجب أحمر (له) والسالب أخضر (عليه)
+                if (rawBal > 0) balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${net} (له)</span>`;
+                else if (rawBal < 0) balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${Math.abs(rawBal).toFixed(2)} (عليه)</span>`;
                 else balDiv.innerHTML = `رصيد سابق: <span>0.00 (صافي)</span>`;
             } else {
                 balDiv.innerHTML = `<span>مورد جديد</span>`;
