@@ -205,11 +205,18 @@
         
         <div class="compact-row">
             <label>الخزينة (التأثير):</label>
-            <select id="transTreasurySelect" class="treasury-select">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
-            </select>
+            <input type="hidden" id="transTreasurySelect" value="main">
+            <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCustomSelect(event, 'transTreasuryDropdown')">
+                <span style="font-size: 12px; color: var(--neon-border);">▼</span>
+                <span id="transTreasuryLabel">الخزينة الرئيسية (كاش)</span>
+                <span></span>
+                
+                <div class="dropdown-list" id="transTreasuryDropdown" style="top: 100%; margin-top: 8px; border-radius: 12px; width: 100%;">
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('transTreasurySelect', 'transTreasuryLabel', 'main', 'الخزينة الرئيسية (كاش)', event)">الخزينة الرئيسية (كاش)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('transTreasurySelect', 'transTreasuryLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('transTreasurySelect', 'transTreasuryLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                </div>
+            </div>
         </div>
         
         <div class="compact-btns">
@@ -230,11 +237,18 @@
         <div class="compact-row"><label>التاريخ:</label><input type="date" id="payModalDateInput"></div>
         <div class="compact-row">
             <label>الخزينة المودع بها:</label>
-            <select id="payModalTreasurySelect" class="treasury-select">
-                <option value="main" selected>الخزينة الرئيسية (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">المحفظة الإلكترونية</option>
-            </select>
+            <input type="hidden" id="payModalTreasurySelect" value="main">
+            <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleCustomSelect(event, 'payModalTreasuryDropdown')">
+                <span style="font-size: 12px; color: var(--neon-border);">▼</span>
+                <span id="payModalTreasuryLabel">الخزينة الرئيسية (كاش)</span>
+                <span></span>
+                
+                <div class="dropdown-list" id="payModalTreasuryDropdown" style="top: 100%; margin-top: 8px; border-radius: 12px; width: 100%;">
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('payModalTreasurySelect', 'payModalTreasuryLabel', 'main', 'الخزينة الرئيسية (كاش)', event)">الخزينة الرئيسية (كاش)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('payModalTreasurySelect', 'payModalTreasuryLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" style="justify-content: center;" onclick="setCustomSelect('payModalTreasurySelect', 'payModalTreasuryLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                </div>
+            </div>
         </div>
         <button type="button" class="details-toggle-btn" onclick="openViewModalFromOpt(event)">📄 عرض الفاتورة وأصنافها</button>
         <div class="compact-btns">
@@ -1973,6 +1987,33 @@ window.addEventListener('popstate', function(event) {
         goBackSmart();
     }
 });
+</script>
+<script>
+    // دالة لفتح وإغلاق قائمة الخزينة المخصصة
+    function toggleCustomSelect(event, dropdownId) {
+        event.stopPropagation();
+        const dropdown = document.getElementById(dropdownId);
+        const isVisible = dropdown.style.display === 'block';
+        
+        // إغلاق أي قائمة خزينة مفتوحة حالياً
+        document.querySelectorAll('.treasury-select .dropdown-list').forEach(list => list.style.display = 'none');
+        
+        // فتح القائمة المطلوبة لو كانت مقفولة
+        if (!isVisible) dropdown.style.display = 'block';
+    }
+
+    // دالة لاختيار الخزينة وتغيير القيمة المحفوظة
+    function setCustomSelect(inputId, labelId, value, text, event) {
+        event.stopPropagation();
+        document.getElementById(inputId).value = value; // تحديث القيمة المخفية عشان الحفظ
+        document.getElementById(labelId).innerText = text; // تحديث النص الظاهر
+        event.target.closest('.dropdown-list').style.display = 'none'; // قفل القائمة
+    }
+
+    // قفل القائمة لو ضغطت في أي مكان فاضي في الشاشة
+    document.addEventListener('click', function() {
+        document.querySelectorAll('.treasury-select .dropdown-list').forEach(list => list.style.display = 'none');
+    });
 </script>
 </body>
 </html>
