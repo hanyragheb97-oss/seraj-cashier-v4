@@ -930,88 +930,91 @@ function getSafeTime(dateString) {
 }
 
 function renderStatementTable(customer) {
-    const tbody = document.getElementById('statementTableBody');
-    if (!tbody) return;
+            const tbody = document.getElementById('statementTableBody');
+            tbody.innerHTML = '';
+            if (!customer) return;
 
-    const table = tbody.closest('table');
-    if (table) {
-        let thead = table.querySelector('thead');
-        if (!thead) {
-            thead = document.createElement('thead');
-            table.prepend(thead);
-        }
-        thead.innerHTML = `
-            <tr style="background: var(--bg-dark-1); color: #fff;">
-                <th style="padding:15px; text-align:right;">البيان والتاريخ</th>
-                <th style="padding:15px; text-align:center;">ملاحظات</th>
-                <th style="padding:15px; text-align:center; color:#ff1a40; border-bottom: 3px solid #ff1a40;">عليه (مديونية)</th>
-                <th style="padding:15px; text-align:center; color:#00ff66; border-bottom: 3px solid #00ff66;">له (تسديد)</th>
-            </tr>
-        `;
-    }
+            // سحب كشف الحساب المحسوب مركزياً من المحرك الرئيسي بالقرش
+            let stmt = DB.getCustomerStatement(customer.id, currentStatementDuration, customStartDate, customEndDate);
+            if (!stmt) return;
 
-    tbody.innerHTML = '';
-    if (!customer) return;
+            // 1. طباعة رصيد الحساب السابق لما قبل الفترة إن وجد
+            if (currentStatementDuration !== 'allTime' && (stmt.prevAleih > 0 || stmt.prevLeh > 0)) {
+                let prevNet = stmt.prevAleih - stmt.prevLeh;
+                let dPrevAleih = prevNet > 0 ? prevNet : 0;
+                let dPrevLeh = prevNet < 0 ? Math.abs(prevNet) : 0;
+                const trPrev = document.createElement('tr');
+                trPrev.style.backgroundColor = "rgba(168, 85, 247, 0.1)";
+                trPrev.innerHTML = `
+                    <td colspan="1" style="text-align: right; font-weight:bold; color:var(--text-main); opacity:0.8; padding: 10px;">رصيد حساب سابق (ما قبل الفترة)</td>
+                    <td style="color: #ff1a40; font-weight:bold; text-align:center; padding: 10px; vertical-align:middle;">${dPrevAleih > 0 ? dPrevAleih.toFixed(2) : '-'}</td>
+                    <td style="color: #00ff66; font-weight:bold; text-align:center; padding: 10px; vertical-align:middle;">${dPrevLeh > 0 ? dPrevLeh.toFixed(2) : '-'}</td>
+                `;
+                tbody.appendChild(trPrev);
+            }
 
-    let stmt = DB.getCustomerStatement(customer.id, currentStatementDuration, customStartDate, customEndDate);
-    if (!stmt) return;
+            // 2. طباعة الحركات التفصيلية بالدمج وتطبيق كلاسات الـ CSS
+            if (stmt.rows.length === 0) {
+                tbody.innerHTML += `<tr><td colspan="3" style="padding:20px; text-align:center;">لا توجد حركات في هذه الفترة</td></tr>`;
+            } else {
+                stmt.rows.forEach(item => {
+                    // تطبيق كلاسات الألوان الذكية المطلوبة
+                    let formattedTitle = item.title;
+                    if (formattedTitle.includes('مرتجع')) {
+                        formattedTitle = `<span class="color-inv-return">${formattedTitle}</span>`;
+                    } else if (formattedTitle.includes('فاتورة')) {
+                        formattedTitle = `<span class="color-inv-sale">${formattedTitle}</span>`;
+                    } else if (formattedTitle.includes('سند') || formattedTitle.includes('تحصيل') || formattedTitle.includes('سحب')) {
+                        formattedTitle = `<span class="color-voch-cust">${formattedTitle}</span>`;
+                    } else if (formattedTitle.includes('عميل')) {
+                        formattedTitle = `<span class="color-customer">${formattedTitle}</span>`;
+                    }
 
-    if (currentStatementDuration !== 'allTime' && (stmt.prevAleih > 0 || stmt.prevLeh > 0)) {
-        let prevNet = stmt.prevAleih - stmt.prevLeh;
-        let dPrevAleih = prevNet > 0 ? prevNet : 0;
-        let dPrevLeh = prevNet < 0 ? Math.abs(prevNet) : 0;
-        const trPrev = document.createElement('tr');
-        trPrev.style.backgroundColor = "rgba(168, 85, 247, 0.1)";
-        trPrev.innerHTML = `
-            <td colspan="2" style="text-align: right; font-weight:bold; color:var(--text-main); opacity:0.8; padding: 10px;">رصيد حساب سابق (ما قبل الفترة)</td>
-            <td style="color: #ff1a40; font-weight:bold; padding: 10px; vertical-align:middle;">${dPrevAleih > 0 ? dPrevAleih.toFixed(2) : '-'}</td>
-            <td style="color: #00ff66; font-weight:bold; padding: 10px; vertical-align:middle;">${dPrevLeh > 0 ? dPrevLeh.toFixed(2) : '-'}</td>
-        `;
-        tbody.appendChild(trPrev);
-    }
+                    // تجهيز الملاحظات ودمجها مع الكلاس المطلوب
+                    let notesHtml = (item.notes && item.notes !== '---') 
+                        ? `<div style="margin-top:5px;"><span class="color-notes" style="font-size:13px;">📝 ${item.notes}</span></div>` 
+                        : '';
 
-    if (stmt.rows.length === 0) {
-        tbody.innerHTML += `<tr><td colspan="4" style="padding:20px; text-align:center;">لا توجد حركات في هذه الفترة</td></tr>`;
-    } else {
-        stmt.rows.forEach(item => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td style="text-align: right; font-size:15px; padding: 10px;">
-                    <div style="font-weight:bold;">${item.title}</div>
-                    <div style="font-size:12px; opacity:0.7; font-weight:normal; margin-top:4px;">${item.date}</div>
-                </td>
-                <td style="text-align: center; color:var(--neon-border); font-weight:bold; font-size:14px; padding: 10px; vertical-align:middle;">${item.notes}</td>
-                <td style="color: #ff1a40; font-weight:bold; font-size:16px; padding: 10px; vertical-align:middle;">${item.aleih > 0 ? item.aleih.toFixed(2) : '-'}</td>
-                <td style="color: #00ff66; font-weight:bold; font-size:16px; padding: 10px; vertical-align:middle;">${item.leh > 0 ? item.leh.toFixed(2) : '-'}</td>
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="text-align: right; font-size:15px; padding: 10px;">
+                            <div style="font-weight:bold;">${formattedTitle}</div>
+                            <div style="font-size:12px; opacity:0.7; font-weight:normal; margin-top:4px;">📅 ${item.date}</div>
+                            ${notesHtml}
+                        </td>
+                        <td style="color: #ff1a40; font-weight:bold; font-size:16px; text-align:center; padding: 10px; vertical-align:middle;">${item.aleih > 0 ? item.aleih.toFixed(2) : '-'}</td>
+                        <td style="color: #00ff66; font-weight:bold; font-size:16px; text-align:center; padding: 10px; vertical-align:middle;">${item.leh > 0 ? item.leh.toFixed(2) : '-'}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // 3. إجمالي الحركات للفترة
+            const trTotals = document.createElement('tr');
+            trTotals.style.backgroundColor = "rgba(168, 85, 247, 0.15)";
+            trTotals.innerHTML = `
+                <td colspan="1" style="text-align: right; font-weight:bold; font-size:16px; color: var(--text-main); padding: 10px;">إجمالي الحركات لهذه الفترة:</td>
+                <td style="color: #ff1a40; text-align:center; font-weight:bold; font-size:18px; border-bottom: 2px solid #ff1a40; border-top: 2px solid #ff1a40; padding: 10px; vertical-align:middle;">${stmt.totalAleih.toFixed(2)}</td>
+                <td style="color: #00ff66; text-align:center; font-weight:bold; font-size:18px; border-bottom: 2px solid #00ff66; border-top: 2px solid #00ff66; padding: 10px; vertical-align:middle;">${stmt.totalLeh.toFixed(2)}</td>
             `;
-            tbody.appendChild(tr);
-        });
-    }
+            tbody.appendChild(trTotals);
 
-    const trTotals = document.createElement('tr');
-    trTotals.style.backgroundColor = "rgba(168, 85, 247, 0.15)";
-    trTotals.innerHTML = `
-        <td colspan="2" style="text-align: right; font-weight:bold; font-size:16px; color: var(--text-main); padding: 10px;">إجمالي الحركات لهذه الفترة:</td>
-        <td style="color: #ff1a40; font-weight:bold; font-size:18px; border-bottom: 2px solid #ff1a40; border-top: 2px solid #ff1a40; padding: 10px; vertical-align:middle;">${stmt.totalAleih.toFixed(2)}</td>
-        <td style="color: #00ff66; font-weight:bold; font-size:18px; border-bottom: 2px solid #00ff66; border-top: 2px solid #00ff66; padding: 10px; vertical-align:middle;">${stmt.totalLeh.toFixed(2)}</td>
-    `;
-    tbody.appendChild(trTotals);
+            // 4. الرصيد الصافي النهائي المعتمد مباشرة من المركز
+            let net = stmt.netDebt;
+            let netColor = net > 0 ? "#ff1a40" : (net < 0 ? "#00ff66" : "var(--text-main)");
+            let netText = net > 0 ? `عليه مديونية ${Math.abs(net).toFixed(2)}` : (net < 0 ? `له تسديد ${Math.abs(net).toFixed(2)}` : `الرصيد مصفر (0.00)`);
+            let netShadow = net > 0 ? "rgba(255, 26, 64, 0.9)" : (net < 0 ? "rgba(0, 255, 102, 0.9)" : "none");
 
-    let net = stmt.netDebt;
-    let netColor = net > 0 ? "#ff1a40" : (net < 0 ? "#00ff66" : "var(--text-main)");
-    let netText = net > 0 ? `عليه مديونية ${Math.abs(net).toFixed(2)}` : (net < 0 ? `له تسديد ${Math.abs(net).toFixed(2)}` : `الرصيد مصفر (0.00)`);
-    let netShadow = net > 0 ? "rgba(255, 26, 64, 0.9)" : (net < 0 ? "rgba(0, 255, 102, 0.9)" : "none");
-
-    const trNet = document.createElement('tr');
-    trNet.style.backgroundColor = "var(--card-bg)";
-    trNet.innerHTML = `
-        <td colspan="2" style="text-align: right; font-weight:bold; font-size:18px; color: var(--text-main); padding:15px; border-bottom: none;">الرصيد الصافي النهائي للعميل:</td>
-        <td colspan="2" style="text-align: center; color: ${netColor}; font-weight:bold; font-size:22px; text-shadow: 0 0 15px ${netShadow}; padding:15px; border-bottom: none; vertical-align:middle;">
-            ${netText}
-        </td>
-    `;
-    tbody.appendChild(trNet);
-}
+            const trNet = document.createElement('tr');
+            trNet.style.backgroundColor = "var(--card-bg)";
+            trNet.innerHTML = `
+                <td colspan="1" style="text-align: right; font-weight:bold; font-size:18px; color: var(--text-main); padding:15px; border-bottom: none;">الرصيد الصافي النهائي:</td>
+                <td colspan="2" style="text-align: center; color: ${netColor}; font-weight:bold; font-size:22px; text-shadow: 0 0 15px ${netShadow}; padding:15px; border-bottom: none; vertical-align:middle;">
+                    ${netText}
+                </td>
+            `;
+            tbody.appendChild(trNet);
+        }
 
 function renderAccountTransactions(customer) {
     const listContainer = document.getElementById('accountTransactionsTableBody');
