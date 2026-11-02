@@ -1174,8 +1174,9 @@
                 let prev = inv.prevBalance || 0;
                 let curr = inv.currentBalance || 0;
                 
-                let prevText = prev > 0 ? `${prev.toFixed(2)} (له)` : (prev < 0 ? `${Math.abs(prev).toFixed(2)} (علينا)` : "0.00");
-                let currText = curr > 0 ? `${curr.toFixed(2)} (له)` : (curr < 0 ? `${Math.abs(curr).toFixed(2)} (علينا)` : "0.00");
+                // تصحيح الرصيد في الطباعة: الموجب (له) والسالب (عليه)
+                let prevText = prev > 0 ? `${prev.toFixed(2)} (له)` : (prev < 0 ? `${Math.abs(prev).toFixed(2)} (عليه)` : "0.00");
+                let currText = curr > 0 ? `${curr.toFixed(2)} (له)` : (curr < 0 ? `${Math.abs(curr).toFixed(2)} (عليه)` : "0.00");
 
                 totalsHtml = `
                     <div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>
