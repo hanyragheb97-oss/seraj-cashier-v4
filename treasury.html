@@ -122,7 +122,7 @@
         .main-action-btn:active { filter: brightness(1.2); transform: scale(0.96); }
 
         /* أزرار الإعدادات والمصروفات الداخلية */
-        .expense-trigger-btn { background-color: var(--card-bg-solid); color: var(--accent-red); border: 2px solid var(--accent-red); width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--btn-cancel-glow); margin-bottom: 10px;}
+        .expense-trigger-btn { background-color: var(--card-bg-solid); color: var(--accent-red); border: 2px solid var(--accent-red); width: 100%; margin: auto; display: block; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--btn-cancel-glow); margin-bottom: 10px; box-sizing: border-box;}
         .program-settings-btn { background-color: var(--card-bg-solid); color: var(--neon-border); border: 2px solid var(--neon-border); width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--neon-glow); margin-bottom: 20px;}
         .expense-trigger-btn:active, .program-settings-btn:active { transform: scale(0.95); }
 
@@ -270,35 +270,37 @@
         </div>
     </div>
 
-    <!-- الشاشة 1: لوحة الخزينة الرئيسية -->
-    <div id="treasury-main-view" class="view-section">
-        <div class="header">
-            <span>الخزينة</span>
+<!-- الشاشة 1: لوحة الخزينة الرئيسية -->
+<div id="treasury-main-view" class="view-section">
+    <div class="header">
+        <span>الخزينة</span>
+    </div>
+
+    <div class="treasury-container">
+        <div class="vault-cards-row">
+            <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main')">
+                <div class="v-title">الرئيسية (كاش)</div>
+                <div class="v-val" id="vaultMainBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta')">
+                <div class="v-title">إنستا (InstaPay)</div>
+                <div class="v-val" id="vaultInstaBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet')">
+                <div class="v-title">المحفظة الإلكترونية</div>
+                <div class="v-val" id="vaultWalletBal">0.00</div>
+            </div>
         </div>
 
-        <div class="treasury-container">
-            <div class="vault-cards-row">
-                <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main', true)">
-                    <div class="v-title">الرئيسية (كاش)</div>
-                    <div class="v-val" id="vaultMainBal">0.00</div>
+        <div class="treasury-card">
+            <div class="balance-box" onclick="openMovementsWithVault(currentSelectedVault)" style="cursor: pointer;" title="اضغط لعرض حركات هذه الخزينة">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #facc15; font-weight: normal; opacity: 0.85; margin-bottom: 6px;">
+                    <span>اضغط</span>
+                    <span>للتفاصيل 📋</span>
                 </div>
-                <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta', true)">
-                    <div class="v-title">إنستا (InstaPay)</div>
-                    <div class="v-val" id="vaultInstaBal">0.00</div>
-                </div>
-                <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet', true)">
-                    <div class="v-title">المحفظة الإلكترونية</div>
-                    <div class="v-val" id="vaultWalletBal">0.00</div>
-                </div>
+                <div class="balance-title" id="mainBalanceBoxTitle">الرصيد الحالي للرئيسية (كاش)</div>
+                <div class="balance-value" id="currentSelectedVaultBalance">0.00</div>
             </div>
-
-            <div class="treasury-card">
-                <div class="treasury-label">* الخزينة أو الصندوق أو الدرج يشمل المبالغ النقدية السائلة والرقمية</div>
-
-                <div class="balance-box">
-                    <div class="balance-title">الرصيد الحالي للخزينة المحددة</div>
-                    <div class="balance-value" id="currentSelectedVaultBalance">0.00</div>
-                </div>
 
                 <div class="radio-group">
                     <label style="color: #00ff66; text-shadow: 0 0 8px rgba(0,255,102,0.5);"><input type="radio" name="trType" value="add" checked> ➕ إضافة مبلغ</label>
@@ -409,7 +411,7 @@
                 </div>
             </div>
 
-            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط مطولاً على أي سطر لفتح خيارات التعديل أو الحذف</div>
+            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط ضغطتين متتاليتين على أي سطر لفتح خيارات التعديل أو الحذف</div>
 
             <div class="table-wrapper">
                 <table>
@@ -451,36 +453,35 @@
         </div>
     </div>
 
-    <!-- الشاشة 3: صفحة إضافة المصروفات -->
-    <div id="treasury-expense-form-view" class="view-section">
-        <div class="header">
-            <span class="header-title-left">المصروفات</span>
-            <button class="header-action-btn" onclick="switchView('treasury-expense-list-view')">العرض 📋</button>
+<!-- الشاشة 3: صفحة إضافة المصروفات -->
+<div id="treasury-expense-form-view" class="view-section">
+    <div class="header">
+        <span>المصروفات</span>
+    </div>
+
+    <div class="expense-form-container">
+        <div class="vault-cards-row">
+            <div class="vault-mini-card active-vault" id="expCardMain" onclick="selectExpVault('main')">
+                <div class="v-title">الرئيسية (كاش)</div>
+                <div class="v-val" id="expVaultMainBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="expCardInsta" onclick="selectExpVault('insta')">
+                <div class="v-title">إنستا (InstaPay)</div>
+                <div class="v-val" id="expVaultInstaBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="expCardWallet" onclick="selectExpVault('wallet')">
+                <div class="v-title">المحفظة الإلكترونية</div>
+                <div class="v-val" id="expVaultWalletBal">0.00</div>
+            </div>
         </div>
 
-        <div class="expense-form-container">
-            <div class="vault-cards-row">
-                <div class="vault-mini-card active-vault" id="expCardMain" onclick="selectExpVault('main')">
-                    <div class="v-title">الرئيسية (كاش)</div>
-                    <div class="v-val" id="expVaultMainBal">0.00</div>
-                </div>
-                <div class="vault-mini-card" id="expCardInsta" onclick="selectExpVault('insta')">
-                    <div class="v-title">إنستا (InstaPay)</div>
-                    <div class="v-val" id="expVaultInstaBal">0.00</div>
-                </div>
-                <div class="vault-mini-card" id="expCardWallet" onclick="selectExpVault('wallet')">
-                    <div class="v-title">المحفظة الإلكترونية</div>
-                    <div class="v-val" id="expVaultWalletBal">0.00</div>
-                </div>
+        <div class="treasury-card">
+            <div class="treasury-label" id="expActiveVaultLabel">الصرف من: الخزينة الرئيسية (كاش)</div>
+
+            <div class="balance-box" onclick="openExpensesWithVault(currentExpVault)" style="cursor: pointer;" title="اضغط لعرض مصروفات هذه الخزينة">
+                <div class="balance-title" id="expBalanceBoxTitle">الرصيد الحالي للرئيسية (كاش)</div>
+                <div class="balance-value" id="expSelectedVaultBalance">0.00</div>
             </div>
-
-            <div class="treasury-card">
-                <div class="treasury-label" id="expActiveVaultLabel">الصرف من: الخزينة الرئيسية (كاش)</div>
-
-                <div class="balance-box">
-                    <div class="balance-title">الرصيد المتاح</div>
-                    <div class="balance-value" id="expSelectedVaultBalance">0.00</div>
-                </div>
 
                 <div class="form-row">
                     <label>المبلغ:</label>
@@ -969,40 +970,53 @@ function updateTreasuryUI() {
             });
         }
 
+// ==========================================
+        // دوال الاختيار وتغيير الخزائن
         // ==========================================
-        // دوال الاختيار وتغيير الخزائن (مع دعم الضغطتين السريعتين للدخول للحركة)
-        // ==========================================
-        let lastVaultTapTime = 0;
-        let lastVaultTapKey = '';
-
-        function selectVault(vaultKey, isUserClick = false) {
-            if (isUserClick) {
-                let now = Date.now();
-                if (lastVaultTapKey === vaultKey && (now - lastVaultTapTime) < 350) {
-                    lastVaultTapTime = 0;
-                    openMovementsWithVault(vaultKey);
-                    return;
-                }
-                lastVaultTapTime = now;
-                lastVaultTapKey = vaultKey;
-            }
-
+        function selectVault(vaultKey) {
             currentSelectedVault = vaultKey;
             document.querySelectorAll('#treasury-main-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
-            if(vaultKey === 'main') document.getElementById('cardVaultMain').classList.add('active-vault');
-            else if(vaultKey === 'insta') document.getElementById('cardVaultInsta').classList.add('active-vault');
-            else if(vaultKey === 'wallet') document.getElementById('cardVaultWallet').classList.add('active-vault');
+            
+            let titleText = "الرصيد الحالي للرئيسية (كاش)";
+            if(vaultKey === 'main') {
+                document.getElementById('cardVaultMain').classList.add('active-vault');
+                titleText = "الرصيد الحالي للرئيسية (كاش)";
+            } else if(vaultKey === 'insta') {
+                document.getElementById('cardVaultInsta').classList.add('active-vault');
+                titleText = "الرصيد الحالي لإنستا باي";
+            } else if(vaultKey === 'wallet') {
+                document.getElementById('cardVaultWallet').classList.add('active-vault');
+                titleText = "الرصيد الحالي للمحفظة الإلكترونية";
+            }
+            
+            let titleEl = document.getElementById('mainBalanceBoxTitle');
+            if(titleEl) titleEl.innerText = titleText;
             document.getElementById('currentSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
         }
 
         function selectExpVault(vaultKey) {
             currentExpVault = vaultKey;
             document.querySelectorAll('#treasury-expense-form-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
-            let labelName = "الرئيسية (كاش)";
-            if(vaultKey === 'main') { document.getElementById('expCardMain').classList.add('active-vault'); labelName = "الخزينة الرئيسية (كاش)"; }
-            else if(vaultKey === 'insta') { document.getElementById('expCardInsta').classList.add('active-vault'); labelName = "خزينة أنستا (InstaPay)"; }
-            else if(vaultKey === 'wallet') { document.getElementById('expCardWallet').classList.add('active-vault'); labelName = "خزينة المحفظة الإلكترونية"; }
+            
+            let labelName = "الخزينة الرئيسية (كاش)";
+            let boxTitle = "الرصيد الحالي للرئيسية (كاش)";
+            if(vaultKey === 'main') { 
+                document.getElementById('expCardMain').classList.add('active-vault'); 
+                labelName = "الخزينة الرئيسية (كاش)"; 
+                boxTitle = "الرصيد الحالي للرئيسية (كاش)";
+            } else if(vaultKey === 'insta') { 
+                document.getElementById('expCardInsta').classList.add('active-vault'); 
+                labelName = "خزينة أنستا (InstaPay)"; 
+                boxTitle = "الرصيد الحالي لإنستا باي";
+            } else if(vaultKey === 'wallet') { 
+                document.getElementById('expCardWallet').classList.add('active-vault'); 
+                labelName = "خزينة المحفظة الإلكترونية"; 
+                boxTitle = "الرصيد الحالي للمحفظة الإلكترونية";
+            }
+            
             document.getElementById('expActiveVaultLabel').innerText = `الصرف من: ${labelName}`;
+            let expTitleEl = document.getElementById('expBalanceBoxTitle');
+            if(expTitleEl) expTitleEl.innerText = boxTitle;
             document.getElementById('expSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
         }
 
@@ -1011,6 +1025,18 @@ function updateTreasuryUI() {
             let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
             document.getElementById('currentVaultFilterLabel').innerText = labels[vaultKey] || 'كل الخزائن';
             switchView('treasury-movements-view');
+        }
+
+        function openExpensesWithVault(vaultKey) {
+            let expFilterEl = document.getElementById('expVaultFilter');
+            if(expFilterEl) expFilterEl.value = vaultKey || 'all';
+            switchView('treasury-expense-list-view');
+        }
+
+        function openExpensesWithVault(vaultKey) {
+            let expFilterEl = document.getElementById('expVaultFilter');
+            if(expFilterEl) expFilterEl.value = vaultKey || 'all';
+            switchView('treasury-expense-list-view');
         }
 
         // ==========================================
@@ -1181,13 +1207,17 @@ function renderMovementsTable() {
 
     paginatedList.forEach(m => {
         const tr = document.createElement('tr');
-        let pressTimer;
-        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = m.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
-        const cancelPress = () => { clearTimeout(pressTimer); };
-        const endPress = (e) => { if (e && e.preventDefault) { e.preventDefault(); } clearTimeout(pressTimer); };
-
-        tr.onmousedown = startPress; tr.onmouseup = endPress; tr.onmouseleave = cancelPress;
-        tr.ontouchstart = startPress; tr.ontouchend = endPress;
+        let lastTap = 0;
+        tr.onclick = () => {
+            let now = Date.now();
+            if (now - lastTap < 350) {
+                selectedMovementId = m.id;
+                document.getElementById('actionSheetModal').style.display = 'flex';
+                lastTap = 0;
+            } else {
+                lastTap = now;
+            }
+        };
 
         let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
         let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
@@ -1320,11 +1350,17 @@ function renderExpensesList() {
             <div style="font-size:20px; font-weight:bold; color:#ff1a40;">${(exp.amountDeduct || 0).toFixed(2)} جنيه</div>
         `;
         
-        let pressTimer;
-        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = exp.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
-        const cancelPress = () => { clearTimeout(pressTimer); };
-        card.onmousedown = startPress; card.onmouseup = cancelPress; card.onmouseleave = cancelPress;
-        card.ontouchstart = startPress; card.ontouchend = cancelPress;
+        let lastTap = 0;
+        card.onclick = () => {
+            let now = Date.now();
+            if (now - lastTap < 350) {
+                selectedMovementId = exp.id;
+                document.getElementById('actionSheetModal').style.display = 'flex';
+                lastTap = 0;
+            } else {
+                lastTap = now;
+            }
+        };
 
         fragment.appendChild(card);
     });

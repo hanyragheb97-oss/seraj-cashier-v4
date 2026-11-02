@@ -3853,5 +3853,26 @@ localStorage.setItem = function(key, value) {
             let parsed = JSON.parse(value);
             if (Array.isArray(parsed)) window.DB.saveSmartNotes(parsed);
         } catch (e) {}
+    } 
+// =========================================================================
+// 🛡️ حارس مركزي: منع إدخال الأرقام السالبة في أي حقل رقمي على مستوى البرنامج
+// =========================================================================
+document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'number') {
+        // منع كتابة علامة الناقص من الكيبورد
+        if (e.key === '-' || e.key === 'Minus') {
+            e.preventDefault();
+        }
     }
+}, true);
+
+document.addEventListener('input', (e) => {
+    if (e.target.tagName === 'INPUT' && e.target.type === 'number') {
+        // تنظيف الحقل فوراً لو تم عمل (لصق - Paste) لرقم سالب
+        if (e.target.value.includes('-')) {
+            e.target.value = e.target.value.replace(/-/g, '');
+        }
+    }
+}, true);
+
 };
