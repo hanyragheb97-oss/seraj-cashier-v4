@@ -67,7 +67,7 @@
 
         <!-- صف الأزرار القياسي -->
         <div class="dual-action-row">
-            <button type="button" class="capsule-btn" onclick="openAddTransactionModalDirect(event)">إضافة سند: <span class="val-red">تسديد</span> / <span class="val-green">مديونية</span></button>
+            <button type="button" class="capsule-btn" onclick="openAddTransactionModalDirect(event)">إضافة سند: <span class="val-red">له</span> / <span class="val-green">عليه</span></button>
             <button type="button" class="capsule-btn" onclick="openStatementView()">📋 كشف حساب</button>
         </div>
 
@@ -190,13 +190,13 @@
     <div class="compact-modal" onclick="event.stopPropagation()">
         <div class="compact-header"><h3>إضافة سند مورد جديد</h3></div>
         
-        <!-- هيكل دوائر الاختيار (تسديد / مديونية) -->
+        <!-- هيكل دوائر الاختيار (له / عليه) -->
         <div class="radio-group">
             <label class="val-red">
-                <input type="radio" name="transType" value="payment" checked> دفع نقدية (تسديد)
+                <input type="radio" name="transType" value="payment" checked> له (دفع نقدية/تسديد)
             </label>
             <label class="val-green">
-                <input type="radio" name="transType" value="receipt"> إضافة مديونية
+                <input type="radio" name="transType" value="receipt"> عليه (مديونية)
             </label>
         </div>
 
@@ -263,10 +263,10 @@
 
         <div class="radio-group">
             <label class="val-red">
-                <input type="radio" name="editTransType" value="payment" checked> دفع نقدية (تسديد)
+                <input type="radio" name="editTransType" value="payment" checked> له (دفع نقدية/تسديد)
             </label>
             <label class="val-green">
-                <input type="radio" name="editTransType" value="receipt"> إضافة مديونية
+                <input type="radio" name="editTransType" value="receipt"> عليه (مديونية)
             </label>
         </div>
 
