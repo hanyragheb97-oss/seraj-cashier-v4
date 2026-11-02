@@ -237,7 +237,7 @@
             <!-- 5. الخزينة -->
             <div class="compact-row">
                 <label>الخزينة (دفع/استرداد)</label>
-                <select id="modalVaultSelect">
+                <select id="modalVaultSelect" class="treasury-select">
                     <option value="main">الرئيسية (كاش)</option>
                     <option value="insta">إنستا (InstaPay)</option>
                     <option value="wallet">المحفظة الإلكترونية</option>
@@ -253,9 +253,10 @@
             <!-- 7. اسم العميل -->
             <div class="compact-row">
                 <label>اسم العميل</label>
-                <div class="search-container">
+                <div class="search-container" style="position: relative;">
                     <input type="text" id="modalCustomer" class="search-input seraj-search-input" placeholder="اتركه فارغاً للنقدي" onclick="this.select()" oninput="handleEditCustomerInput()">
-                    <div id="editCustomerResults" class="dropdown-list"></div>
+                    <!-- تم ضبط الـ style هنا لتفتح القائمة لأعلى فوق المربع -->
+                    <div id="editCustomerResults" class="dropdown-list" style="bottom: 100%; top: auto; margin-bottom: 5px; box-shadow: 0 -10px 25px rgba(0,0,0,0.5); z-index: 1000;"></div>
                 </div>
             </div>
 
@@ -1226,7 +1227,26 @@
             filtered.forEach(c => {
                 const div = document.createElement('div');
                 div.className = 'list-search-item';
-                div.innerHTML = c.name;
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.alignItems = 'center';
+                
+                // حساب الرصيد وتحديد إذا كان له أو عليه لإظهاره بجانب الاسم
+                let cBal = parseFloat(c.balance) || 0;
+                let isDebt = (cBal < 0 || c.isNetDebt === true);
+                let badgeHtml = '';
+                if (cBal !== 0) {
+                    if (isDebt) {
+                        badgeHtml = `<span class="val-red" style="font-size: 13px;">${Math.abs(cBal).toFixed(2)} (عليه)</span>`;
+                    } else {
+                        badgeHtml = `<span class="val-green" style="font-size: 13px;">${Math.abs(cBal).toFixed(2)} (له)</span>`;
+                    }
+                } else {
+                    badgeHtml = `<span style="font-size: 13px; color: #cbd5e1;">صافي</span>`;
+                }
+
+                div.innerHTML = `<span>${c.name}</span> ${badgeHtml}`;
+                
                 div.onmousedown = (e) => {
                     e.preventDefault(); 
                     document.getElementById('modalCustomer').value = c.name;
@@ -1239,6 +1259,7 @@
             resultsDiv.style.display = 'none';
         }
 
+        // عرض الرصيد أسفل المربع بعد الاختيار
         let exactMatch = customersDB.find(c => normCustName(c.name) === normQuery);
         if(exactMatch) {
             let bal = parseFloat(exactMatch.balance) || 0;
