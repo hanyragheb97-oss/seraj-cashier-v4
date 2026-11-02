@@ -176,7 +176,8 @@ html, body {
     padding: 12px 16px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center; /* تم التعديل لتوسيط العنوان */
+    text-align: center; /* تم التعديل لتوسيط العنوان */
     font-size: 21px;
     font-weight: bold;
     position: sticky;
@@ -359,7 +360,7 @@ body.page-records .header, .header.header-records, .seraj-header-records {
     cursor: pointer;
 }
 
-/* --- القائمة المنسدلة لنتائج البحث (خلفية سوداء صلبة 100% لمنع الشفافية وتمرير سلس) --- */
+/* --- القائمة المنسدلة لنتائج البحث (تتمدد لأسفل الشاشة وتدعم التمرير) --- */
 .dropdown-list, .seraj-dropdown-list, #edit-search-results, #search-results-list {
     position: absolute;
     top: 100%;
@@ -369,7 +370,7 @@ body.page-records .header, .header.header-records, .seraj-header-records {
     background-color: var(--bg-dark-1) !important;
     border: 2px solid var(--neon-border);
     border-radius: 0 0 16px 16px;
-    max-height: 72vh !important;
+    max-height: 65vh !important; /* تتمدد حتى 65% من طول الشاشة لتناسب النتائج الكثيرة */
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch !important;
     scroll-behavior: smooth;
@@ -1141,11 +1142,12 @@ table tr:active, .seraj-table tr:active {
 
 .compact-header, .seraj-modal-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center; /* تم التعديل لتوسيط العنوان */
     align-items: center;
     border-bottom: 2px solid var(--neon-border-soft);
     padding-bottom: 12px;
     margin-bottom: 15px;
+    text-align: center; /* تم التعديل لتوسيط العنوان */
 }
 
 .compact-header h3, .seraj-modal-header h3 {
@@ -2275,4 +2277,25 @@ select option {
     background: var(--bg-dark-1);
 }
 
-}
+/* ========================================= */
+/* 🎨 نظام الألوان الموحد (Design System) */
+/* ========================================= */
+
+/* ألوان الأشخاص والكيانات */
+.color-customer { color: #4facfe !important; font-weight: bold; } /* أزرق فاتح للعميل */
+.color-supplier { color: #f6d365 !important; font-weight: bold; } /* برتقالي/ذهبي للمورد */
+
+/* ألوان أنواع الفواتير */
+.color-inv-sale { color: #00f2fe !important; font-weight: bold; } /* سماوي/أخضر لفاتورة البيع */
+.color-inv-buy { color: #c471ed !important; font-weight: bold; } /* بنفسجي لفاتورة الشراء */
+.color-inv-return { color: #ff0844 !important; font-weight: bold; } /* أحمر لفاتورة المرتجع */
+
+/* ألوان السندات */
+.color-voch-cust { color: #43e97b !important; font-weight: bold; } /* أخضر فاتح لسند العميل */
+.color-voch-supp { color: #f83600 !important; font-weight: bold; } /* برتقالي محمر لسند المورد */
+
+/* ألوان الأجهزة والملاحظات (تكون بخط مائل لتمييزها عن البيانات المالية) */
+.color-device { color: #a8baba !important; font-style: italic; font-size: 0.9em; } /* رمادي لاسم الجهاز */
+.color-notes { color: #8e9eab !important; font-style: italic; font-size: 0.9em; } /* رمادي باهت للملاحظات */
+
+} /* إغلاق استعلام الوسائط (Media Query) إذا لزم الأمر */
