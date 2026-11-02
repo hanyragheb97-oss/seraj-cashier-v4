@@ -1189,14 +1189,21 @@
             paidInput.readOnly = true;
         } else {
             paidInput.readOnly = false;
-            let currentPaid = parseFloat(paidInput.value) || 0;
-            if (currentPaid > finalRequired) {
-                paidInput.value = finalRequired.toFixed(2);
-            }
+            // 🔓 تم إزالة القفل هنا: لم نعد نجبر المدفوع على التساوي مع المطلوب
         }
         
         let paid = parseFloat(paidInput.value) || 0;
-        document.getElementById('modalRemaining').value = (finalRequired - paid).toFixed(2);
+        let rem = finalRequired - paid;
+        
+        let remInput = document.getElementById('modalRemaining');
+        remInput.value = rem.toFixed(2);
+        
+        // 💡 لمسة جمالية: لو الرقم سالب (دفع بزيادة) يظهر بلون أخضر لأنه باقي للزبون أو رصيد له
+        if (rem < 0) {
+            remInput.className = 'val-green';
+        } else {
+            remInput.className = 'val-red';
+        }
     }
 
     function handleEditCustomerInput() {
@@ -1274,11 +1281,17 @@
         let finalReq = finalSubTotal - finalDiscount;
         if (finalReq < 0) finalReq = 0;
         
+        if(finalCust === "null" || finalCust === "بدون عميل" || finalCust === "مبيعات نقدية") finalCust = "";
+
         let finalPaid = parseFloat(document.getElementById('modalPaid').value) || 0;
+        
+        // 💡 التعديل هنا: لو مفيش عميل (بيع نقدي) والمدفوع أكبر من المطلوب، نحفظ المدفوع بقيمة الفاتورة فقط عشان الخزينة تظبط وماتسجلش الباقي الوهمي
+        if (finalCust === "" && finalPaid > finalReq && !isNowQuotation && !isReturn) {
+            finalPaid = finalReq;
+        }
+
         let finalRem = finalReq - finalPaid;
         finalRem = Math.round(finalRem * 100) / 100;
-
-        if(finalCust === "null" || finalCust === "بدون عميل" || finalCust === "مبيعات نقدية") finalCust = "";
 
         if (finalRem > 0 && finalCust === "" && !isNowQuotation && !isReturn) {
             if (typeof SerajAlert === 'function') SerajAlert("❌ تنبيه هام: لا يمكن حفظ فاتورة آجلة (بها متبقي) بدون تسجيل اسم العميل!");
