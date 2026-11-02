@@ -729,13 +729,20 @@ function handleCustomerInput() {
             let bal = parseFloat(c.calculatedBalance !== undefined ? c.calculatedBalance : (c.balance || 0)) || 0;
             let balHtml = '';
             
-            if (bal > 0) {
-                balHtml = `<span class="color-red-val">${bal.toFixed(2)} (عليه)</span>`;
-            } else if (bal < 0) {
-                balHtml = `<span class="color-green-val">${Math.abs(bal).toFixed(2)} (له)</span>`;
-            } else {
-                balHtml = `<span>0.00</span>`;
+            // السالب = عليه (أحمر بدون إشارة سالب)
+            if (bal < 0) {
+                balHtml = `<span class="color-red-val">${Math.abs(bal).toFixed(2)} (عليه)</span>`;
+            } 
+            // الموجب = له (أخضر)
+            else if (bal > 0) {
+                balHtml = `<span class="color-green-val">${bal.toFixed(2)} (له)</span>`;
+            } 
+            // الصفر = صافي
+            else {
+                balHtml = `<span style="color: var(--text-muted, #888);">0.00 (صافي)</span>`;
             }
+
+            div.innerHTML = `<span>${c.name}</span>${balHtml}`;
 
             div.innerHTML = `<span>${c.name}</span>${balHtml}`;
             div.onmousedown = (e) => {
@@ -754,27 +761,30 @@ function handleCustomerInput() {
 
 function updateLiveCustomerBalanceUI(customer) {
     const balDiv = document.getElementById('liveCustomerBalance');
+    if (!balDiv) return;
     
     if (customer) {
         let net = parseFloat(customer.calculatedBalance !== undefined ? customer.calculatedBalance : (customer.balance || 0)) || 0;
         
-        // الرصيد موجب = مديون للمحل (عليه) بالأحمر
-        if (net > 0) {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${net.toFixed(2)} (عليه)</span>`;
+        // السالب = مدين للمحل (عليه) بالأحمر بدون إشارة سالب
+        if (net < 0) {
+            balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${Math.abs(net).toFixed(2)} (عليه)</span>`;
         } 
-        // الرصيد سالب = له رصيد عند المحل (له) بالأخضر بدون إشارة سالب
-        else if (net < 0) {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${Math.abs(net).toFixed(2)} (له)</span>`;
+        // الموجب = رصيد دائن للعميل (له) بالأخضر
+        else if (net > 0) {
+            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${net.toFixed(2)} (له)</span>`;
         } 
         // صفر = صافي
         else {
             balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">0.00 (صافي)</span>`;
         }
     } else {
-        balDiv.innerHTML = `<span>عميل جديد - الرصيد: 0</span>`;
+        balDiv.innerHTML = `<span>عميل جديد - الرصيد: 0.00</span>`;
     }
     
-    calculateModalTotals();
+    if (typeof calculateModalTotals === 'function') {
+        calculateModalTotals();
+    }
 }
 
 function calculateModalTotals() {
@@ -1381,8 +1391,8 @@ function printLastInvoice() {
     if (lastSavedInvoice.customer) {
         let prev = lastSavedInvoice.prevBalance || 0;
         let curr = lastSavedInvoice.currentBalance || 0;
-        let prevText = prev > 0 ? `${prev.toFixed(2)} (عليه)` : (prev < 0 ? `${Math.abs(prev).toFixed(2)} (له)` : "0.00");
-        let currText = curr > 0 ? `${curr.toFixed(2)} (عليه)` : (curr < 0 ? `${Math.abs(curr).toFixed(2)} (له)` : "0.00");
+        let prevText = prev < 0 ? `${Math.abs(prev).toFixed(2)} (عليه)` : (prev > 0 ? `${prev.toFixed(2)} (له)` : "0.00");
+        let currText = curr < 0 ? `${Math.abs(curr).toFixed(2)} (عليه)` : (curr > 0 ? `${curr.toFixed(2)} (له)` : "0.00");
         accountHtml = `<div><div><span class="label">حساب سابق:</span> ${prevText}</div><div><span class="label">إجمالي الحساب الجديد:</span> ${currText}</div></div>`;
     }
 
