@@ -957,28 +957,30 @@ function renderStatementTable(customer) {
                 tbody.innerHTML += `<tr><td colspan="3" style="padding:20px; text-align:center;">لا توجد حركات في هذه الفترة</td></tr>`;
             } else {
                 stmt.rows.forEach(item => {
-                    // نظام الاستبدال الذكي للكلمات المفتاحية (علشان يلوّن الكلمة المستهدفة بس)
                     let formattedTitle = item.title || '';
-                    formattedTitle = formattedTitle.replace(/(مرتجع)/g, '<span class="color-inv-return">$1</span>');
-                    formattedTitle = formattedTitle.replace(/(فاتورة|مبيعات|آجل)/g, '<span class="color-inv-sale">$1</span>');
-                    formattedTitle = formattedTitle.replace(/(سند|تحصيل|سحب|نقدية)/g, '<span class="color-voch-cust">$1</span>');
-                    formattedTitle = formattedTitle.replace(/(عميل)/g, '<span class="color-customer">$1</span>');
+                    
+                    // 1. تلوين الكلمات المفتاحية بألوان النظام المعتمدة من الـ CSS
+                    formattedTitle = formattedTitle.replace(/(مرتجع)/g, '<span style="color: #ff0844; font-weight: bold;">$1</span>');
+                    formattedTitle = formattedTitle.replace(/(فاتورة|مبيعات|آجل)/g, '<span style="color: #00f2fe; font-weight: bold;">$1</span>');
+                    formattedTitle = formattedTitle.replace(/(تحصيل|تسديد)/g, '<span style="color: #43e97b; font-weight: bold;">$1</span>');
+                    formattedTitle = formattedTitle.replace(/(مديونية|سحب)/g, '<span style="color: #f83600; font-weight: bold;">$1</span>');
+                    formattedTitle = formattedTitle.replace(/(سند)/g, '<span style="color: #43e97b; font-weight: bold;">$1</span>');
 
-                    // تجهيز الملاحظات وتلوين اسم الجهاز
+                    // 2. تجهيز الملاحظات (إن وجدت)
                     let notesHtml = '';
                     if (item.notes && item.notes !== '---') {
-                        let formattedNotes = item.notes;
-                        // أي نص يبدأ بكلمة "بواسطة" (يعني اسم الجهاز) هياخد لون لبني مميز
-                        formattedNotes = formattedNotes.replace(/(بواسطة.*)/g, '<span style="color:#38bdf8; font-weight:bold;">$1</span>');
-                        notesHtml = `<div style="margin-top:5px;"><span class="color-notes" style="font-size:13px;">📝 ${formattedNotes}</span></div>`;
+                        notesHtml = `<div style="margin-top:4px;">📝 ${item.notes}</div>`;
                     }
 
+                    // 3. دمج البيان والتاريخ والملاحظات في خلية واحدة مع الستايل الباهت المائل
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td style="text-align: right; font-size:15px; padding: 10px;">
                             <div style="font-weight:bold;">${formattedTitle}</div>
-                            <div style="font-size:12px; opacity:0.7; font-weight:normal; margin-top:4px;">📅 ${item.date}</div>
-                            ${notesHtml}
+                            <div style="color: #8e9eab; font-size: 0.9em; font-style: italic; margin-top:4px;">
+                                📅 ${item.date}
+                                ${notesHtml}
+                            </div>
                         </td>
                         <td style="color: #ff1a40; font-weight:bold; font-size:16px; text-align:center; padding: 10px; vertical-align:middle;">${item.aleih > 0 ? item.aleih.toFixed(2) : '-'}</td>
                         <td style="color: #00ff66; font-weight:bold; font-size:16px; text-align:center; padding: 10px; vertical-align:middle;">${item.leh > 0 ? item.leh.toFixed(2) : '-'}</td>
