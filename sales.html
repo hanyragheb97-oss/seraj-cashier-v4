@@ -682,21 +682,49 @@ function saveItemEdit() {
 
 function openSaveModal() {
     if (invoice.length === 0) return SerajAlert("الفاتورة فارغة!");
+    
     history.pushState({ modalOpen: true }, '');
+    
     let sub = parseFloat(document.getElementById('mainTotal').innerText) || 0;
-    document.getElementById('modalTotal').value = sub.toFixed(2);
-    document.getElementById('modalDiscount').value = 0;
-    document.getElementById('modalNotes').value = '';
+    
+    // تأمين وضع القيم وتجنب الـ Error لو الحقل مش موجود
+    let modalTotalEl = document.getElementById('modalTotal');
+    if (modalTotalEl) modalTotalEl.value = sub.toFixed(2);
+    
+    let discountEl = document.getElementById('modalDiscount');
+    if (discountEl) discountEl.value = 0;
+    
+    let notesEl = document.getElementById('modalNotes');
+    if (notesEl) notesEl.value = '';
 
+    // إرجاع الخزينة للقيمة الافتراضية (كاش) وتحديث النص في القائمة المخصصة الجديدة
+    let treasuryInput = document.getElementById('modalTreasury');
+    if (treasuryInput) treasuryInput.value = 'main';
+
+    let treasuryLabel = document.getElementById('modalTreasuryLabel');
+    if (treasuryLabel) treasuryLabel.innerText = 'الخزينة الرئيسية (كاش)';
+
+    // إعداد اسم العميل من الـ Draft (إن وجد)
     let draftCust = localStorage.getItem('seraj_draft_customer') || '';
-    document.getElementById('customerSearchInput').value = draftCust;
-    handleCustomerInput();
+    let custInput = document.getElementById('customerSearchInput');
+    if (custInput) {
+        custInput.value = draftCust;
+        handleCustomerInput();
+    }
 
+    // إعداد التاريخ اللحظي
     let t = new Date();
-    document.getElementById('modalDate').value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-    document.getElementById('modalPaid').value = document.getElementById('modalTotal').value;
+    let dateEl = document.getElementById('modalDate');
+    if (dateEl) dateEl.value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+    
+    // وضع المدفوع يساوي الإجمالي تلقائياً
+    let paidEl = document.getElementById('modalPaid');
+    if (paidEl && modalTotalEl) paidEl.value = modalTotalEl.value;
+    
     calculateModalTotals();
-    document.getElementById('saveModalOverlay').style.display = 'flex';
+    
+    let modalOverlay = document.getElementById('saveModalOverlay');
+    if (modalOverlay) modalOverlay.style.display = 'flex';
 }
 
 let selectedCustomerId = null;
