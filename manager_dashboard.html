@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تحكم الإدارة - سراج كاشير</title>
+    
+    <!-- استدعاء ملفات السحابة (Firebase) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --neon-primary: #00ff66;
+            --neon-danger: #ff4444;
+            --neon-warning: #ffaa00;
+            --bg-dark: #0f111a;
+            --panel-bg: #1a1d2e;
+            --text-main: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid var(--neon-primary);
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            margin: 0;
+            color: var(--neon-primary);
+            text-shadow: 0 0 10px rgba(0, 255, 102, 0.4);
+        }
+
+        .admin-controls {
+            background: var(--panel-bg);
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.1);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        input, select {
+            padding: 12px;
+            background: #0b0c13;
+            border: 1px solid #333;
+            color: #fff;
+            border-radius: 6px;
+            outline: none;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--neon-primary);
+        }
+
+        button {
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .btn-add { background: var(--neon-primary); color: #000; }
+        .btn-add:hover { box-shadow: 0 0 15px var(--neon-primary); }
+
+        .btn-suspend { background: var(--neon-warning); color: #000; }
+        .btn-delete { background: var(--neon-danger); color: #fff; }
+        .btn-save { background: #3b82f6; color: #fff; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--panel-bg);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        th, td {
+            padding: 15px;
+            text-align: right;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        th {
+            background: rgba(0,0,0,0.4);
+            color: var(--neon-primary);
+        }
+
+        tr:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .status-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active { background: rgba(0, 255, 102, 0.2); color: #00ff66; }
+        .status-suspended { background: rgba(255, 68, 68, 0.2); color: #ff4444; }
+
+        /* شاشة قفل للأمان */
+        #login-shield {
+            position: fixed; top:0; left:0; width:100%; height:100%;
+            background: #000; z-index: 9999;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .login-box {
+            background: var(--panel-bg); padding: 30px; border-radius: 10px;
+            text-align: center; border: 1px solid var(--neon-primary);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 🛡️ شاشة قفل الإدارة السريعة -->
+    <div id="login-shield">
+        <div class="login-box">
+            <h2 style="color:var(--neon-primary)">تسجيل دخول المدير</h2>
+            <input type="password" id="admin-pass" placeholder="كلمة المرور السرية" style="margin-bottom:15px; text-align:center;">
+            <button class="btn-add" onclick="checkAdmin()">دخول</button>
+        </div>
+    </div>
+
+    <div class="header">
+        <h1>🛠️ مركز التحكم الرئيسي - سراج كاشير</h1>
+        <p>إدارة العملاء، الاشتراكات، الصلاحيات</p>
+    </div>
+
+    <!-- ➕ فورم إضافة عميل جديد -->
+    <div class="admin-controls">
+        <input type="text" id="new-store-id" placeholder="كود المحل (ID مميز)">
+        <input type="password" id="new-store-pass" placeholder="كلمة المرور للعميل">
+        <input type="text" id="new-store-name" placeholder="اسم العميل / المحل">
+        
+        <select id="new-store-plan">
+            <option value="free">باقة مجانية (محلية فقط)</option>
+            <option value="pro">باقة المحترف (تزامن سحابي)</option>
+            <option value="vip">باقة سراج VIP (ذكاء اصطناعي)</option>
+        </select>
+        
+        <input type="number" id="new-store-devices" placeholder="الحد الأقصى للأجهزة" value="1" min="1">
+        
+        <label style="color:#aaa; font-size:12px; display:flex; align-items:center;">تاريخ الانتهاء:</label>
+        <input type="date" id="new-store-expiry">
+        
+        <button class="btn-add" onclick="createNewClient()">➕ إضافة العميل</button>
+    </div>
+
+    <!-- 📊 جدول عرض العملاء والتحكم فيهم -->
+    <table>
+        <thead>
+            <tr>
+                <th>كود المحل</th>
+                <th>اسم العميل</th>
+                <th>كلمة المرور</th> <!-- تم الإضافة هنا -->
+                <th>الباقة</th>
+                <th>الأجهزة المسموحة</th>
+                <th>تاريخ الانتهاء</th>
+                <th>الحالة</th>
+                <th>إجراءات الإدارة</th>
+            </tr>
+        </thead>
+        <tbody id="clients-table-body">
+            <!-- سيتم تعبئة الجدول من السحابة هنا -->
+        </tbody>
+    </table>
+
+    <script>
+        // ⚠️ مهم: ضع أكواد الفايربيس الخاصة بك هنا! ⚠️
+        const firebaseConfig = {
+            apiKey: "AIzaSyASQurlODfgqRi812wwzcSGOTetYTaeUfQ",
+            authDomain: "serajled.firebaseapp.com",
+            databaseURL: "https://serajled-default-rtdb.firebaseio.com",
+            projectId: "serajled",
+            storageBucket: "serajled.firebasestorage.app",
+            messagingSenderId: "586272473412",
+            appId: "1:586272473412:web:a31487a74d9ea4ea96d711",
+            measurementId: "G-6Q7K2H0XJJ"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const dbAdmin = firebase.database();
+
+        // حماية بسيطة للوحة التحكم (الباسوورد الافتراضي: Hany2026)
+        function checkAdmin() {
+            if(document.getElementById('admin-pass').value === 'Hany2026') {
+                document.getElementById('login-shield').style.display = 'none';
+                loadClients();
+            } else {
+                alert("كلمة مرور غير صحيحة!");
+            }
+        }
+
+        // إنشاء عميل جديد
+        function createNewClient() {
+            let id = document.getElementById('new-store-id').value.trim();
+            let pass = document.getElementById('new-store-pass').value.trim();
+            let name = document.getElementById('new-store-name').value.trim();
+            let plan = document.getElementById('new-store-plan').value;
+            let devices = parseInt(document.getElementById('new-store-devices').value) || 1;
+            let expiry = document.getElementById('new-store-expiry').value;
+
+            if(!id || !pass) { alert("كود المحل وكلمة المرور مطلوبة!"); return; }
+
+            let clientData = {
+                store_name: name,
+                password: pass,
+                plan: plan,
+                max_devices: devices,
+                expiry_date: expiry || "2030-12-31", // لو مدخلش تاريخ، خليه بعيد
+                status: "active",
+                created_at: new Date().toISOString()
+            };
+
+            dbAdmin.ref('Admin_Users/' + id).set(clientData).then(() => {
+                alert("تم إضافة العميل بنجاح! ✅");
+                document.getElementById('new-store-id').value = "";
+                document.getElementById('new-store-pass').value = "";
+                document.getElementById('new-store-name').value = "";
+                loadClients(); // تحديث الجدول
+            });
+        }
+
+        // تحميل قائمة العملاء من السحابة
+        function loadClients() {
+            dbAdmin.ref('Admin_Users').on('value', (snapshot) => {
+                let tbody = document.getElementById('clients-table-body');
+                tbody.innerHTML = '';
+                
+                if(snapshot.exists()) {
+                    let users = snapshot.val();
+                    for(let storeId in users) {
+                        let user = users[storeId];
+                        let statusClass = user.status === 'active' ? 'status-active' : 'status-suspended';
+                        let statusText = user.status === 'active' ? 'نشط' : 'موقوف';
+                        let btnAction = user.status === 'active' 
+                            ? `<button class="btn-suspend" onclick="toggleStatus('${storeId}', 'suspended')">إيقاف ⏸️</button>`
+                            : `<button class="btn-add" onclick="toggleStatus('${storeId}', 'active')">تفعيل ▶️</button>`;
+
+                        let tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td><strong>${storeId}</strong></td>
+                            <td>${user.store_name || '-'}</td>
+                            <td>
+                                <!-- حقل كلمة المرور (قابل للتعديل) تم الإضافة هنا -->
+                                <input type="text" value="${user.password || ''}" style="width:100px; padding:5px; text-align:center;" 
+                                onchange="updatePassword('${storeId}', this.value)">
+                            </td>
+                            <td>
+                                <select onchange="updatePlan('${storeId}', this.value)" style="width:auto; padding:5px;">
+                                    <option value="free" ${user.plan==='free'?'selected':''}>مجانية</option>
+                                    <option value="pro" ${user.plan==='pro'?'selected':''}>محترف</option>
+                                    <option value="vip" ${user.plan==='vip'?'selected':''}>VIP</option>
+                                </select>
+                            </td>
+                            <td>
+                                <input type="number" value="${user.max_devices}" style="width:60px; padding:5px; text-align:center;" 
+                                onchange="updateDevices('${storeId}', this.value)">
+                            </td>
+                            <td>
+                                <input type="date" value="${user.expiry_date}" style="padding:5px;" 
+                                onchange="updateExpiry('${storeId}', this.value)">
+                            </td>
+<td style="display:flex; gap:10px; flex-wrap: wrap;">
+    ${btnAction}
+    <button style="background: #ef4444; color: white; border: none; border-radius: 6px; padding: 12px; cursor: pointer; font-weight: bold;" onclick="wipeStoreData('${storeId}')">تصفير الداتا 🧹</button>
+    <button style="background: #8b5cf6; color: white; border: none; border-radius: 6px; padding: 12px; cursor: pointer; font-weight: bold;" onclick="restoreClientData('${storeId}')">استعادة 🔄</button>
+    <button class="btn-delete" onclick="deleteClient('${storeId}')">حذف نهائي 🗑️</button>
+</td>
+                        `;
+                        tbody.appendChild(tr);
+                    }
+                }
+            });
+        }
+
+        // تحديث كلمة المرور (الدالة الجديدة)
+        function updatePassword(storeId, newPass) {
+            dbAdmin.ref('Admin_Users/' + storeId).update({ password: newPass });
+        }
+
+        // إيقاف أو تفعيل عميل
+        function toggleStatus(storeId, newStatus) {
+            dbAdmin.ref('Admin_Users/' + storeId).update({ status: newStatus });
+        }
+
+        // تحديث الباقة
+        function updatePlan(storeId, newPlan) {
+            dbAdmin.ref('Admin_Users/' + storeId).update({ plan: newPlan });
+        }
+
+        // تحديث عدد الأجهزة المسموحة
+        function updateDevices(storeId, count) {
+            dbAdmin.ref('Admin_Users/' + storeId).update({ max_devices: parseInt(count) });
+        }
+
+        // تحديث تاريخ الانتهاء
+        function updateExpiry(storeId, date) {
+            dbAdmin.ref('Admin_Users/' + storeId).update({ expiry_date: date });
+        }
+
+        // مسح عميل نهائياً (من الحسابات بس، مش فواتيره اللي في test_Stores)
+        function deleteClient(storeId) {
+            if(confirm(`⚠️ تحذير خطير: هل أنت متأكد من حذف العميل "${storeId}" نهائياً؟ لن يتمكن من الدخول للبرنامج.`)) {
+                dbAdmin.ref('Admin_Users/' + storeId).remove();
+            }
+        }
+// 1. دالة محو ذاكرة المحل (تفريغ الداتا التجريبية فقط مع بقاء الحساب)
+        function wipeStoreData(storeId) {
+            if(confirm(`⚠️ تحذير: هل أنت متأكد من مسح جميع فواتير وحسابات ومخزن المحل "${storeId}" نهائياً؟\n(هذا الإجراء لا يحذف اشتراك العميل، بل يصفر حساباته فقط)`)) {
+                // المسار الخاص ببيانات المحل الفعلية
+                dbAdmin.ref('test_Stores/' + storeId).remove().then(() => {
+                    alert(`تم تصفير جميع بيانات المحل "${storeId}" بنجاح! ✅`);
+                }).catch((error) => {
+                    alert("حدث خطأ أثناء مسح البيانات: " + error.message);
+                });
+            }
+        }
+
+        // 2. تفعيل دالة الاستعادة (التي كان زرها موجوداً بدون دالة)
+        function restoreClientData(storeId) {
+            if(confirm(`هل تريد إرسال أمر للمحل "${storeId}" باستعادة آخر نسخة احتياطية سحابية؟`)) {
+                // وضع إشارة في السحابة ليقرأها db.js ويقوم بفرض استعادة البيانات
+                dbAdmin.ref('Admin_Users/' + storeId + '/force_restore').set(true).then(() => {
+                    alert("تم إرسال أمر الاستعادة للمحل بنجاح! سيتم التنفيذ عند فتح العميل للبرنامج.");
+                });
+            }
+        }
+        
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+        });
+    }
+
+
+</script>
+
+<!-- ============================================================== -->
+
+<!-- 🚀 1. كود المراقبة الذكي لإغلاق جميع القوائم المنسدلة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+document.addEventListener('click', function(event) {
+
+if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
+
+if (typeof closeAllMenus === 'function') {
+
+closeAllMenus();
+
+}
+
+}
+
+});
+
+</script>
+
+
+
+<!-- ============================================================== -->
+
+<!-- 🚀 2. ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+window.addEventListener('popstate', function(event) {
+
+// لما المستخدم يدوس على زرار الموبايل، ننده دالة الزرار الأزرق فوراً
+
+if (typeof goBackSmart === 'function') {
+
+goBackSmart();
+
+}
+
+});
+
+</script>
+</body> 
+</html>
+

@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تقرير أرصدة العملاء - سراج كاشير</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-white: #ffffff;
+            --neon-red: #ff1a40;
+            --neon-green: #00ff66;
+            --neon-blue: #38bdf8;
+        }
+        
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); color: var(--text-white); margin: 0; padding: 0; user-select: none; overflow-x: hidden; -webkit-tap-highlight-color: transparent; min-height: 100vh; padding-bottom: 90px;}
+        
+        .header { background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: #ffffff; padding: 15px 20px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);}
+        
+        .search-container { padding: 15px; max-width: 800px; margin: 0 auto; position: relative;}
+        .search-label { font-size: 13px; color: #9ca3af; position: absolute; right: 25px; top: -5px; background: var(--bg-dark-1); padding: 0 5px; font-weight: bold;}
+        .search-input { width: 100%; padding: 14px; font-size: 16px; border: 2px solid var(--neon-border); border-radius: 14px; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); outline: none; font-weight: bold; text-align: right;}
+        .search-input:focus { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); }
+
+        .report-wrapper { max-width: 800px; margin: 0 auto; padding: 0 10px; }
+        .report-table { width: 100%; border-collapse: collapse; background: rgba(19, 17, 44, 0.7); border-radius: 12px; overflow: hidden; border: 2px solid var(--neon-border); box-shadow: 0 0 15px var(--neon-glow); }
+        .report-table th, .report-table td { padding: 16px 10px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; color: white; vertical-align: middle;}
+        .report-table th { background-color: rgba(168, 85, 247, 0.25); font-size: 15px; border-bottom: 2px solid var(--neon-border); position: sticky; top: 0; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        
+        .customer-name { font-weight: bold; font-size: 17px; color: var(--text-white); text-align: right; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        .val-text { font-size: 19px; font-weight: bold; letter-spacing: 0.5px;}
+        
+        .status-badge { padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: bold; display: inline-block; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .status-debt { background: rgba(255, 26, 64, 0.15); border: 1px solid var(--neon-red); color: var(--neon-red); }
+        .status-credit { background: rgba(0, 255, 102, 0.15); border: 1px solid var(--neon-green); color: var(--neon-green); }
+        
+        .total-row { background: rgba(168, 85, 247, 0.15); font-weight: bold; font-size: 16px; border-top: 2px solid var(--neon-border); }
+
+        /* ================= الشريط السفلي الموحد والباك ================= */
+        .unified-bottom-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background-color: rgba(19, 17, 44, 0.95); 
+            border-top: 1px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 8px; z-index: 100; 
+            box-shadow: 0 -4px 25px var(--neon-glow);
+            align-items: center;
+        }
+
+        .header-back-btn {
+            background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px;
+            padding: 0 15px; height: 45px; cursor: pointer; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;
+        }
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        .bottom-bar-dropdown { 
+            flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); 
+            border-radius: 12px; padding: 0 12px; height: 45px; display: flex; 
+            justify-content: center; align-items: center; font-size: 14px; 
+            font-weight: bold; color: var(--text-white); cursor: not-allowed; position: relative;
+            box-shadow: 0 0 10px var(--neon-glow); opacity: 0.8;
+        }
+        
+        .bottom-bar-btn { 
+            flex: 1; background-color: var(--card-bg); color: var(--text-white); 
+            border: 1px solid #3b82f6; border-radius: 12px; height: 45px; 
+            font-size: 14px; font-weight: bold; display: flex; justify-content: center; 
+            align-items: center; gap: 5px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); position: relative;
+        }
+
+        .dropdown-menu { position: absolute; bottom: 120%; background: #13112c; border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.8); display: none; z-index: 101; overflow: hidden; width: 220px; text-align: right; }
+        .dropdown-menu-item { padding: 12px 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 14px; color: #ffffff; display: flex; justify-content: space-between; align-items: center;}
+        .dropdown-menu-item:active { background-color: rgba(168, 85, 247, 0.25); }
+        .dropdown-menu-item.disabled { color: #9ca3af; cursor: not-allowed; }
+        
+        .sub-accordion-content { display: none; background: rgba(10, 8, 25, 0.95); padding: 0;}
+        .sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-white); text-align: right; border-right: 2px solid #ec4899;}
+
+/* إعدادات الطباعة */
+#thermalPrintArea { display: none; }
+        
+        /* 1. إعدادات طباعة A4 العادية أو الـ PDF */
+        @media print {
+            @page { margin: 10mm; size: A4 portrait; }
+            body { margin: 0; padding: 0; background: #fff; color: #000; }
+            .header, .search-container, .unified-bottom-bar { display: none !important; }
+            
+            #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
+            .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; background: white; color: black; border: 1px solid #000; box-shadow: none;}
+            .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
+            .report-table td { padding: 8px; border: 1px solid #000; color: black;}
+            .customer-name, .val-text { color: black !important; text-shadow: none !important; }
+            .status-badge { border: 1px solid #000 !important; color: #000 !important; background: transparent !important; padding: 2px 5px; box-shadow: none !important;}
+            .total-row { background-color: #ddd !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; border-top: 2px solid #000;}
+            #grandDebt, #grandCredit, #netBalanceTotal { color: black !important; font-weight: bold; }
+        }
+        
+        /* 2. إعدادات الطباعة الحرارية (بكرة 80mm) */
+        @media print {
+            body.thermal-print-mode #pdf-wrapper { display: none !important; }
+            body.thermal-print-mode #thermalPrintArea { display: block !important; width: 76mm; margin: 0 auto; padding: 5px; font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: #000; }
+            body.thermal-print-mode .print-header { font-size: 18px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px dashed #000; padding-bottom: 5px; text-align: center;}
+            body.thermal-print-mode .print-meta { font-size: 13px; margin-bottom: 8px; text-align: center; line-height: 1.4; font-weight: bold;}
+            body.thermal-print-mode .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px;}
+            body.thermal-print-mode .print-table th { border-bottom: 1px solid #000; padding: 4px 0; text-align: center;}
+            body.thermal-print-mode .print-table td { padding: 6px 0; border-bottom: 1px dotted #888; text-align: center;}
+            body.thermal-print-mode .print-footer { text-align: center; font-size: 11px; margin-top: 8px; border-top: 1px dashed #000; padding-top: 5px;}
+        }
+    </style>
+</head>
+<body onclick="closeAllMenus(event)">
+
+    <div class="header">
+        <span style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">تقرير المبالغ المتبقية للعملاء</span>
+    </div>
+
+    <div class="search-container">
+        <div class="search-label">البحث</div>
+        <input type="text" id="searchInput" class="search-input" placeholder="ادخل اسم العميل..." oninput="renderTable()">
+    </div>
+
+    <div class="report-wrapper" id="pdf-wrapper">
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%; text-align: right;">العميل</th>
+                    <th style="width: 25%;">الحالة</th>
+                    <th style="width: 30%;">الرصيد</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="3" style="text-align: center; padding: 15px; line-height: 1.8;">
+                        إجمالي الفلوس اللي بره (عليه) = <span id="grandDebt" style="color: var(--neon-red);">0.00</span> ج
+                        <br>
+                        إجمالي الفلوس اللي للناس (له) = <span id="grandCredit" style="color: var(--neon-green);">0.00</span> ج
+                        <br>
+                        الصافي النهائي = <span id="netBalanceTotal" style="color: #f59e0b; font-size: 20px;">0.00</span> ج
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- مساحة الطباعة الحرارية المخفية -->
+    <div id="thermalPrintArea">
+        <div class="print-header">محلات سراج LED</div>
+        <div class="print-meta">تقرير أرصدة العملاء (مدى العمل)</div>
+        <table class="print-table">
+            <thead><tr style="border-bottom: 1px solid black;"><th>العميل</th><th style="text-align:center;">الحالة</th><th style="text-align:center;">الرصيد</th></tr></thead>
+            <tbody id="printTableBody"></tbody>
+        </table>
+        <div style="border-top: 1px dashed black; margin-top: 10px; padding-top: 10px; font-size: 14px; line-height: 1.6; font-weight:bold;">
+            إجمالي الفلوس بره: <span id="printGrandDebt">0.00</span> ج<br>
+            إجمالي للناس: <span id="printGrandCredit">0.00</span> ج<br>
+            الصافي النهائي: <span id="printNetBalance">0.00</span> ج
+        </div>
+        <div class="print-footer">تم الإصدار من نظام سراج كاشير</div>
+    </div>
+
+    <!-- ======== شريط التحكم السفلي الموحد ======== -->
+    <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+        
+        <button class="header-back-btn" onclick="window.location.href='smart_accountant.html'">
+            <span class="arrow">⬅</span>
+            <span class="text">BACK</span>
+        </button>
+
+        <!-- زر المدى مقفول على مدى العمل دايماً لحماية الأرصدة -->
+        <div class="bottom-bar-dropdown" onclick="alert('تقرير الأرصدة والديون يجب أن يكون لمدى العمل دائماً لضمان عدم إخفاء ديون قديمة.')">
+            <span>📅 <span style="margin-right: 2px;">مدى العمل</span></span>
+            <span style="color:var(--neon-blue);">🔒</span>
+        </div>
+
+        <div class="bottom-bar-btn" onclick="togglePrintOptions(event)">
+            🖨️ خيارات
+            <div class="dropdown-menu" id="floatingPrintMenu" style="left:0; right:auto;">
+                <div class="dropdown-menu-item" onclick="handlePrintAction('thermal')">🖨️ طابعة حرارية / A4</div>
+                
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')"><span>📊 إكسيل</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="excelSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('excel_export')">📤 تصدير إكسيل</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('غير متاح')">📥 استيراد إكسيل</div>
+                </div>
+
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')"><span>📄 PDF</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="pdfSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('غير متاح')">📥 استيراد PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="db.js"></script>
+    <script>
+        function closeAllMenus(e) {
+            let prnt = document.getElementById('floatingPrintMenu'); if(prnt) prnt.style.display = 'none';
+            ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                let el = document.getElementById(id); if(el) el.style.display = 'none';
+            });
+        }
+
+        function togglePrintOptions(e) {
+            e.stopPropagation(); 
+            let m = document.getElementById('floatingPrintMenu');
+            let isVisible = m.style.display === 'block';
+            closeAllMenus();
+            if(!isVisible) m.style.display = 'block';
+        }
+
+        function toggleAccordionSubMenu(e, subMenuId) {
+            e.stopPropagation(); 
+            let menu = document.getElementById(subMenuId);
+            let currentDisplay = menu.style.display;
+            ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                if(id !== subMenuId) { let el = document.getElementById(id); if(el) el.style.display = 'none'; }
+            });
+            menu.style.display = currentDisplay === 'block' ? 'none' : 'block';
+        }
+
+        // ================= قراءة الأرصدة النهائية للعملاء مباشرة من الحسابات =================
+        function renderTable() {
+            if (typeof DB === 'undefined') return;
+            let query = document.getElementById('searchInput').value.trim().toLowerCase();
+            let allCustomers = DB.getCustomers() || [];
+            
+            let displayList = [];
+            let grandDebt = 0;
+            let grandCredit = 0;
+
+            allCustomers.forEach(c => {
+                if(query && !c.name.toLowerCase().includes(query)) return;
+
+                // السحر هنا: بنقرا الرصيد النهائي المحسوب أوتوماتيك من نظام العملاء
+                let net = parseFloat(c.balance) || 0;
+                
+                // تجاهل اللي حسابه متصفي تماماً (صفر)
+                if (Math.abs(net) < 0.05) return; 
+
+                let statusText = net > 0 ? 'عليه' : 'له';
+                let statusClass = net > 0 ? 'status-debt' : 'status-credit';
+                let valColor = net > 0 ? 'var(--neon-red)' : 'var(--neon-green)';
+
+                if(net > 0) grandDebt += net;
+                else grandCredit += Math.abs(net);
+
+                displayList.push({
+                    name: c.name,
+                    netVal: Math.abs(net),
+                    statusText: statusText,
+                    statusClass: statusClass,
+                    valColor: valColor,
+                    originalNet: net
+                });
+            });
+
+            // ترتيب القائمة (الأعلى مديونية أولاً)
+            displayList.sort((a, b) => b.originalNet - a.originalNet);
+
+            let tbody = document.getElementById('tableBody');
+            let printTbody = document.getElementById('printTableBody');
+            tbody.innerHTML = ''; printTbody.innerHTML = '';
+
+            if(displayList.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding:20px; color:#00ff66; font-weight:bold; font-size: 18px;">لا توجد ديون أو أرصدة للعملاء</td></tr>`;
+                document.getElementById('grandDebt').innerText = "0.00";
+                document.getElementById('grandCredit').innerText = "0.00";
+                document.getElementById('netBalanceTotal').innerText = "0.00";
+                return;
+            }
+
+            displayList.forEach(item => {
+                // للواجهة
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="customer-name">${item.name}</td>
+                        <td><div class="status-badge ${item.statusClass}">${item.statusText}</div></td>
+                        <td class="val-text" style="color: ${item.valColor}; text-shadow: 0 0 10px ${item.valColor};">${item.netVal.toFixed(2)}</td>
+                    </tr>
+                `;
+                
+                // للطباعة الحرارية
+                let printSign = item.originalNet > 0 ? '(عليه)' : '(له)';
+                printTbody.innerHTML += `<tr><td style="text-align: right; padding-right:5px;">${item.name}</td><td style="text-align:center;">${printSign}</td><td style="text-align:center;">${item.netVal.toFixed(2)}</td></tr>`;
+            });
+
+            // الإجماليات النهائية
+            let totalNetBalance = grandDebt - grandCredit;
+            
+            document.getElementById('grandDebt').innerText = grandDebt.toFixed(2);
+            document.getElementById('grandCredit').innerText = grandCredit.toFixed(2);
+            document.getElementById('netBalanceTotal').innerText = totalNetBalance.toFixed(2);
+            
+            document.getElementById('printGrandDebt').innerText = grandDebt.toFixed(2);
+            document.getElementById('printGrandCredit').innerText = grandCredit.toFixed(2);
+            document.getElementById('printNetBalance').innerText = totalNetBalance.toFixed(2);
+        }
+
+        // دوال الطباعة والتصدير
+        function handlePrintAction(action) {
+            closeAllMenus();
+            if (action === 'thermal') {
+                document.body.classList.add('thermal-print-mode');
+                window.print();
+                setTimeout(() => document.body.classList.remove('thermal-print-mode'), 1000);
+            }
+            if (action === 'excel_export') exportToExcel();
+            if (action === 'pdf_export') exportToPDF();
+        }
+
+        function exportToExcel() {
+            let data = [["اسم العميل", "حالة الحساب", "الرصيد (جنيه)"]];
+            let rows = document.querySelectorAll('#tableBody tr');
+            if(rows.length === 0 || rows[0].innerText.includes('لا توجد')) return alert("لا يوجد بيانات للتصدير");
+            
+            rows.forEach(row => {
+                if(row.classList.contains('total-row')) return;
+                data.push([
+                    row.querySelector('.customer-name').innerText,
+                    row.querySelector('.status-badge').innerText,
+                    row.querySelector('.val-text').innerText
+                ]);
+            });
+
+            data.push([]);
+            data.push(["إجمالي الفلوس اللي بره (عليه)", "", document.getElementById('grandDebt').innerText]);
+            data.push(["إجمالي الفلوس اللي للناس (له)", "", document.getElementById('grandCredit').innerText]);
+            data.push(["الصافي الكلي", "", document.getElementById('netBalanceTotal').innerText]);
+
+            let ws = XLSX.utils.aoa_to_sheet(data);
+            let wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "أرصدة العملاء");
+            XLSX.writeFile(wb, "Customer_Balances_" + new Date().toISOString().slice(0,10) + ".xlsx");
+        }
+
+        function exportToPDF() {
+            document.body.classList.remove('thermal-print-mode');
+            let element = document.getElementById('pdf-wrapper');
+            html2pdf().set({ 
+                margin: 10, 
+                filename: 'Customer_Balances.pdf', 
+                html2canvas: { scale: 2 },
+                pagebreak: { mode: 'avoid-all' } 
+            }).from(element).save();
+        }
+
+        window.onload = () => { 
+            if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme(); 
+            renderTable(); 
+        };
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                    .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+            });
+        }
+
+
+</script>
+
+<!-- ============================================================== -->
+
+<!-- 🚀 1. كود المراقبة الذكي لإغلاق جميع القوائم المنسدلة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+document.addEventListener('click', function(event) {
+
+if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
+
+if (typeof closeAllMenus === 'function') {
+
+closeAllMenus();
+
+}
+
+}
+
+});
+
+</script>
+
+
+
+<!-- ============================================================== -->
+
+<!-- 🚀 2. ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+    window.addEventListener('popstate', function(event) {
+    
+    // لما المستخدم يدوس على زرار الموبايل، ننده دالة الزرار الأزرق فوراً
+    
+    if (typeof goBackSmart === 'function') {
+    
+    goBackSmart();
+    
+    }
+    
+    });
+    
+    </script>
+</body> 
+</html>

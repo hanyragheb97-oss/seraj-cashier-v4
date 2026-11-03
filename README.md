@@ -1,1 +1,19 @@
-# seraj-cashier-v4
+[index.html](https://hanyragheb97-oss.github.io/SerajCashier/index.html)
+<br>
+[smart_accountant.html](https://hanyragheb97-oss.github.io/SerajCashier/smart_accountant.html)
+<br>
+[sales.html](https://hanyragheb97-oss.github.io/SerajCashier/sales.html)
+<br>
+[purchases.html](https://hanyragheb97-oss.github.io/SerajCashier/purchases.html)
+<br>
+[treasury.html](https://hanyragheb97-oss.github.io/SerajCashier/treasury.html)
+<br>
+[customers.html](https://hanyragheb97-oss.github.io/SerajCashier/customers.html)
+<br>
+[suppliers.html](https://hanyragheb97-oss.github.io/SerajCashier/suppliers.html)
+<br>
+[store.html](https://hanyragheb97-oss.github.io/SerajCashier/store.html)
+<br>
+[purchases_history.html](https://hanyragheb97-oss.github.io/SerajCashier/purchases_history.html)
+<br>
+[history.html](https://hanyragheb97-oss.github.io/SerajCashier/history.html)

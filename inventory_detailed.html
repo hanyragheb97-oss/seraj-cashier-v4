@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جرد المخزن مفصل - سراج كاشير</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-white: #ffffff;
+            --neon-red: #ff1a40;
+            --neon-green: #00ff66;
+            --neon-blue: #38bdf8;
+        }
+        
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); color: var(--text-white); margin: 0; padding: 0; user-select: none; overflow-x: hidden; -webkit-tap-highlight-color: transparent; min-height: 100vh; padding-bottom: 90px;}
+        
+        .header { background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: #ffffff; padding: 15px 20px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);}
+        
+        .search-container { padding: 15px; max-width: 800px; margin: 0 auto; position: relative;}
+        .search-label { font-size: 13px; color: #9ca3af; position: absolute; right: 25px; top: -5px; background: var(--bg-dark-1); padding: 0 5px; font-weight: bold;}
+        .search-input { width: 100%; padding: 14px; font-size: 16px; border: 2px solid var(--neon-border); border-radius: 14px; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); outline: none; font-weight: bold; text-align: right;}
+        .search-input:focus { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); }
+
+        .report-wrapper { max-width: 800px; margin: 0 auto; padding: 0 10px; }
+        .report-table { width: 100%; border-collapse: collapse; background: rgba(19, 17, 44, 0.7); border-radius: 12px; overflow: hidden; border: 2px solid var(--neon-border); box-shadow: 0 0 15px var(--neon-glow); }
+        .report-table th, .report-table td { padding: 14px 10px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; color: white; vertical-align: middle;}
+        .report-table th { background-color: rgba(168, 85, 247, 0.25); font-size: 15px; border-bottom: 2px solid var(--neon-border); position: sticky; top: 0; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        
+        /* ستايل الخلايا */
+        .item-details-td { text-align: right; }
+        .item-name { font-size: 17px; font-weight: bold; color: var(--text-white); margin-bottom: 4px; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        .item-meta { font-size: 13px; color: #9ca3af; font-weight: bold;}
+        
+        .item-qty-td { font-size: 18px; font-weight: bold; }
+        .item-price-td { font-size: 16px; font-weight: bold; color: var(--text-white); }
+        
+        /* المربع الأحمر للإجمالي */
+        .total-box { 
+            border: 2px solid var(--neon-red); color: var(--neon-red); 
+            padding: 4px 10px; border-radius: 8px; font-weight: bold; 
+            font-size: 15px; display: inline-block; margin-top: 5px;
+            background: rgba(255, 26, 64, 0.1); box-shadow: 0 0 10px rgba(255, 26, 64, 0.2);
+        }
+
+        .total-row { background: rgba(168, 85, 247, 0.15); font-weight: bold; font-size: 18px; border-top: 2px solid var(--neon-border); }
+
+        /* ================= الشريط السفلي الموحد ================= */
+        .unified-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background-color: rgba(19, 17, 44, 0.95); border-top: 1px solid var(--neon-border); display: flex; padding: 10px 15px; gap: 8px; z-index: 100; box-shadow: 0 -4px 25px var(--neon-glow); align-items: center;}
+        .header-back-btn { background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;}
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+        .bottom-bar-btn { flex: 1; background-color: var(--card-bg); color: var(--text-white); border: 1px solid #3b82f6; border-radius: 12px; height: 45px; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 5px; cursor: pointer; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); position: relative;}
+        .dropdown-menu { position: absolute; bottom: 120%; background: #13112c; border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.8); display: none; z-index: 101; overflow: hidden; width: 220px; text-align: right; }
+        .dropdown-menu-item { padding: 12px 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 14px; color: #ffffff; display: flex; justify-content: space-between; align-items: center;}
+        .dropdown-menu-item:active { background-color: rgba(168, 85, 247, 0.25); }
+        .sub-accordion-content { display: none; background: rgba(10, 8, 25, 0.95); padding: 0;}
+        .sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-white); text-align: right; border-right: 2px solid #ec4899;}
+
+/* إعدادات الطباعة */
+#thermalPrintArea { display: none; }
+        
+        /* 1. إعدادات طباعة A4 العادية أو الـ PDF */
+        @media print {
+            @page { margin: 10mm; size: A4 portrait; }
+            body { margin: 0; padding: 0; background: #fff; color: #000; }
+            .header, .search-container, .unified-bottom-bar, .modal-overlay { display: none !important; }
+            #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
+            .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; background: white; color: black; border: 1px solid #000; box-shadow: none;}
+            .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
+            .report-table td { padding: 10px; border: 1px solid #000; color: black;}
+            .exp-name { color: black !important; text-shadow: none !important; }
+            .amount-box { border: 1px solid #000 !important; color: #000 !important; background: transparent !important; padding: 4px 8px; box-shadow: none !important;}
+            .total-row { background-color: #ddd !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; border-top: 2px solid #000;}
+            #grandTotal { color: black !important; font-weight: bold; }
+        }
+        
+        /* 2. إعدادات الطباعة الحرارية (بكرة 80mm) */
+        @media print {
+            body.thermal-print-mode #pdf-wrapper { display: none !important; }
+            body.thermal-print-mode #thermalPrintArea { display: block !important; width: 76mm; margin: 0 auto; padding: 5px; font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: #000; }
+            body.thermal-print-mode .print-header { font-size: 18px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px dashed #000; padding-bottom: 5px; text-align: center;}
+            body.thermal-print-mode .print-meta { font-size: 13px; margin-bottom: 15px; text-align: center; line-height: 1.4; font-weight: bold;}
+            body.thermal-print-mode .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px;}
+            body.thermal-print-mode .print-table th { border-bottom: 1px solid #000; padding: 4px 0; text-align: center;}
+            body.thermal-print-mode .print-table td { padding: 6px 0; border-bottom: 1px dotted #888; text-align: center;}
+            body.thermal-print-mode .print-footer { text-align: center; font-size: 11px; margin-top: 15px; border-top: 1px dashed #000; padding-top: 5px;}
+        }
+    </style>
+</head>
+<body onclick="closeAllMenus(event)">
+
+    <div class="header">
+        <span style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">جرد المخزن مفصل</span>
+    </div>
+
+    <div class="search-container">
+        <div class="search-label">البحث</div>
+        <input type="text" id="searchInput" class="search-input" placeholder="ادخل اسم المنتج..." oninput="renderTable()">
+    </div>
+
+    <div class="report-wrapper" id="pdf-wrapper">
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%; text-align: right;">اسم المنتج</th>
+                    <th style="width: 25%;">رصيد المخزن</th>
+                    <th style="width: 30%;">سعر الشراء</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="3" style="text-align: center; padding: 15px;">
+                        تكلفة المنتجات بالمخزن = <span id="grandInventoryTotal" style="color: var(--neon-red);">0.00</span> جنيه
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- مساحة الطباعة الحرارية المخفية -->
+    <div id="thermalPrintArea">
+        <div class="print-header">محلات سراج LED</div>
+        <div class="print-meta">تقرير جرد المخزن مفصل</div>
+        <table class="print-table">
+            <thead><tr style="border-bottom: 1px solid black;"><th>المنتج</th><th style="text-align:center;">الكمية</th><th style="text-align:center;">الإجمالي</th></tr></thead>
+            <tbody id="printTableBody"></tbody>
+        </table>
+        <div style="border-top: 1px dashed black; margin-top: 10px; padding-top: 10px; font-size: 14px; font-weight:bold; text-align: center;">
+            إجمالي التكلفة: <span id="printGrandTotal">0.00</span> ج
+        </div>
+        <div class="print-footer">تم الإصدار من نظام سراج كاشير</div>
+    </div>
+
+    <!-- ======== شريط التحكم السفلي الموحد ======== -->
+    <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+        <button class="header-back-btn" onclick="handleSmartBack()">
+            <span class="arrow">⬅</span>
+            <span class="text">BACK</span>
+        </button>
+
+        <div class="bottom-bar-btn" onclick="togglePrintOptions(event)">
+            🖨️ خيارات
+            <div class="dropdown-menu" id="floatingPrintMenu" style="left:0; right:auto;">
+                <div class="dropdown-menu-item" onclick="handlePrintAction('thermal')">🖨️ طابعة حرارية / A4</div>
+                
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')"><span>📊 إكسيل</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="excelSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('excel_export')">📤 تصدير إكسيل</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('غير متاح هنا')">📥 استيراد إكسيل</div>
+                </div>
+
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')"><span>📄 PDF</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="pdfSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('غير متاح هنا')">📥 استيراد PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+<script src="db.js"></script>
+    <script>
+        function handleSmartBack() {
+            localStorage.setItem('seraj_active_tab', 'المخزن');
+            window.location.href = 'smart_accountant.html';
+        }
+
+        function closeAllMenus(e) {
+            let prnt = document.getElementById('floatingPrintMenu'); if(prnt) prnt.style.display = 'none';
+            ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                let el = document.getElementById(id); if(el) el.style.display = 'none';
+            });
+        }
+
+        function togglePrintOptions(e) {
+            e.stopPropagation(); 
+            let m = document.getElementById('floatingPrintMenu');
+            let isVisible = m.style.display === 'block';
+            closeAllMenus();
+            if(!isVisible) m.style.display = 'block';
+        }
+
+        function toggleAccordionSubMenu(e, subMenuId) {
+            e.stopPropagation(); 
+            let menu = document.getElementById(subMenuId);
+            let currentDisplay = menu.style.display;
+            ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                if(id !== subMenuId) { let el = document.getElementById(id); if(el) el.style.display = 'none'; }
+            });
+            menu.style.display = currentDisplay === 'block' ? 'none' : 'block';
+        }
+
+        // ================= بناء جدول جرد المخزن المفصل (مسّرع بالقراءة المحلية) =================
+        function renderTable() {
+            let query = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            // 🚨 السر هنا: القراءة من الذاكرة المحلية (localStorage) عشان متستناش الفايربيز يحمل
+            let localData = localStorage.getItem('seraj_products');
+            let productsDB = [];
+            
+            if (localData) {
+                try {
+                    productsDB = JSON.parse(localData);
+                } catch (e) {
+                    productsDB = typeof DB !== 'undefined' ? (DB.getProducts() || []) : [];
+                }
+            } else {
+                productsDB = typeof DB !== 'undefined' ? (DB.getProducts() || []) : [];
+            }
+
+            let tbody = document.getElementById('tableBody');
+            let printTbody = document.getElementById('printTableBody');
+            
+            // علامة تحميل بسيطة عشان المستخدم ميفكرش إن الصفحة هنجت
+            tbody.innerHTML = `<tr><td colspan="3" style="padding:30px; color:#38bdf8; font-weight:bold; font-size: 18px; text-align:center;">جاري تجهيز بيانات الجرد... ⏳</td></tr>`;
+
+            // هنشغل حسابات الجدول في الخلفية عشان الصفحة متتشنجش
+            setTimeout(() => {
+                let htmlContent = '';
+                let printHtmlContent = '';
+                let grandTotalCost = 0;
+                let hasItems = false;
+
+                // ترتيب المنتجات أبجدياً لسهولة القراءة
+                productsDB.sort((a, b) => {
+                    let nameA = a.name || "";
+                    let nameB = b.name || "";
+                    return nameA.localeCompare(nameB, 'ar');
+                });
+
+                productsDB.forEach(product => {
+                    // فلتر الأصناف المحذوفة
+                    if (product.isDeleted) return;
+                    
+                    // فلتر البحث
+                    if (query && !(product.name || "").toLowerCase().includes(query)) return;
+
+// لو الصنف متسجل بنظام الدفعات (Lots)
+                    if (product.lots && product.lots.length > 0) {
+                        product.lots.forEach(lot => {
+                            let lotQty = parseFloat(lot.stock) || 0;
+                            // 🌟 التعديل السحري: هنستثني الصفر بس، لكن هنسمح للسالب والموجب يعدوا 🌟
+                            if (lotQty === 0) return; 
+
+                            let lotPrice = parseFloat(lot.purchasePrice) || parseFloat(lot.buyPrice) || parseFloat(lot.cost) || parseFloat(lot.price) || 0;
+                            let lotTotal = lotQty * lotPrice;
+                            grandTotalCost += lotTotal;
+                            hasItems = true;
+
+                            let lotSupplierStr = String(lot.supplier || 'بدون فاتورة شراء');
+                            let dateStr = lot.date || '---';
+
+                            htmlContent += `
+                                <tr>
+                                    <td class="item-details-td">
+                                        <div class="item-name">${product.name}</div>
+                                        <div class="item-meta">${lotSupplierStr}</div>
+                                        <div class="item-meta">${dateStr}</div>
+                                    </td>
+                                    <td class="item-qty-td">${lotQty.toFixed(2).replace(/\.00$/, '')}</td>
+                                    <td>
+                                        <div class="item-price-td">${lotPrice.toFixed(2)}</div>
+                                        <div class="total-box">${lotTotal.toFixed(2)} جنيه</div>
+                                    </td>
+                                </tr>
+                            `;
+
+                            printHtmlContent += `
+                                <tr>
+                                    <td style="text-align: right; padding-right:5px;">${product.name}<br><span style="font-size:10px;">${lotSupplierStr}</span></td>
+                                    <td style="text-align: center;">${lotQty.toFixed(2).replace(/\.00$/, '')}</td>
+                                    <td style="text-align: center; font-weight:bold;">${lotTotal.toFixed(2)}</td>
+                                </tr>
+                            `;
+                        });
+                    } else {
+                        // لو الصنف متسجل بالنظام القديم (كمية واحدة فقط بدون lots)
+                        let currentQty = parseFloat(product.qty) || parseFloat(product.stock) || 0;
+                        if (currentQty <= 0) return;
+
+                        let buyPrice = parseFloat(product.purchasePrice) || parseFloat(product.buyPrice) || parseFloat(product.cost) || parseFloat(product.price) || 0;
+                        let totalCost = currentQty * buyPrice;
+                        
+                        grandTotalCost += totalCost;
+                        hasItems = true;
+
+                        htmlContent += `
+                            <tr>
+                                <td class="item-details-td">
+                                    <div class="item-name">${product.name}</div>
+                                    <div class="item-meta" style="color:#ff1a40;">بدون فاتورة شراء</div>
+                                </td>
+                                <td class="item-qty-td">${currentQty.toFixed(2).replace(/\.00$/, '')}</td>
+                                <td>
+                                    <div class="item-price-td">${buyPrice.toFixed(2)}</div>
+                                    <div class="total-box">${totalCost.toFixed(2)} جنيه</div>
+                                </td>
+                            </tr>
+                        `;
+
+                        printHtmlContent += `
+                            <tr>
+                                <td style="text-align: right; padding-right:5px;">${product.name}</td>
+                                <td style="text-align: center;">${currentQty.toFixed(2).replace(/\.00$/, '')}</td>
+                                <td style="text-align: center; font-weight:bold;">${totalCost.toFixed(2)}</td>
+                            </tr>
+                        `;
+                    }
+                });
+
+                if (!hasItems) {
+                    htmlContent = `<tr><td colspan="3" style="padding:20px; color:#f59e0b; font-weight:bold; text-align:center;">لا توجد منتجات برصيد في المخزن حالياً</td></tr>`;
+                }
+
+                // تفريغ المحتوى في الجدول مرة واحدة عشان يكون أسرع في الريندر
+                tbody.innerHTML = htmlContent;
+                printTbody.innerHTML = printHtmlContent;
+
+                document.getElementById('grandInventoryTotal').innerText = grandTotalCost.toFixed(2);
+                document.getElementById('printGrandTotal').innerText = grandTotalCost.toFixed(2);
+
+            }, 50); // تأخير 50 جزء من الثانية بيخلي الشاشة متوقفش وتفتح معاك فوراً
+        }
+
+        // دوال الطباعة والتصدير
+        function handlePrintAction(action) {
+            closeAllMenus();
+            if (action === 'thermal') {
+                document.body.classList.add('thermal-print-mode');
+                window.print();
+                setTimeout(() => document.body.classList.remove('thermal-print-mode'), 1000);
+            }
+            if (action === 'excel_export') exportToExcel();
+            if (action === 'pdf_export') exportToPDF();
+        }
+
+        function exportToExcel() {
+            let data = [["اسم المنتج", "ملاحظات الفاتورة/المورد", "التاريخ", "الرصيد", "سعر الشراء", "إجمالي التكلفة"]];
+            let rows = document.querySelectorAll('#tableBody tr');
+            if(rows.length === 0 || rows[0].innerText.includes('لا توجد') || rows[0].innerText.includes('تجهيز')) return alert("لا يوجد بيانات للتصدير");
+            
+            rows.forEach(row => {
+                if(row.classList.contains('total-row')) return;
+                
+                let details = row.querySelector('.item-details-td');
+                if(!details) return;
+
+                let name = details.querySelector('.item-name').innerText;
+                let metas = details.querySelectorAll('.item-meta');
+                let invoiceNote = metas.length > 0 ? metas[0].innerText : '';
+                let dateStr = metas.length > 1 ? metas[1].innerText : '';
+                
+                let qty = row.querySelector('.item-qty-td').innerText;
+                let price = row.querySelector('.item-price-td').innerText;
+                let total = row.querySelector('.total-box').innerText.replace(' جنيه', '');
+
+                data.push([name, invoiceNote, dateStr, qty, price, total]);
+            });
+
+            data.push([]);
+            data.push(["تكلفة المنتجات بالمخزن", "", "", "", "", document.getElementById('grandInventoryTotal').innerText]);
+
+            let ws = XLSX.utils.aoa_to_sheet(data);
+            let wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "جرد_المخزن_مفصل");
+            XLSX.writeFile(wb, "Inventory_Detailed_" + new Date().toISOString().slice(0,10) + ".xlsx");
+        }
+
+        function exportToPDF() {
+            document.body.classList.remove('thermal-print-mode');
+            let element = document.getElementById('pdf-wrapper');
+            html2pdf().set({ 
+                margin: 10, 
+                filename: 'Inventory_Detailed.pdf', 
+                html2canvas: { scale: 2 },
+                pagebreak: { mode: 'avoid-all' } 
+            }).from(element).save();
+        }
+
+        window.onload = () => { 
+            if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme(); 
+            // جرد المخزن المفصل بيقرأ محلياً فهيكون سريع
+            renderTable(); 
+        };
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+        });
+    }
+
+
+</script>
+
+<!-- ============================================================== -->
+
+<!-- 🚀 1. كود المراقبة الذكي لإغلاق جميع القوائم المنسدلة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+document.addEventListener('click', function(event) {
+
+if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
+
+if (typeof closeAllMenus === 'function') {
+
+closeAllMenus();
+
+}
+
+}
+
+});
+
+</script>
+
+
+
+<!-- ============================================================== -->
+
+<!-- 🚀 2. ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+window.addEventListener('popstate', function(event) {
+
+// لما المستخدم يدوس على زرار الموبايل، ننده دالة الزرار الأزرق فوراً
+
+if (typeof goBackSmart === 'function') {
+
+goBackSmart();
+
+}
+
+});
+
+</script>
+</body> 
+</html>

@@ -1242,7 +1242,8 @@ function renderNotesList() {
 
             tr.innerHTML = `
                 <td style="text-align:right; padding-right:8px; text-decoration: none !important;">${displayName}</td>
-                <td><input type="number" class="note-td-input qty-val" value="${qty}"></td>
+                <!-- تم إضافة min="0" لمنع السالب حسب الدستور المركزي -->
+                <td><input type="number" class="note-td-input qty-val" value="${qty}" min="0"></td>
                 <td><span class="state-badge ${colorCls}" onclick="cycleStateColor(this)">${stateVal}</span></td>
                 <td><input type="text" class="note-td-input sup-val" value="${supplier || ''}" placeholder="المورد"></td>
             `;
@@ -1301,30 +1302,33 @@ function renderNotesList() {
                 });
             }
             
-            let existingIndex = smartNotesDB.findIndex(n => n.id === currentEditingNoteId);
-
-            // الشرط الجديد: لو العنوان فارغ (أو اتقمسح) ومافيش أصناف جوه المفكره الذكيه خالص
-            if (title === '' && items.length === 0) {
-                // لو المفكره الذكيه دي كانت قديمة ومحفوظة قبل كده، نقوم بحذفها نهائياً
+// الشرط الجديد: لو العنوان فارغ (أو اتقمسح) ومافيش أصناف جوه النوتة خالص
+if (title === '' && items.length === 0) {
                 if (existingIndex > -1) {
                     smartNotesDB.splice(existingIndex, 1);
-                    localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
-                    
-                    // تحديث السحابة لو متاح
-                    if (typeof DB !== 'undefined' && typeof DB.saveSmartNotes === 'function') {
-                        DB.saveSmartNotes(smartNotesDB);
+                    // الاعتماد كلياً على المحرك المركزي في الحذف
+                    if (typeof window.DB !== 'undefined' && typeof window.DB.saveSmartNotes === 'function') {
+                        window.DB.saveSmartNotes(smartNotesDB);
+                    } else {
+                        localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
                     }
                 }
-                // لو كانت جديدة ولسه متسجلتش أساساً وفاضية، ماعملش حاجة واقفل المودال بس
                 renderNotesList();
                 closeNoteModal();
                 return;
             }
             
-            // لو فيها بيانات (عنوان أو أصناف)، تكمل عملية الحفظ بشكل طبيعي
+            // لو فيها بيانات، تكمل عملية الحفظ بشكل طبيعي
             let finalTitle = title !== '' ? title : 'ملاحظة بدون اسم';
+            
+            // استخدام المولد المركزي لإنشاء ID فريد لو النوتة جديدة
+            let finalId = currentEditingNoteId;
+            if (!finalId) {
+                finalId = (typeof window.generateUniqueId === 'function') ? window.generateUniqueId() : Date.now().toString();
+            }
+
             let noteObj = { 
-                id: currentEditingNoteId, 
+                id: finalId, 
                 title: finalTitle, 
                 comment, 
                 items, 
@@ -1339,10 +1343,11 @@ function renderNotesList() {
                 smartNotesDB.unshift(noteObj);
             }
             
-            localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
-            
-            if (typeof DB !== 'undefined' && typeof DB.saveSmartNotes === 'function') {
-                DB.saveSmartNotes(smartNotesDB);
+            // الاعتماد كلياً على بوابة الحفظ المركزية
+            if (typeof window.DB !== 'undefined' && typeof window.DB.saveSmartNotes === 'function') {
+                window.DB.saveSmartNotes(smartNotesDB);
+            } else {
+                localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
             }
             
             renderNotesList();

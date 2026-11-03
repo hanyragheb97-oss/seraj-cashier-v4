@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تقرير مشتريات مفصل - سراج كاشير</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-white: #ffffff;
+        }
+        
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); color: var(--text-white); margin: 0; padding: 0; user-select: none; overflow-x: hidden; -webkit-tap-highlight-color: transparent; min-height: 100vh; padding-bottom: 90px;}
+        
+        .header { background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: #ffffff; padding: 15px 20px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);}
+        
+        .search-container { padding: 15px; max-width: 800px; margin: 0 auto; position: relative;}
+        .search-label { font-size: 13px; color: #9ca3af; position: absolute; right: 25px; top: -5px; background: var(--bg-dark-1); padding: 0 5px; font-weight: bold;}
+        .search-input { width: 100%; padding: 14px; font-size: 16px; border: 2px solid var(--neon-border); border-radius: 14px; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); outline: none; font-weight: bold; text-align: right;}
+        .search-input:focus { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); }
+
+        .report-wrapper { max-width: 800px; margin: 0 auto; padding: 0 10px; }
+        .report-table { width: 100%; border-collapse: collapse; background: rgba(19, 17, 44, 0.7); border-radius: 12px; overflow: hidden; border: 2px solid var(--neon-border); box-shadow: 0 0 15px var(--neon-glow); }
+        .report-table th, .report-table td { padding: 12px 8px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; color: white; vertical-align: middle;}
+        .report-table th { background-color: rgba(168, 85, 247, 0.25); font-size: 15px; border-bottom: 2px solid var(--neon-border); position: sticky; top: 0; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        
+        .item-details { text-align: right; }
+        .item-name { font-weight: bold; font-size: 16px; color: var(--text-white); margin-bottom: 4px; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        .item-meta { font-size: 13px; color: #9ca3af; font-weight: bold; line-height: 1.4;}
+        
+        .item-qty { font-size: 18px; font-weight: bold; color: var(--text-white); margin-bottom: 5px; }
+        .item-total-box { border: 1px solid #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.1); padding: 4px 8px; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);}
+        
+        .item-price { font-size: 16px; font-weight: bold; color: var(--text-white); }
+        
+        .total-row { background: rgba(168, 85, 247, 0.15); font-weight: bold; font-size: 18px; border-top: 2px solid var(--neon-border); }
+
+        /* ================= الشريط السفلي الموحد ================= */
+        .unified-bottom-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background-color: rgba(19, 17, 44, 0.95); 
+            border-top: 1px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 8px; z-index: 100; 
+            box-shadow: 0 -4px 25px var(--neon-glow);
+            align-items: center;
+        }
+
+        .header-back-btn {
+            background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px;
+            padding: 0 15px; height: 45px; cursor: pointer; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;
+        }
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        .bottom-bar-dropdown { 
+            flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); 
+            border-radius: 12px; padding: 0 12px; height: 45px; display: flex; 
+            justify-content: space-between; align-items: center; font-size: 14px; 
+            font-weight: bold; color: var(--text-white); cursor: pointer; position: relative;
+            box-shadow: 0 0 10px var(--neon-glow);
+        }
+        
+        .bottom-bar-btn { 
+            flex: 1; background-color: var(--card-bg); color: var(--text-white); 
+            border: 1px solid #3b82f6; border-radius: 12px; height: 45px; 
+            font-size: 14px; font-weight: bold; display: flex; justify-content: center; 
+            align-items: center; gap: 5px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); position: relative;
+        }
+
+        .dropdown-menu { position: absolute; bottom: 120%; background: #13112c; border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.8); display: none; z-index: 101; overflow: hidden; width: 220px; text-align: right; }
+        .dropdown-menu-item { padding: 12px 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 14px; color: #ffffff; display: flex; justify-content: space-between; align-items: center;}
+        .dropdown-menu-item:active { background-color: rgba(168, 85, 247, 0.25); }
+        .dropdown-menu-item.disabled { color: #9ca3af; cursor: not-allowed; }
+        
+        .sub-accordion-content { display: none; background: rgba(10, 8, 25, 0.95); padding: 0;}
+        .sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-white); text-align: right; border-right: 2px solid #ec4899;}
+        .sub-dropdown-item:last-child { border-bottom: none; }
+
+        /* نافذة التاريخ المخصص */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5, 7, 15, 0.8); display: none; justify-content: center; align-items: center; z-index: 200; backdrop-filter: blur(8px);}
+        .modal-content { background: rgba(19, 17, 44, 0.95); padding: 25px; border-radius: 24px; width: 92%; max-width: 440px; box-shadow: 0 0 45px rgba(168, 85, 247, 0.5); border: 2px solid var(--neon-border);}
+        .modal-header { border-bottom: 2px solid rgba(168, 85, 247, 0.3); padding-bottom: 15px; margin-bottom: 20px; text-align: center;}
+        .modal-header h3 { margin: 0; font-size: 20px; color: #ffffff; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 16px; color: #ffffff;}
+        .input-group input { width: 100%; padding: 12px; font-size: 18px; text-align: center; border: 2px solid var(--neon-border); border-radius: 14px; font-weight: bold; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px var(--neon-glow); outline: none;}
+        .btn-group { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 20px;}
+        .btn-group button { flex: 1; padding: 14px; border: none; border-radius: 16px; cursor: pointer; font-size: 18px; font-weight: bold; }
+        .confirm-btn { background: rgba(7, 9, 19, 0.95) !important; border: 2px solid #ec4899 !important; color: var(--text-white) !important; box-shadow: 0 0 15px rgba(236, 72, 153, 0.4) !important;}
+        .cancel-btn { background: rgba(19, 17, 44, 0.8) !important; border: 2px solid var(--neon-border) !important; color: #ffffff !important;}
+
+/* ================= إعدادات الطباعة ================= */
+#thermalPrintArea { display: none; }
+        
+        /* 1. إعدادات طباعة A4 العادية أو الـ PDF */
+        @media print {
+            @page { margin: 10mm; size: A4 portrait; }
+            body { margin: 0; padding: 0; background: #fff; color: #000; }
+            .header, .search-container, .unified-bottom-bar, .modal-overlay { display: none !important; }
+            
+            #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
+            .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; background: white; color: black; border: 1px solid #000; box-shadow: none;}
+            .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
+            .report-table td { padding: 8px; border: 1px solid #000; color: black;}
+            .item-name, .item-qty, .item-price { color: black !important; text-shadow: none !important; }
+            .item-meta { color: #555 !important; }
+            .item-total-box { border: 1px solid #000; color: #000; background: transparent; padding: 2px 5px; border-radius: 4px; box-shadow: none;}
+            .total-row { background-color: #ddd !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; border-top: 2px solid #000;}
+            #grandTotal, #grandDiscounts, #netTotal { color: black !important; font-weight: bold; }
+        }
+        
+        /* 2. إعدادات الطباعة الحرارية (بكرة 80mm) */
+        @media print {
+            body.thermal-print-mode #pdf-wrapper { display: none !important; }
+            body.thermal-print-mode #thermalPrintArea { display: block !important; width: 76mm; margin: 0 auto; padding: 5px; font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: #000; }
+            body.thermal-print-mode .print-header { font-size: 18px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px dashed #000; padding-bottom: 5px; text-align: center;}
+            body.thermal-print-mode .print-meta { font-size: 13px; margin-bottom: 8px; text-align: center; line-height: 1.4; font-weight: bold;}
+            body.thermal-print-mode .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 12px;}
+            body.thermal-print-mode .print-table th { border-bottom: 1px solid #000; padding: 4px 0; text-align: center;}
+            body.thermal-print-mode .print-table td { padding: 4px 0; border-bottom: 1px dotted #888; text-align: center;}
+            body.thermal-print-mode .print-totals { border-top: 1px dashed #000; padding-top: 5px; text-align: right; font-size: 13px; font-weight: bold; line-height: 1.5;}
+            body.thermal-print-mode .print-footer { text-align: center; font-size: 11px; margin-top: 8px; border-top: 1px dashed #000; padding-top: 5px;}
+        }
+    </style>
+</head>
+<body onclick="closeAllMenus(event)">
+
+    <div class="header">
+        <span style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">تقرير مشتريات مفصل</span>
+    </div>
+
+    <div class="search-container">
+        <div class="search-label">البحث</div>
+        <input type="text" id="searchInput" class="search-input" placeholder="ادخل اسم المنتج..." oninput="renderTable()">
+    </div>
+
+    <div class="report-wrapper" id="pdf-wrapper">
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th style="width: 45%; text-align: right;">المنتج</th>
+                    <th style="width: 30%;">الكمية</th>
+                    <th style="width: 25%;">السعر</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+            <tfoot>
+                <tr class="total-row">
+                    <td colspan="3" style="text-align: center; padding: 15px; line-height: 1.8;">
+                        إجمالي الأصناف = <span id="grandTotal" style="color: #38bdf8;">0.00</span> 
+                        <br>
+                        <span style="font-size: 14px; color: #ff1a40;">إجمالي الخصومات = <span id="grandDiscounts">0.00</span></span>
+                        <br>
+                        صافي المشتريات = <span id="netTotal" style="color: #f59e0b; font-size: 20px;">0.00</span>
+                    </td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- مساحة الطباعة الحرارية المخفية -->
+    <div id="thermalPrintArea">
+        <div class="print-header">محلات سراج LED</div>
+        <div class="print-meta">تقرير مشتريات مفصل<br><span id="printDurationLabel">اخر 7 ايام</span></div>
+        <table class="print-table">
+            <thead><tr><th style="text-align: right;">الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+            <tbody id="printTableBody"></tbody>
+        </table>
+        <div class="print-totals">صافي المشتريات: <span id="printGrandTotal">0.00</span> ج</div>
+        <div class="print-footer">تم الإصدار من نظام سراج كاشير</div>
+    </div>
+
+    <!-- ======== شريط التحكم السفلي الموحد ======== -->
+    <div class="unified-bottom-bar">
+        <button class="header-back-btn" onclick="window.location.href='smart_accountant.html'">
+            <span class="arrow">⬅</span>
+            <span class="text">BACK</span>
+        </button>
+
+        <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event)">
+            <span>📅 <span id="currentDurationLabelOutside" style="margin-right: 2px;">اخر 7 ايام</span></span>
+            <span>▼</span>
+            <div class="dropdown-menu" id="durationDropdownOutside" style="left:0; right:auto;">
+                <div class="dropdown-menu-item" onclick="filterByDate('اليوم', 'today')">اليوم</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('أمس', 'yesterday')">أمس</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('اخر 7 ايام', '7days')">اخر 7 ايام</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('هذا الشهر', 'this_month')">هذا الشهر</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('اخر 30 يوم', '30days')">اخر 30 يوم</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('الشهر الماضى', 'last_month')">الشهر الماضى</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('مدى العمل', 'all_time')">مدى العمل (الكل)</div>
+                <div class="dropdown-menu-item" onclick="openCustomDateModal()">📅 تاريخ مخصص...</div>
+            </div>
+        </div>
+
+        <div class="bottom-bar-btn" onclick="togglePrintOptions(event)">
+            🖨️ خيارات
+            <div class="dropdown-menu" id="floatingPrintMenu" style="left:0; right:auto;">
+                <div class="dropdown-menu-item" onclick="handlePrintAction('thermal')">🖨️ طابعة حرارية / A4</div>
+                
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')"><span>📊 إكسيل</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="excelSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('excel_export')">📤 تصدير إكسيل</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('استيراد الإكسيل غير متاح في هذا التقرير')">📥 استيراد إكسيل</div>
+                </div>
+
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')"><span>📄 PDF</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="pdfSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('استيراد الـ PDF غير مدعوم برمجياً')">📥 استيراد PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة التاريخ المخصص -->
+    <div class="modal-overlay" id="customDateModal">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header"><h3>تحديد تاريخ مخصص</h3></div>
+            <div class="input-group"><label>من تاريخ:</label><input type="date" id="dateFrom"></div>
+            <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="dateTo"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="applyCustomDate()">تطبيق البحث</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="db.js"></script>
+    <script>
+        let currentDateFilter = '7days';
+        let customDateFrom = null;
+        let customDateTo = null;
+
+        function closeAllMenus() {
+    // الكود ده بيقفل أي قائمة منسدلة أو قائمة طباعة أو تقارير في الصفحة كلها
+    const allMenus = document.querySelectorAll('.dropdown-menu, .sub-accordion-content, .context-menu');
+    allMenus.forEach(menu => {
+        menu.style.display = 'none';
+    });
+}
+
+        function toggleDurationMenu(e) {
+            e.stopPropagation(); 
+            let m = document.getElementById('durationDropdownOutside');
+            let isVisible = m.style.display === 'block';
+            closeAllMenus();
+            if(!isVisible) m.style.display = 'block';
+        }
+
+        function togglePrintOptions(e) {
+            e.stopPropagation(); 
+            let m = document.getElementById('floatingPrintMenu');
+            let isVisible = m.style.display === 'block';
+            closeAllMenus();
+            if(!isVisible) m.style.display = 'block';
+        }
+
+        function toggleAccordionSubMenu(e, subMenuId) {
+            e.stopPropagation(); 
+            let menu = document.getElementById(subMenuId);
+            let currentDisplay = menu.style.display;
+            ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                if(id !== subMenuId) { let el = document.getElementById(id); if(el) el.style.display = 'none'; }
+            });
+            menu.style.display = currentDisplay === 'block' ? 'none' : 'block';
+        }
+
+        function isSameDay(d1, d2) { 
+            return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate(); 
+        }
+        
+        function checkDateFilter(itemDate) {
+            let today = new Date();
+            today.setHours(23, 59, 59, 999); 
+            let iDate = new Date(itemDate);
+            
+            let diffDays = (today.getTime() - iDate.getTime()) / (1000 * 3600 * 24);
+            let yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+            yesterday.setHours(23, 59, 59, 999);
+            
+            if (currentDateFilter === 'all_time') return true;
+            if (currentDateFilter === 'today') return isSameDay(iDate, today);
+            if (currentDateFilter === 'yesterday') return isSameDay(iDate, yesterday);
+            if (currentDateFilter === '7days') return diffDays >= 0 && diffDays <= 7;
+            if (currentDateFilter === '30days') return diffDays >= 0 && diffDays <= 30;
+            if (currentDateFilter === 'this_month') return iDate.getMonth() === today.getMonth() && iDate.getFullYear() === today.getFullYear();
+            if (currentDateFilter === 'last_month') {
+                let lm = new Date(today.getFullYear(), today.getMonth()-1, 1);
+                return iDate.getMonth() === lm.getMonth() && iDate.getFullYear() === lm.getFullYear();
+            }
+            if (currentDateFilter === 'custom') {
+                if(customDateFrom && customDateTo) {
+                    let dStr = iDate.toISOString().split('T')[0];
+                    return (dStr >= customDateFrom && dStr <= customDateTo);
+                }
+            }
+            return false;
+        }
+
+        function filterByDate(label, val) {
+    currentDateFilter = val;
+    
+    // 1. تحديث اسم التاريخ
+    let outsideLabel = document.getElementById('currentDurationLabelOutside');
+    if (outsideLabel) outsideLabel.innerText = label;
+    
+    let printLabel = document.getElementById('printDurationLabel');
+    if (printLabel) printLabel.innerText = label;
+    
+    // 2. تحديث جدول البيانات
+    if (typeof renderTable === 'function') renderTable();
+
+    // 3. خدعة التأخير الزمني لقفل القائمة بشكل نهائي
+    setTimeout(function() {
+        if (typeof closeAllMenus === 'function') closeAllMenus();
+    }, 50);
+}
+
+        function openCustomDateModal() {
+            closeAllMenus();
+            document.getElementById('customDateModal').style.display = 'flex';
+        }
+
+        function applyCustomDate() {
+            let f = document.getElementById('dateFrom').value;
+            let t = document.getElementById('dateTo').value;
+            if(f && t) {
+                currentDateFilter = 'custom';
+                customDateFrom = f;
+                customDateTo = t;
+                let label = `${f} إلى ${t}`;
+                document.getElementById('currentDurationLabelOutside').innerText = 'تاريخ مخصص';
+                document.getElementById('printDurationLabel').innerText = label;
+                document.getElementById('customDateModal').style.display = 'none';
+                renderTable();
+            }
+        }
+
+        function renderTable() {
+            if (typeof DB === 'undefined') return;
+            let query = document.getElementById('searchInput').value.trim().toLowerCase();
+            
+            // 🚨 اصطياد فواتير المشتريات بأي اسم دالة متسجل في الـ db.js
+            let invoices = [];
+            if (typeof DB.getPurchasesInvoices === 'function') invoices = DB.getPurchasesInvoices() || [];
+            else if (typeof DB.getPurchaseInvoices === 'function') invoices = DB.getPurchaseInvoices() || [];
+            else if (typeof DB.getPurchases === 'function') invoices = DB.getPurchases() || [];
+            
+            let allItems = [];
+            let totalDiscounts = 0; 
+
+            invoices.forEach(inv => {
+                if(inv.type === 'quotation') return;
+                if(inv.isDeleted || inv.deleted || inv.status === 'deleted' || inv.type === 'deleted') return; 
+                if(inv.isCancelled || inv.isCanceled || inv.cancelled || inv.canceled || inv.status === 'cancelled' || inv.type === 'canceled') return;
+
+                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
+                if(!checkDateFilter(invDate)) return;
+
+                let isReturn = (inv.type === 'return'); 
+                
+                if (query === '') {
+                    let invDiscount = parseFloat(inv.discount) || 0;
+                    if(isReturn) totalDiscounts -= invDiscount;
+                    else totalDiscounts += invDiscount;
+                }
+
+                if(inv.items) {
+                    inv.items.forEach(item => {
+                        let name = item.name;
+                        if(query && !name.toLowerCase().includes(query)) return;
+                        
+                        let rawQty = parseFloat(item.qty) || 0;
+                        let rawPrice = parseFloat(item.price) || parseFloat(item.purchasePrice) || 0;
+                        let rawTotal = item.total !== undefined ? parseFloat(item.total) : (rawQty * rawPrice);
+                        
+                        let qty = Math.abs(rawQty);
+                        let itemTotal = Math.abs(rawTotal);
+                        
+                        if (isReturn) {
+                            qty = -qty;
+                            itemTotal = -itemTotal;
+                        }
+
+                        let dateStr = inv.date || invDate.toISOString().split('T')[0];
+                        
+                        allItems.push({
+                            name: name,
+                            invoiceId: inv.id,
+                            date: dateStr,
+                            qty: qty,
+                            price: rawPrice,
+                            total: itemTotal,
+                            timestamp: invDate.getTime(),
+                            isReturn: isReturn 
+                        });
+                    });
+                }
+            });
+
+            allItems.sort((a, b) => b.timestamp - a.timestamp || b.invoiceId - a.invoiceId);
+
+            let tbody = document.getElementById('tableBody');
+            let printTbody = document.getElementById('printTableBody');
+            
+            let grandTotal = 0;
+            let htmlContent = '';
+            let printHtmlContent = '';
+
+            if(allItems.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding:20px; color:#f59e0b; font-weight:bold; text-align:center;">لا توجد مشتريات أو حركات في هذه الفترة</td></tr>`;
+                document.getElementById('grandTotal').innerText = "0.00";
+                document.getElementById('grandDiscounts').innerText = "0.00";
+                document.getElementById('netTotal').innerText = "0.00";
+                document.getElementById('printGrandTotal').innerText = "0.00";
+                printTbody.innerHTML = '';
+                return;
+            }
+
+            allItems.forEach(item => {
+                grandTotal += item.total;
+                
+                let boxStyle = item.isReturn 
+                    ? "border: 1px solid #ff1a40; color: #ff1a40; background: rgba(255, 26, 64, 0.1);" 
+                    : "border: 1px solid #38bdf8; color: #38bdf8; background: rgba(56, 189, 248, 0.1); box-shadow: 0 0 8px rgba(56, 189, 248, 0.3);";
+                
+                let qtyColor = item.isReturn ? "#ff1a40" : "var(--text-white)";
+                let returnLabel = item.isReturn ? `<br><span style="color:#ff1a40; font-size:12px;">(مرتجع مشتريات)</span>` : '';
+
+                htmlContent += `
+                    <tr>
+                        <td class="item-details">
+                            <div class="item-name">${item.name} ${returnLabel}</div>
+                            <div class="item-meta">فاتورة مشتريات رقم: ${item.invoiceId}</div>
+                            <div class="item-meta">${item.date}</div>
+                        </td>
+                        <td>
+                            <div class="item-qty" style="color: ${qtyColor};">${item.qty}</div>
+                            <div class="item-total-box" style="${boxStyle}">${item.total.toFixed(2)} جنيه</div>
+                        </td>
+                        <td class="item-price">${item.price}</td>
+                    </tr>
+                `;
+                
+                let printTypeLabel = item.isReturn ? " (مرتجع)" : "";
+                printHtmlContent += `<tr><td style="text-align: right; padding-right:5px;">${item.name}${printTypeLabel}</td><td>${item.qty}</td><td>${item.price}</td><td>${item.total.toFixed(2)}</td></tr>`;
+            });
+
+            let netPurchases = grandTotal - totalDiscounts;
+
+            tbody.innerHTML = htmlContent;
+            printTbody.innerHTML = printHtmlContent;
+
+            document.getElementById('grandTotal').innerText = grandTotal.toFixed(2);
+            document.getElementById('grandDiscounts').innerText = totalDiscounts.toFixed(2);
+            document.getElementById('netTotal').innerText = netPurchases.toFixed(2);
+            document.getElementById('printGrandTotal').innerText = netPurchases.toFixed(2);
+        }
+
+        function handlePrintAction(action) {
+            closeAllMenus();
+            if (action === 'thermal') {
+                document.body.classList.add('thermal-print-mode');
+                window.print();
+                setTimeout(() => document.body.classList.remove('thermal-print-mode'), 1000);
+            }
+            if (action === 'excel_export') exportToExcel();
+            if (action === 'pdf_export') exportToPDF();
+        }
+
+        function exportToExcel() {
+            let data = [["اسم المنتج", "رقم الفاتورة", "التاريخ", "السعر", "الكمية", "الإجمالي"]];
+            let rows = document.querySelectorAll('#tableBody tr');
+            if(rows.length === 0 || rows[0].innerText.includes('لا توجد')) return alert("لا يوجد بيانات للتصدير");
+            
+            rows.forEach(row => {
+                if(row.classList.contains('total-row')) return;
+                
+                let details = row.querySelector('.item-details');
+                let name = details.querySelector('.item-name').innerText;
+                let invId = details.querySelectorAll('.item-meta')[0].innerText.replace('فاتورة مشتريات رقم: ', '');
+                let date = details.querySelectorAll('.item-meta')[1].innerText;
+                
+                let qty = row.querySelector('.item-qty').innerText;
+                let price = row.querySelector('.item-price').innerText;
+                let total = row.querySelector('.item-total-box').innerText.replace(' جنيه', '');
+
+                data.push([name, invId, date, price, qty, total]);
+            });
+            
+            data.push([]);
+            data.push(["إجمالي الأصناف", "", "", "", "", document.getElementById('grandTotal').innerText]);
+            data.push(["الخصومات", "", "", "", "", document.getElementById('grandDiscounts').innerText]);
+            data.push(["صافي المشتريات", "", "", "", "", document.getElementById('netTotal').innerText]);
+
+            let ws = XLSX.utils.aoa_to_sheet(data);
+            let wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "تفاصيل المشتريات");
+            XLSX.writeFile(wb, "Purchases_Detailed_" + new Date().toISOString().slice(0,10) + ".xlsx");
+        }
+
+        function exportToPDF() {
+            document.body.classList.remove('thermal-print-mode');
+            let element = document.getElementById('pdf-wrapper');
+            html2pdf().set({ 
+                margin: 10, 
+                filename: 'Purchases_Detailed.pdf', 
+                html2canvas: { scale: 2 },
+                pagebreak: { mode: 'avoid-all' } 
+            }).from(element).save();
+        }
+
+        window.onload = () => { 
+            if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme(); 
+            renderTable(); 
+        };
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+        });
+    }
+
+
+</script>
+
+<!-- ============================================================== -->
+
+<!-- 🚀 1. كود المراقبة الذكي لإغلاق جميع القوائم المنسدلة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+document.addEventListener('click', function(event) {
+
+if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
+
+if (typeof closeAllMenus === 'function') {
+
+closeAllMenus();
+
+}
+
+}
+
+});
+
+</script>
+
+
+
+<!-- ============================================================== -->
+
+<!-- 🚀 2. ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+window.addEventListener('popstate', function(event) {
+
+// لما المستخدم يدوس على زرار الموبايل، ننده دالة الزرار الأزرق فوراً
+
+if (typeof goBackSmart === 'function') {
+
+goBackSmart();
+
+}
+
+});
+
+</script>
+</body> 
+</html>
+
+
+
+

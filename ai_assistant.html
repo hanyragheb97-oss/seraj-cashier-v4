@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>مساعد سراج الذكي | Seraj AI Assistant</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="db.js"></script>
+    <style>
+        :root {
+            --bg-dark: #090d16;
+            --bg-panel: #111827;
+            --bg-card: #1e293b;
+            --neon-cyan: #00f2fe;
+            --neon-blue: #4facfe;
+            --neon-green: #10b981;
+            --neon-amber: #f59e0b;
+            --neon-red: #ef4444;
+            --neon-purple: #8b5cf6;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Cairo', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ─── Header ─── */
+        .ai-header {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            border-bottom: 1px solid rgba(0, 242, 254, 0.2);
+            padding: 10px 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            z-index: 20;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        .brand-box {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .ai-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+            animation: pulseGlow 3s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 10px rgba(0, 242, 254, 0.3); }
+            100% { box-shadow: 0 0 22px rgba(139, 92, 246, 0.7); }
+        }
+
+        .brand-info h1 {
+            font-size: 15px;
+            font-weight: 800;
+            color: #fff;
+            line-height: 1.2;
+        }
+
+        .brand-info span {
+            font-size: 11px;
+            color: var(--neon-cyan);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hdr-btn {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 6px 10px;
+            border-radius: 9px;
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: 0.2s;
+            text-decoration: none;
+        }
+
+        .hdr-btn:hover, .hdr-btn.active {
+            border-color: var(--neon-cyan);
+            background: rgba(0, 242, 254, 0.12);
+            color: var(--neon-cyan);
+        }
+
+        /* ─── Quick Chips Bar ─── */
+        .quick-chips-bar {
+            background: var(--bg-panel);
+            padding: 8px 12px;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            border-bottom: 1px solid var(--border-color);
+            scrollbar-width: none;
+        }
+        .quick-chips-bar::-webkit-scrollbar { display: none; }
+
+        .chip {
+            background: rgba(30, 41, 59, 0.9);
+            border: 1px solid rgba(79, 172, 254, 0.25);
+            color: #e2e8f0;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .chip:hover {
+            background: rgba(0, 242, 254, 0.15);
+            border-color: var(--neon-cyan);
+            transform: translateY(-1px);
+        }
+
+        /* ─── Chat Area ─── */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            scroll-behavior: smooth;
+        }
+
+        .msg-row {
+            display: flex;
+            flex-direction: column;
+            max-width: 92%;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .msg-row.user {
+            align-self: flex-start;
+        }
+
+        .msg-row.bot {
+            align-self: flex-end;
+            width: 100%;
+            max-width: 96%;
+        }
+
+        .msg-bubble {
+            padding: 12px 15px;
+            border-radius: 16px;
+            font-size: 14px;
+            line-height: 1.6;
+            position: relative;
+        }
+
+        .msg-row.user .msg-bubble {
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: #fff;
+            border-bottom-right-radius: 4px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+        }
+
+        .msg-row.bot .msg-bubble {
+            background: var(--bg-panel);
+            border: 1px solid rgba(0, 242, 254, 0.18);
+            color: var(--text-main);
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.35);
+        }
+
+        .msg-time {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            padding: 0 4px;
+        }
+
+        /* ─── AI Data Cards inside Chat ─── */
+        .ai-card {
+            background: rgba(15, 23, 42, 0.75);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px;
+            margin-top: 10px;
+        }
+
+        .ai-card-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--neon-cyan);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 8px;
+        }
+
+        .stat-box {
+            background: rgba(30, 41, 59, 0.7);
+            padding: 8px 10px;
+            border-radius: 9px;
+            border-right: 3px solid var(--neon-blue);
+        }
+        .stat-box.green { border-right-color: var(--neon-green); }
+        .stat-box.red { border-right-color: var(--neon-red); }
+        .stat-box.amber { border-right-color: var(--neon-amber); }
+        .stat-box.purple { border-right-color: var(--neon-purple); }
+
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .stat-val {
+            font-size: 15px;
+            font-weight: 800;
+            color: #fff;
+            margin-top: 2px;
+        }
+
+        .mini-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+
+        .mini-table th, .mini-table td {
+            padding: 6px 8px;
+            text-align: right;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .mini-table th {
+            color: var(--neon-cyan);
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, var(--neon-green), #059669);
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 800;
+            cursor: pointer;
+            margin-top: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .action-btn.secondary {
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: none;
+            margin-right: 6px;
+        }
+
+        .action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* ─── Input Area ─── */
+        .input-dock {
+            background: var(--bg-panel);
+            border-top: 1px solid rgba(0, 242, 254, 0.2);
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 20;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: var(--bg-dark);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            color: #fff;
+            padding: 11px 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        .chat-input:focus {
+            border-color: var(--neon-cyan);
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.15);
+        }
+
+        .icon-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 19px;
+            cursor: pointer;
+            transition: 0.2s;
+            flex-shrink: 0;
+        }
+
+        .mic-btn {
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: #c4b5fd;
+        }
+
+        .mic-btn.listening {
+            background: var(--neon-red);
+            color: #fff;
+            border-color: #fff;
+            animation: micPulse 1s infinite;
+        }
+
+        @keyframes micPulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .send-btn {
+            background: linear-gradient(135deg, var(--neon-cyan), var(--neon-blue));
+            color: #090d16;
+            font-weight: 900;
+        }
+
+        /* ─── Modals ─── */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.78);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 100;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-box {
+            background: var(--bg-panel);
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            max-height: 88vh;
+            overflow-y: auto;
+            padding: 18px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+        }
+
+        .modal-header h3 {
+            font-size: 16px;
+            color: var(--neon-cyan);
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 5px;
+            font-weight: 700;
+        }
+
+        .form-input {
+            width: 100%;
+            background: var(--bg-dark);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #fff;
+            padding: 9px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+        }
+
+        .code-snippet {
+            background: #050811;
+            border: 1px solid rgba(0, 242, 254, 0.2);
+            padding: 10px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #a7f3d0;
+            direction: ltr;
+            text-align: left;
+            overflow-x: auto;
+            white-space: pre;
+            margin-top: 6px;
+        }
+
+        .badge {
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+        .badge-debt { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+        .badge-credit { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; }
+    </style>
+</head>
+<body>
+
+    <!-- ─── Header ─── -->
+    <header class="ai-header">
+        <div class="brand-box">
+            <div class="ai-avatar">🧠</div>
+            <div class="brand-info">
+                <h1>مساعد سراج الذكي</h1>
+                <span>● متصل بقاعدة البيانات المحلية (بدون API خارجي)</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="hdr-btn active" id="ttsToggleBtn" onclick="toggleTTS()" title="تشغيل/كتم النطق الصوتي">
+                🔊 <span id="ttsStatusText">ناطق</span>
+            </button>
+            <button class="hdr-btn" onclick="openModal('dictModal')" title="تدريب المساعد على كلماتك">
+                📚 تدريب
+            </button>
+            <button class="hdr-btn" onclick="openModal('gmailModal')" title="إعدادات تقارير الجيميل">
+                📧 الجيميل
+            </button>
+            <a href="index.html" class="hdr-btn">🏠 الرئيسية</a>
+        </div>
+    </header>
+
+    <!-- ─── Quick Suggestions Bar ─── -->
+    <div class="quick-chips-bar">
+        <div class="chip" onclick="runCommand('أرباح النهاردة كام؟')">💰 أرباح النهاردة</div>
+        <div class="chip" onclick="runCommand('أرباح الشهر ده')">📈 أرباح الشهر</div>
+        <div class="chip" onclick="runCommand('في كام في الخزنة؟')">🏦 رصيد الخزينة</div>
+        <div class="chip" onclick="runCommand('إجمالي الديون والفلوس اللي لينا بره')">👥 ديون العملاء</div>
+        <div class="chip" onclick="runCommand('إيه الأصناف اللي بالسالب أو شطبت؟')">📦 نواقص وعجز المخزن</div>
+        <div class="chip" onclick="runCommand('أكتر 5 أصناف مبيعاً')">🔥 الأكثر مبيعاً</div>
+        <div class="chip" onclick="runCommand('ابعت تقرير اليومية على الجيميل')">📧 إرسال تقرير للجيميل</div>
+    </div>
+
+    <!-- ─── Main Chat Stream ─── -->
+    <main class="chat-container" id="chatContainer">
+        <div class="msg-row bot">
+            <div class="msg-bubble">
+                أهلاً بك يا هندسة في <b>مساعد سراج الذكي</b> 👋<br>
+                أنا مربوط مباشرة بمحرك <code>db.js</code>، أقدر أحسبلك <b>الأرباح الصافية، المبيعات، أرصدة الخزائن، ديون العملاء والموردين، نواقص المخزن</b>، وأقدر كمان <b>أجهزلك فاتورة بيع أو أسجل مصروف أو أبعتلك تقرير على الـ Gmail</b> بالصوت أو بالكتابة.<br>
+                <div style="margin-top:8px; font-size:12px; color:var(--neon-cyan);">
+                    💡 جرّب تقولي: <i>"أرباح النهاردة كام؟"</i> أو <i>"حساب عميل ..."</i> أو <i>"اعمل فاتورة لـ ... فيها 5 لمبة"</i>
+                </div>
+            </div>
+            <span class="msg-time">الآن</span>
+        </div>
+    </main>
+
+    <!-- ─── Input & Voice Dock ─── -->
+    <footer class="input-dock">
+        <button class="icon-btn mic-btn" id="micBtn" onclick="toggleVoiceInput()" title="تحدث بالمايكروفون">
+            🎤
+        </button>
+        <input type="text" id="userInput" class="chat-input" placeholder="اسأل عن أرباح، رصيد عميل، صنف، أو اطلب عمل فاتورة..." onkeydown="if(event.key==='Enter') sendUserMessage()">
+        <button class="icon-btn send-btn" onclick="sendUserMessage()" title="إرسال">
+            ➤
+        </button>
+    </footer>
+
+    <!-- ─── Modal 1: Gmail Settings & Webhook ─── -->
+    <div class="modal-overlay" id="gmailModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>📧 إعداد تقارير الجيميل التلقائية (مجاناً)</h3>
+                <button class="close-btn" onclick="closeModal('gmailModal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label>البريد الإلكتروني المستلم (Gmail):</label>
+                <input type="email" id="cfgEmailTo" class="form-input" placeholder="example@gmail.com">
+            </div>
+            <div class="form-group">
+                <label>رابط Google Apps Script (Webhook URL):</label>
+                <input type="url" id="cfgWebhookUrl" class="form-input" placeholder="https://script.google.com/macros/s/.../exec">
+            </div>
+            <div class="form-group" style="display:flex; align-items:center; gap:8px;">
+                <input type="checkbox" id="cfgAutoDailyEmail" style="width:18px;height:18px;">
+                <label style="margin:0; color:#fff;">إرسال تقرير تقفيل اليومية تلقائياً عند فتح البرنامج مساءً (بعد 10 م)</label>
+            </div>
+            <div style="display:flex; gap:8px; margin-bottom:14px;">
+                <button class="action-btn" style="flex:1; justify-content:center;" onclick="saveGmailConfig()">💾 حفظ الإعدادات</button>
+                <button class="action-btn secondary" onclick="sendDailyReportToGmail(true)">🚀 إرسال تجريبي الآن</button>
+            </div>
+
+            <div style="border-top:1px solid var(--border-color); padding-top:10px;">
+                <label style="font-size:12px; color:var(--neon-amber); font-weight:700;">كيف تحصل على الرابط المجاني في دقيقة واحدة؟</label>
+                <ol style="font-size:11px; color:var(--text-muted); padding-right:16px; line-height:1.7; margin-top:4px;">
+                    <li>افتح موقع <b>script.google.com</b> من حساب جوجل الخاص بك واضغط <b>New Project</b>.</li>
+                    <li>امسح أي كود موجود والصق الكود الصغير بالأسفل، ثم اضغط <b>Deploy &rarr; New deployment</b>.</li>
+                    <li>اختر النوع <b>Web app</b>، واجعل <i>Who has access</i> على <b>Anyone</b>، ثم انسخ الرابط وضعه بالأعلى.</li>
+                </ol>
+                <div class="code-snippet" id="gasCodeBox">function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  MailApp.sendEmail({
+    to: data.to,
+    subject: data.subject,
+    htmlBody: data.html
+  });
+  return ContentService.createTextOutput("OK");
+}</div>
+                <button class="hdr-btn" style="margin-top:6px; width:100%; justify-content:center;" onclick="copyGasCode()">📋 نسخ كود Google Script</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Modal 2: Custom Dictionary Training ─── -->
+    <div class="modal-overlay" id="dictModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <h3>📚 قاموس التدريب الذكي (علمني لهجتك)</h3>
+                <button class="close-btn" onclick="closeModal('dictModal')">&times;</button>
+            </div>
+            <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">
+                إذا كانت هناك كلمة أو اختصار خاص تحب قوله، اكتبه هنا ليفهمه المساعد دائماً ويحوله للأمر المطلوب.
+            </p>
+            <div class="form-group">
+                <label>عندما أقول أو أكتب هذه الكلمة/الجملة:</label>
+                <input type="text" id="dictTrigger" class="form-input" placeholder="مثال: تقفيل الوردية">
+            </div>
+            <div class="form-group">
+                <label>افهم أنني أقصد هذا الأمر:</label>
+                <input type="text" id="dictMeaning" class="form-input" placeholder="مثال: أرباح النهاردة كام">
+            </div>
+            <button class="action-btn" style="width:100%; justify-content:center;" onclick="addCustomRule()">➕ إضافة للقاموس الذكي</button>
+            <div id="dictListContainer" style="margin-top:14px; max-height:200px; overflow-y:auto;"></div>
+        </div>
+    </div>
+
+<script>
+/* ============================================================================
+   1. تهيئة البيانات والربط مع المحرك المركزي (db.js V3)
+   ============================================================================ */
+let productsDB = [];
+let customersDB = [];
+let suppliersDB = [];
+let salesInvoicesDB = [];
+let purchaseInvoicesDB = [];
+let treasuryMovesDB = [];
+let smartNotesDB = [];
+let pendingActions = {}; // لحفظ كروت المعاينة قبل التأكيد
+
+function refreshAllLocalData() {
+    try {
+        if (typeof DB !== 'undefined') {
+            if (typeof DB.calculateCustomerBalances === 'function') DB.calculateCustomerBalances();
+            if (typeof DB.calculateSupplierBalances === 'function') DB.calculateSupplierBalances();
+            productsDB = typeof DB.getProducts === 'function' ? DB.getProducts() : JSON.parse(localStorage.getItem('seraj_products') || '[]');
+            customersDB = typeof DB.getCustomers === 'function' ? DB.getCustomers() : JSON.parse(localStorage.getItem('seraj_customers') || '[]');
+            suppliersDB = typeof DB.getSuppliers === 'function' ? DB.getSuppliers() : JSON.parse(localStorage.getItem('seraj_suppliers') || '[]');
+            salesInvoicesDB = typeof DB.getSalesInvoices === 'function' ? DB.getSalesInvoices(true) : JSON.parse(localStorage.getItem('seraj_sales_invoices') || '[]');
+            purchaseInvoicesDB = typeof DB.getPurchaseInvoices === 'function' ? DB.getPurchaseInvoices(true) : JSON.parse(localStorage.getItem('seraj_purchase_invoices') || '[]');
+            treasuryMovesDB = typeof DB.getTreasuryMoves === 'function' ? DB.getTreasuryMoves() : JSON.parse(localStorage.getItem('seraj_treasury_moves') || '[]');
+            smartNotesDB = typeof DB.getSmartNotes === 'function' ? DB.getSmartNotes() : JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]');
+        }
+    } catch (e) {
+        console.error("Data Refresh Error:", e);
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    refreshAllLocalData();
+    renderCustomRulesList();
+    loadGmailConfigUI();
+    flushEmailQueue();
+    checkAutoNightlyEmail();
+});
+
+window.addEventListener('seraj:updated', () => {
+    refreshAllLocalData();
+});
+
+window.addEventListener('online', () => {
+    flushEmailQueue();
+});
+
+/* ============================================================================
+   2. أدوات التطبيع وفهم الأرقام والتواريخ بالعامية المصرية
+   ============================================================================ */
+function normText(str) {
+    if (!str) return '';
+    if (window.Utils && typeof window.Utils.normalizeName === 'function') {
+        return window.Utils.normalizeName(str);
+    }
+    return String(str).trim().toLowerCase()
+        .replace(/[أإآ]/g, 'ا')
+        .replace(/ة/g, 'ه')
+        .replace(/ى/g, 'ي')
+        .replace(/[\u064B-\u065F]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+function fmtMoney(val) {
+    let n = parseFloat(val) || 0;
+    return Number(n.toFixed(2)).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+// تحويل الأرقام المنطوقة بالعامية إلى أرقام حسابية
+function convertSpokenNumbers(text) {
+    if (!text) return '';
+    let s = String(text);
+    // تحويل الأرقام الهندية (٠-٩) إلى عربية قياسية (0-9)
+    const easternDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+    easternDigits.forEach((d, idx) => {
+        s = s.replace(new RegExp(d, 'g'), String(idx));
+    });
+
+    const wordMap = {
+        'نص دسته': '6', 'نصف دسته': '6', 'دسته': '12',
+        'واحده': '1', 'واحد': '1', 'اتنين': '2', 'اثنين': '2',
+        'تلاته': '3', 'ثلاثه': '3', 'تلات': '3',
+        'اربعه': '4', 'اربع': '4',
+        'خمسه': '5', 'خمس': '5',
+        'سته': '6', 'ست': '6',
+        'سبعه': '7', 'سبع': '7',
+        'تمانيه': '8', 'ثمانيه': '8', 'تمن': '8',
+        'تسعه': '9', 'تسع': '9',
+        'عشره': '10', 'عشر': '10',
+        'حداشر': '11', 'اتناشر': '12', 'خمستاشر': '15',
+        'عشرين': '20', 'تلاتين': '30', 'اربعين': '40', 'خمسين': '50',
+        'ستين': '60', 'سبعين': '70', 'تمانين': '80', 'تسعين': '90',
+        'ميه': '100', 'مائه': '100', 'ميتين': '200', 'ربعميه': '400', 'خمسميه': '500', 'الف': '1000'
+    };
+
+    Object.keys(wordMap).forEach(w => {
+        let reg = new RegExp(`(^|\\s)${w}(\\s|$)`, 'g');
+        s = s.replace(reg, `$1${wordMap[w]}$2`);
+    });
+    return s;
+}
+
+// استخراج الفترة الزمنية من سؤال المستخدم
+function extractDateRange(rawQuery) {
+    let q = normText(rawQuery);
+    let now = new Date();
+    let start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    let label = 'اليوم (النهاردة)';
+
+    if (q.includes('اول امبارح') || q.includes('اول امس')) {
+        start.setDate(start.getDate() - 2);
+        end.setDate(end.getDate() - 2);
+        label = 'أول إمبارح';
+    } else if (q.includes('امبارح') || q.includes('امس')) {
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        label = 'إمبارح (أمس)';
+    } else if (q.includes('اسبوع') || q.includes('الاسبوع')) {
+        start.setDate(start.getDate() - 7);
+        label = 'آخر 7 أيام';
+    } else if (q.includes('الشهر اللي فات') || q.includes('الشهر الماضي')) {
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+        end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        label = 'الشهر الماضي';
+    } else if (q.includes('شهر') || q.includes('الشهر ده')) {
+        start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+        label = 'هذا الشهر';
+    } else if (q.includes('سنه') || q.includes('السنه') || q.includes('العام')) {
+        start = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+        label = 'هذه السنة';
+    } else if (q.includes('كل الوقت') || q.includes('كله') || q.includes('من الاول') || q.includes('التراكمي')) {
+        start = new Date(2020, 0, 1);
+        label = 'كل الأوقات (الإجمالي العام)';
+    }
+
+    return { startMs: start.getTime(), endMs: end.getTime(), label };
+}
+
+function parseItemTime(item) {
+    if (!item) return 0;
+    if (item.date) {
+        let d = new Date(item.date).getTime();
+        if (!isNaN(d) && d > 0) return d;
+    }
+    if (item.timestamp && !isNaN(Number(item.timestamp))) return Number(item.timestamp);
+    if (item._lastModified && !isNaN(Number(item._lastModified))) return Number(item._lastModified);
+    return 0;
+}
+
+/* ============================================================================
+   3. الصوتيات (النطق الصوتي TTS + استماع المايكروفون STT)
+   ============================================================================ */
+let isTTSEnabled = true;
+let recognition = null;
+let isListening = false;
+
+function toggleTTS() {
+    isTTSEnabled = !isTTSEnabled;
+    const btn = document.getElementById('ttsToggleBtn');
+    const txt = document.getElementById('ttsStatusText');
+    if (isTTSEnabled) {
+        btn.classList.add('active');
+        txt.textContent = 'ناطق';
+    } else {
+        btn.classList.remove('active');
+        txt.textContent = 'صامت';
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    }
+}
+
+function speakArabic(textToSpeak) {
+    if (!isTTSEnabled || !('speechSynthesis' in window) || !textToSpeak) return;
+    try {
+        window.speechSynthesis.cancel();
+        let clean = String(textToSpeak).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const utter = new SpeechSynthesisUtterance(clean);
+        utter.lang = 'ar-EG';
+        utter.rate = 1.02;
+        const voices = window.speechSynthesis.getVoices();
+        const arVoice = voices.find(v => v.lang.includes('ar-EG')) || voices.find(v => v.lang.includes('ar'));
+        if (arVoice) utter.voice = arVoice;
+        window.speechSynthesis.speak(utter);
+    } catch (e) {}
+}
+
+function toggleVoiceInput() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+        appendBotMessage("⚠️ متصفحك لا يدعم فتح المايكروفون المباشر، يمكنك الضغط على علامة المايكروفون الموجودة في كيبورد الموبايل (Gboard) للتحدث مباشرة.");
+        return;
+    }
+
+    const micBtn = document.getElementById('micBtn');
+    if (isListening && recognition) {
+        recognition.stop();
+        return;
+    }
+
+    recognition = new SpeechRec();
+    recognition.lang = 'ar-EG';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+        isListening = true;
+        micBtn.classList.add('listening');
+        document.getElementById('userInput').placeholder = "🎙️ جاري الاستماع... تحدث الآن";
+    };
+
+    recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('userInput').value = transcript;
+        sendUserMessage();
+    };
+
+    recognition.onerror = () => {
+        isListening = false;
+        micBtn.classList.remove('listening');
+        document.getElementById('userInput').placeholder = "اسأل عن أرباح، رصيد عميل، صنف، أو اطلب عمل فاتورة...";
+    };
+
+    recognition.onend = () => {
+        isListening = false;
+        micBtn.classList.remove('listening');
+        document.getElementById('userInput').placeholder = "اسأل عن أرباح، رصيد عميل، صنف، أو اطلب عمل فاتورة...";
+    };
+
+    recognition.start();
+}
+
+/* ============================================================================
+   4. محرك الذكاء المحلي (Seraj Local Brain) وتحديد النوايا
+   ============================================================================ */
+function applyCustomDictionary(rawText) {
+    let dict = JSON.parse(localStorage.getItem('seraj_ai_custom_dict') || '[]');
+    let normInput = normText(rawText);
+    for (let rule of dict) {
+        let normTrig = normText(rule.trigger);
+        if (normTrig && normInput.includes(normTrig)) {
+            return rawText.replace(new RegExp(rule.trigger, 'gi'), rule.meaning) + ' ' + rule.meaning;
+        }
+    }
+    return rawText;
+}
+
+function runCommand(cmdText) {
+    document.getElementById('userInput').value = cmdText;
+    sendUserMessage();
+}
+
+function sendUserMessage() {
+    const inputEl = document.getElementById('userInput');
+    let raw = inputEl.value.trim();
+    if (!raw) return;
+    inputEl.value = '';
+
+    appendUserMessage(raw);
+    refreshAllLocalData();
+
+    setTimeout(() => {
+        processUserIntent(raw);
+    }, 120);
+}
+
+function processUserIntent(originalText) {
+    // 0. فحص هل يطلب تدريب كلمة جديدة مباشرة في الشات؟ ("لما اقول X افهم Y")
+    let teachMatch = originalText.match(/لما اقول\s+(.+?)\s+افهم\s+(.+)/i);
+    if (teachMatch) {
+        saveCustomRuleDirect(teachMatch[1].trim(), teachMatch[2].trim());
+        let reply = `✅ تمام يا هندسة! حفظت في قاموسي الذكي: لما تقولي <b>"${teachMatch[1].trim()}"</b> هفهم فوراً إنك تقصد <b>"${teachMatch[2].trim()}"</b>.`;
+        appendBotMessage(reply, "تم حفظ الكلمة في القاموس الذكي");
+        return;
+    }
+
+    let expandedText = convertSpokenNumbers(applyCustomDictionary(originalText));
+    let q = normText(expandedText);
+
+    // 1. نية إرسال بريد جيميل
+    if (q.includes('جيميل') || q.includes('ايميل') || q.includes('بريد') || (q.includes('ابعت') && q.includes('تقرير'))) {
+        sendDailyReportToGmail(false);
+        return;
+    }
+
+    // 2. نية إنشاء فاتورة بيع سريعة
+    if ((q.includes('اعمل فاتوره') || q.includes('فصل فاتوره') || q.includes('سجل فاتوره') || q.includes('بيع ل')) && !q.includes('مبيعات')) {
+        handleCreateInvoiceIntent(expandedText);
+        return;
+    }
+
+    // 3. نية تسجيل مصروف جديد
+    if (q.includes('سجل مصروف') || q.includes('اضف مصروف') || q.includes('طلع مصروف') || q.includes('اصرف ')) {
+        handleCreateExpenseIntent(expandedText);
+        return;
+    }
+
+    // 4. نية إضافة صنف في النواقص (النوتة الذكية)
+    if (q.includes('سجل في النواقص') || q.includes('ضيف في النواقص') || q.includes('هات في النواقص') || q.includes('اكتب في النوته')) {
+        handleAddShortageIntent(expandedText);
+        return;
+    }
+
+    // 5. نية الأرباح والمبيعات وتقفيل اليومية
+    if (q.includes('ربح') || q.includes('ارباح') || q.includes('مكسب') || q.includes('كسبنا') || q.includes('بعت بكام') || q.includes('مبيعات') || q.includes('تقفيل')) {
+        handleProfitAndSalesQuery(expandedText);
+        return;
+    }
+
+    // 6. نية الخزينة والسيولة والمصروفات
+    if (q.includes('خزنه') || q.includes('خزينه') || q.includes('الدرج') || q.includes('انستا') || q.includes('محفظه') || q.includes('صرفنا كام') || q.includes('المصاريف كام') || q.includes('في كام في')) {
+        handleTreasuryQuery(expandedText);
+        return;
+    }
+
+    // 7. نية الأصناف الأكثر مبيعاً
+    if (q.includes('اكتر') && (q.includes('مبيعا') || q.includes('صنف مشي') || q.includes('اصناف بتتباع'))) {
+        handleTopSellingProductsQuery(expandedText);
+        return;
+    }
+
+    // 8. نية فحص نواقص المخزن والأرصدة السالبة
+    if (q.includes('نواقص') || q.includes('سالب') || q.includes('شطب') || q.includes('خلصت') || q.includes('عجز')) {
+        handleLowStockQuery();
+        return;
+    }
+
+    // 9. نية ديون العملاء والموردين العامة
+    if (q.includes('الفلوس اللي لينا') || q.includes('ديون') || q.includes('مديونيات') || q.includes('مين عليه فلوس') || q.includes('الاجل كام')) {
+        handleGeneralDebtsQuery();
+        return;
+    }
+
+    // 10. نية البحث عن حساب عميل أو مورد معين
+    if (q.includes('حساب ') || q.includes('رصيد عميل') || q.includes('رصيد مورد') || q.includes('عليه كام') || q.includes('عميل ') || q.includes('مورد ')) {
+        handlePersonAccountQuery(expandedText);
+        return;
+    }
+
+    // 11. نية الاستعلام عن صنف في المخزن (أو بحث عام ذكي في الأصناف والعملاء)
+    handleSmartUniversalSearch(expandedText);
+}
+
+/* ============================================================================
+   5. دوال المعالجة المحاسبية والتنفيذية (Handlers)
+   ============================================================================ */
+
+// ─── أ. حساب الأرباح والمبيعات بدقة ───
+function handleProfitAndSalesQuery(queryText) {
+    const range = extractDateRange(queryText);
+    let grossSales = 0;
+    let totalReturns = 0;
+    let totalCostOfGoods = 0;
+    let totalCollectedCash = 0;
+    let salesCount = 0;
+    let returnCount = 0;
+
+    // خريطة سريعة لمتوسط أو آخر سعر شراء لكل صنف في المخزن
+    const prodCostMap = new Map();
+    productsDB.forEach(p => {
+        if (!p) return;
+        let cost = parseFloat(p.buyPrice) || 0;
+        if (Array.isArray(p.lots) && p.lots.length > 0) {
+            let lastLotWithCost = [...p.lots].reverse().find(l => parseFloat(l.buyPrice) > 0);
+            if (lastLotWithCost) cost = parseFloat(lastLotWithCost.buyPrice) || cost;
+        }
+        prodCostMap.set(String(p.id), cost);
+        prodCostMap.set(normText(p.name), cost);
+    });
+
+    salesInvoicesDB.forEach(inv => {
+        if (!inv || inv.isCanceled || inv.isDeleted || inv.status === 'deleted' || inv.type === 'canceled' || inv.type === 'quotation') return;
+        let t = parseItemTime(inv);
+        if (t < range.startMs || t > range.endMs) return;
+
+        let netTotal = parseFloat(inv.total) || 0;
+        let paidVal = parseFloat(inv.paid) || 0;
+        let isReturn = (inv.type === 'return' || inv.type === 'return_sale');
+
+        // حساب تكلفة البضاعة المباعة داخل الفاتورة
+        let invCost = 0;
+        if (Array.isArray(inv.items)) {
+            inv.items.forEach(item => {
+                let qty = parseFloat(item.qty || item.quantity) || 0;
+                let unitCost = parseFloat(item.buyPrice ?? item.costPrice) || 0;
+                if (unitCost <= 0) {
+                    unitCost = prodCostMap.get(String(item.id || item.productId)) || prodCostMap.get(normText(item.name)) || 0;
+                }
+                invCost += (qty * unitCost);
+            });
+        }
+
+        if (isReturn) {
+            totalReturns += netTotal;
+            totalCostOfGoods -= invCost;
+            returnCount++;
+        } else {
+            grossSales += netTotal;
+            totalCostOfGoods += invCost;
+            totalCollectedCash += paidVal;
+            salesCount++;
+        }
+    });
+
+    // حساب المصروفات في نفس الفترة
+    let periodExpenses = 0;
+    treasuryMovesDB.forEach(m => {
+        if (!m || m.isDeleted || m.isCanceled) return;
+        let t = parseItemTime(m);
+        if (t < range.startMs || t > range.endMs) return;
+        if (m.type === 'expense') {
+            periodExpenses += (parseFloat(m.amountDeduct || m.amount) || 0);
+        }
+    });
+
+    let netSales = grossSales - totalReturns;
+    let grossProfit = netSales - totalCostOfGoods;
+    let netProfitAfterExpenses = grossProfit - periodExpenses;
+
+    let html = `
+        <div>إليك التقرير المالي الدقيق لفترة: <b>${range.label}</b></div>
+        <div class="ai-card">
+            <div class="ai-card-title">
+                <span>📊 خلاصة المبيعات والأرباح</span>
+                <span>${salesCount} فاتورة بيع | ${returnCount} مرتجع</span>
+            </div>
+            <div class="stat-grid">
+                <div class="stat-box">
+                    <div class="stat-label">صافي المبيعات</div>
+                    <div class="stat-val">${fmtMoney(netSales)} ج</div>
+                </div>
+                <div class="stat-box amber">
+                    <div class="stat-label">تكلفة البضاعة المباعة</div>
+                    <div class="stat-val">${fmtMoney(totalCostOfGoods)} ج</div>
+                </div>
+                <div class="stat-box purple">
+                    <div class="stat-label">مجمل الربح (قبل المصاريف)</div>
+                    <div class="stat-val">${fmtMoney(grossProfit)} ج</div>
+                </div>
+                <div class="stat-box red">
+                    <div class="stat-label">المصروفات المسجلة</div>
+                    <div class="stat-val">${fmtMoney(periodExpenses)} ج</div>
+                </div>
+                <div class="stat-box green">
+                    <div class="stat-label">صافي الربح النهائي</div>
+                    <div class="stat-val" style="color:var(--neon-green);">${fmtMoney(netProfitAfterExpenses)} ج</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    let spoken = `في فترة ${range.label}، صافي المبيعات ${fmtMoney(netSales)} جنيه، ومجمل الربح ${fmtMoney(grossProfit)} جنيه، وبعد خصم المصروفات البالغة ${fmtMoney(periodExpenses)} جنيه، يكون صافي الربح النهائي ${fmtMoney(netProfitAfterExpenses)} جنيه.`;
+    appendBotMessage(html, spoken);
+}
+
+// ─── ب. استعلام الخزينة والسيولة ───
+function handleTreasuryQuery(queryText) {
+    if (typeof DB !== 'undefined' && typeof DB.recalculateVaultBalances === 'function') {
+        DB.recalculateVaultBalances();
+    }
+    let vaults = JSON.parse(localStorage.getItem('seraj_vaults_v2') || '{"main":0,"insta":0,"wallet":0}');
+    let mainBal = parseFloat(vaults.main) || 0;
+    let instaBal = parseFloat(vaults.insta) || 0;
+    let walletBal = parseFloat(vaults.wallet) || 0;
+    let totalCash = mainBal + instaBal + walletBal;
+
+    const range = extractDateRange(queryText);
+    let todayExp = 0;
+    treasuryMovesDB.forEach(m => {
+        if (!m || m.isDeleted) return;
+        let t = parseItemTime(m);
+        if (t >= range.startMs && t <= range.endMs && m.type === 'expense') {
+            todayExp += (parseFloat(m.amountDeduct || m.amount) || 0);
+        }
+    });
+
+    let html = `
+        <div>أرصدة الخزائن والسيولة المتاحة حالياً:</div>
+        <div class="ai-card">
+            <div class="ai-card-title">
+                <span>🏦 السيولة النقدية في الخزائن</span>
+                <span>الإجمالي: ${fmtMoney(totalCash)} ج</span>
+            </div>
+            <div class="stat-grid">
+                <div class="stat-box green">
+                    <div class="stat-label">الخزينة الرئيسية (كاش)</div>
+                    <div class="stat-val">${fmtMoney(mainBal)} ج</div>
+                </div>
+                <div class="stat-box purple">
+                    <div class="stat-label">إنستا باي (InstaPay)</div>
+                    <div class="stat-val">${fmtMoney(instaBal)} ج</div>
+                </div>
+                <div class="stat-box amber">
+                    <div class="stat-label">المحفظة الإلكترونية</div>
+                    <div class="stat-val">${fmtMoney(walletBal)} ج</div>
+                </div>
+                <div class="stat-box red">
+                    <div class="stat-label">مصروفات (${range.label})</div>
+                    <div class="stat-val">${fmtMoney(todayExp)} ج</div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    let spoken = `إجمالي السيولة في الخزائن هو ${fmtMoney(totalCash)} جنيه. منها في الخزنة الرئيسية ${fmtMoney(mainBal)} جنيه، وفي إنستا باي ${fmtMoney(instaBal)} جنيه، وفي المحفظة ${fmtMoney(walletBal)} جنيه.`;
+    appendBotMessage(html, spoken);
+}
+
+// ─── ج. ديون العملاء والموردين العامة ───
+function handleGeneralDebtsQuery() {
+    let totalCustDebt = 0; // فلوس لينا عند العملاء (c.balance < 0)
+    let debtorsList = [];
+
+    customersDB.forEach(c => {
+        if (!c || c.isDeleted) return;
+        let bal = parseFloat(c.balance) || 0;
+        if (bal < -0.01) {
+            let debtAmt = Math.abs(bal);
+            totalCustDebt += debtAmt;
+            debtorsList.push({ name: c.name, debt: debtAmt, phone: c.phone || '' });
+        }
+    });
+
+    debtorsList.sort((a, b) => b.debt - a.debt);
+    let top5 = debtorsList.slice(0, 6);
+
+    let totalSuppDebt = 0; // فلوس علينا للموردين
+    suppliersDB.forEach(s => {
+        if (!s || s.isDeleted) return;
+        let bal = parseFloat(s.balance) || 0;
+        if (bal < -0.01) totalSuppDebt += Math.abs(bal);
+    });
+
+    let rowsHtml = top5.map(d => `
+        <tr>
+            <td><b>${d.name}</b></td>
+            <td><span class="badge badge-debt">عليه ${fmtMoney(d.debt)} ج</span></td>
+        </tr>
+    `).join('') || '<tr><td colspan="2">لا توجد مديونيات على العملاء حالياً 🎉</td></tr>';
+
+    let html = `
+        <div>تقرير المديونيات والأرصدة الخارجية:</div>
+        <div class="ai-card">
+            <div class="ai-card-title"><span>👥 إجمالي الديون في السوق</span></div>
+            <div class="stat-grid">
+                <div class="stat-box red">
+                    <div class="stat-label">فلوس لينا عند العملاء (${debtorsList.length} عميل)</div>
+                    <div class="stat-val">${fmtMoney(totalCustDebt)} ج</div>
+                </div>
+                <div class="stat-box amber">
+                    <div class="stat-label">فلوس للموردين علينا</div>
+                    <div class="stat-val">${fmtMoney(totalSuppDebt)} ج</div>
+                </div>
+            </div>
+            <table class="mini-table">
+                <thead><tr><th>أكبر العملاء مديونية</th><th>المبلغ المتبقي</th></tr></thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+        </div>
+    `;
+
+    let spoken = `إجمالي الفلوس اللي لينا بره عند العملاء هو ${fmtMoney(totalCustDebt)} جنيه موزعة على ${debtorsList.length} عميل. وإجمالي الفلوس اللي للموردين علينا هو ${fmtMoney(totalSuppDebt)} جنيه.`;
+    appendBotMessage(html, spoken);
+}
+
+// ─── د. البحث عن حساب عميل أو مورد بالاسم ───
+function handlePersonAccountQuery(queryText) {
+    let cleanQ = normText(queryText)
+        .replace(/حساب|رصيد|عميل|مورد|عليه كام|فلوس|كشف|العميل|المورد|كام/g, '')
+        .trim();
+
+    if (!cleanQ) {
+        handleGeneralDebtsQuery();
+        return;
+    }
+
+    let matchedCustomers = customersDB.filter(c => c && !c.isDeleted && normText(c.name).includes(cleanQ));
+    let matchedSuppliers = suppliersDB.filter(s => s && !s.isDeleted && normText(s.name).includes(cleanQ));
+
+    if (matchedCustomers.length === 0 && matchedSuppliers.length === 0) {
+        appendBotMessage(`🔍 لم أجد عميلاً أو مورداً يطابق اسم <b>"${cleanQ}"</b>. تأكد من كتابة جزء من الاسم بشكل صحيح.`, `لم أجد عميلاً أو مورداً بهذا الاسم`);
+        return;
+    }
+
+    let html = '';
+    let spokenParts = [];
+
+    matchedCustomers.slice(0, 3).forEach(c => {
+        let bal = parseFloat(c.balance) || 0;
+        let statusText = bal < -0.01 ? `عليه مديونية ${fmtMoney(Math.abs(bal))} ج` : (bal > 0.01 ? `له رصيد دائن ${fmtMoney(bal)} ج` : 'حسابه خالص (صفر)');
+        let badgeClass = bal < -0.01 ? 'badge-debt' : 'badge-credit';
+        spokenParts.push(`العميل ${c.name} ${statusText}`);
+
+        html += `
+            <div class="ai-card">
+                <div class="ai-card-title">
+                    <span>👤 عميل: ${c.name}</span>
+                    <span class="badge ${badgeClass}">${statusText}</span>
+                </div>
+                <div style="font-size:12px; color:var(--text-muted);">
+                    📞 الهاتف: ${c.phone || 'غير مسجل'} | آخر نشاط: ${c.lastActivityDate || 'غير محدد'}
+                </div>
+            </div>
+        `;
+    });
+
+    matchedSuppliers.slice(0, 3).forEach(s => {
+        let bal = parseFloat(s.balance) || 0;
+        let statusText = bal < -0.01 ? `لهم علينا ${fmtMoney(Math.abs(bal))} ج` : (bal > 0.01 ? `لنا عندهم ${fmtMoney(bal)} ج` : 'الحساب خالص (صفر)');
+        spokenParts.push(`المورد ${s.name} ${statusText}`);
+
+        html += `
+            <div class="ai-card">
+                <div class="ai-card-title">
+                    <span>🚛 مورد: ${s.name}</span>
+                    <span class="badge badge-debt">${statusText}</span>
+                </div>
+            </div>
+        `;
+    });
+
+    appendBotMessage(html, spokenParts.join('، و '));
+}
+
+// ─── هـ. فحص نواقص المخزن والأرصدة السالبة ───
+function handleLowStockQuery() {
+    let negativeItems = [];
+    let zeroItems = [];
+
+    productsDB.forEach(p => {
+        if (!p || p.isDeleted || p.isArchived) return;
+        let st = parseFloat(p.stock) || 0;
+        if (st < 0) negativeItems.push(p);
+        else if (st === 0) zeroItems.push(p);
+    });
+
+    let rows = negativeItems.slice(0, 8).map(p => `
+        <tr>
+            <td><b>${p.name}</b></td>
+            <td><span class="badge badge-debt">سالب (${p.stock})</span></td>
+            <td>${fmtMoney(p.sellPrice || p.price)} ج</td>
+        </tr>
+    `).join('');
+
+    let zeroRows = zeroItems.slice(0, 7).map(p => `
+        <tr>
+            <td>${p.name}</td>
+            <td><span class="badge" style="background:rgba(245,158,11,0.15);color:#fcd34d;">رصيد 0</span></td>
+            <td>${fmtMoney(p.sellPrice || p.price)} ج</td>
+        </tr>
+    `).join('');
+
+    let html = `
+        <div>تقرير حالة المخزن والنواقص العاجلة:</div>
+        <div class="ai-card">
+            <div class="ai-card-title">
+                <span>📦 الأصناف المسحوبة بالسالب والمنتهية</span>
+                <span>سالب: ${negativeItems.length} | صفر: ${zeroItems.length}</span>
+            </div>
+            <table class="mini-table">
+                <thead><tr><th>الصنف</th><th>الرصيد</th><th>سعر البيع</th></tr></thead>
+                <tbody>${rows}${zeroRows || '<tr><td colspan="3">المخزن مكتمل ولا توجد نواقص!</td></tr>'}</tbody>
+            </table>
+        </div>
+    `;
+
+    let spoken = `يوجد في المخزن ${negativeItems.length} صنف مسحوب بالسالب، و ${zeroItems.length} صنف رصيده صفر ويحتاج للشراء.`;
+    appendBotMessage(html, spoken);
+}
+
+// ─── و. الأصناف الأكثر مبيعاً ───
+function handleTopSellingProductsQuery(queryText) {
+    const range = extractDateRange(queryText);
+    const qtyMap = new Map();
+
+    salesInvoicesDB.forEach(inv => {
+        if (!inv || inv.isCanceled || inv.type === 'quotation' || inv.type === 'return' || inv.type === 'return_sale') return;
+        let t = parseItemTime(inv);
+        if (t < range.startMs || t > range.endMs) return;
+        if (Array.isArray(inv.items)) {
+            inv.items.forEach(it => {
+                let name = it.name || 'صنف';
+                let q = parseFloat(it.qty || it.quantity) || 0;
+                qtyMap.set(name, (qtyMap.get(name) || 0) + q);
+            });
+        }
+    });
+
+    let sorted = [...qtyMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    let rows = sorted.map(([name, qty], i) => `
+        <tr>
+            <td>#${i + 1} <b>${name}</b></td>
+            <td><span class="badge badge-credit">${qty} قطعة</span></td>
+        </tr>
+    `).join('') || '<tr><td colspan="2">لا توجد مبيعات مسجلة في هذه الفترة</td></tr>';
+
+    let html = `
+        <div class="ai-card">
+            <div class="ai-card-title"><span>🔥 الأكثر مبيعاً (${range.label})</span></div>
+            <table class="mini-table">
+                <thead><tr><th>الصنف</th><th>الكمية المباعة</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        </div>
+    `;
+
+    let topName = sorted.length > 0 ? `أكثر صنف مبيعاً هو ${sorted[0][0]} بعدد ${sorted[0][1]} قطعة.` : 'لا توجد مبيعات في هذه الفترة.';
+    appendBotMessage(html, topName);
+}
+
+// ─── ز. البحث الذكي الشامل (أصناف + عملاء) ───
+function handleSmartUniversalSearch(queryText) {
+    let clean = normText(queryText)
+        .replace(/فاضل كام|عندي كام|سعر|بكام|صنف|رصيد|في المخزن|من|عن|شوفلي|قولي/g, '')
+        .trim();
+
+    if (!clean) {
+        appendBotMessage("أهلاً بك يا هندسة! اسألني عن أي صنف، عميل، أرباح، أو اطلب مني عمل فاتورة أو تسجيل مصروف.");
+        return;
+    }
+
+    let tokens = clean.split(' ').filter(Boolean);
+    let matchedProds = productsDB.filter(p => {
+        if (!p || p.isDeleted) return false;
+        let pNorm = normText(p.name);
+        return tokens.every(tk => pNorm.includes(tk));
+    });
+
+    if (matchedProds.length > 0) {
+        let rows = matchedProds.slice(0, 6).map(p => {
+            let st = parseFloat(p.stock) || 0;
+            let sell = parseFloat(p.sellPrice ?? p.price) || 0;
+            let buy = parseFloat(p.buyPrice) || 0;
+            if (Array.isArray(p.lots) && p.lots.length > 0) {
+                buy = parseFloat(p.lots[0].buyPrice) || buy;
+            }
+            return `
+                <tr>
+                    <td><b>${p.name}</b></td>
+                    <td><span class="badge ${st > 0 ? 'badge-credit' : 'badge-debt'}">${st}</span></td>
+                    <td>${fmtMoney(sell)} ج</td>
+                    <td style="color:var(--text-muted);">${fmtMoney(buy)} ج</td>
+                </tr>
+            `;
+        }).join('');
+
+        let first = matchedProds[0];
+        let spoken = `صنف ${first.name} رصيده الحالي ${first.stock || 0}، وسعر بيعه ${fmtMoney(first.sellPrice ?? first.price)} جنيه.`;
+
+        let html = `
+            <div>نتائج البحث في المخزن عن <b>"${clean}"</b>:</div>
+            <div class="ai-card">
+                <div class="ai-card-title"><span>📦 بطاقة الأصناف (${matchedProds.length} نتيجة)</span></div>
+                <table class="mini-table">
+                    <thead><tr><th>الصنف</th><th>الرصيد</th><th>سعر البيع</th><th>الشراء</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `;
+        appendBotMessage(html, spoken);
+        return;
+    }
+
+    // إذا لم يجد في الأصناف، يجرب البحث في العملاء والموردين
+    handlePersonAccountQuery(clean);
+}
+
+/* ============================================================================
+   6. تنفيذ الأوامر الآمنة بكروت المعاينة (إنشاء فاتورة / مصروف / نواقص)
+   ============================================================================ */
+
+// ─── 1. تجهيز كارت فاتورة بيع بالصوت أو الكتابة ───
+function handleCreateInvoiceIntent(text) {
+    // مثال: "اعمل فاتورة لمحمد علي فيها 5 لمبة ليد و 2 مفتاح"
+    let custName = 'عميل نقدي';
+    let custId = '';
+
+    let custMatch = text.match(/(?:ل|باسم|للعميل)\s+([^\s]+(?:\s+[^\s]+)?)(?=\s+(?:فيها|ب|عدد|\d))/i);
+    if (custMatch) {
+        let candidate = custMatch[1].trim();
+        let foundCust = customersDB.find(c => c && !c.isDeleted && normText(c.name).includes(normText(candidate)));
+        if (foundCust) {
+            custName = foundCust.name;
+            custId = foundCust.id;
+        } else {
+            custName = candidate;
+        }
+    }
+
+    // استخراج أزواج (الكمية + اسم الصنف)
+    let regex = /(\d+(?:\.\d+)?)\s+([^\d،,و]+?)(?=(?:\s+و\s*\d+|\s*،|\s*$))/g;
+    let parsedItems = [];
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+        let qty = parseFloat(match[1]) || 1;
+        let rawProdName = normText(match[2]).replace(/قطعه|حته|كرتونه|متر|علبه/g, '').trim();
+        if (!rawProdName) continue;
+
+        let tokens = rawProdName.split(' ').filter(Boolean);
+        let bestProd = productsDB.find(p => p && !p.isDeleted && tokens.every(tk => normText(p.name).includes(tk)));
+
+        if (bestProd) {
+            let price = parseFloat(bestProd.sellPrice ?? bestProd.price) || 0;
+            parsedItems.push({
+                id: bestProd.id,
+                name: bestProd.name,
+                qty: qty,
+                price: price,
+                buyPrice: parseFloat(bestProd.buyPrice) || 0,
+                total: Number((qty * price).toFixed(2))
+            });
+        }
+    }
+
+    if (parsedItems.length === 0) {
+        appendBotMessage(`⚠️ لم أتمكن من التقاط أسماء أصناف مطابقة للمخزن في جملتك.<br>جرّب صيغة مثل: <b>"اعمل فاتورة لمحمد فيها 5 [اسم الصنف] و 2 [اسم الصنف]"</b>`, "يرجى تحديد الكمية واسم الصنف بوضوح");
+        return;
+    }
+
+    let totalInv = parsedItems.reduce((s, i) => s + i.total, 0);
+    let actionId = 'act_inv_' + Date.now();
+    pendingActions[actionId] = {
+        type: 'invoice',
+        customerName: custName,
+        customerId: custId,
+        items: parsedItems,
+        total: Number(totalInv.toFixed(2))
+    };
+
+    let itemsRows = parsedItems.map(it => `
+        <tr>
+            <td><b>${it.name}</b></td>
+            <td>${it.qty}</td>
+            <td>${fmtMoney(it.price)} ج</td>
+            <td><b>${fmtMoney(it.total)} ج</b></td>
+        </tr>
+    `).join('');
+
+    let html = `
+        <div>جهزت لك معاينة الفاتورة؛ راجعها واضغط <b>تأكيد وحفظ</b> لتسمّع في المخزن والخزينة:</div>
+        <div class="ai-card" id="${actionId}">
+            <div class="ai-card-title">
+                <span>🧾 معاينة فاتورة بيع جديدة</span>
+                <span>العميل: ${custName}</span>
+            </div>
+            <table class="mini-table">
+                <thead><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+                <tbody>${itemsRows}</tbody>
+            </table>
+            <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:15px; font-weight:800; color:var(--neon-green);">الإجمالي المطلوب: ${fmtMoney(totalInv)} ج</span>
+                <select id="payMode_${actionId}" class="form-input" style="width:auto; padding:4px 8px;">
+                    <option value="cash">نقدي بالكامل (الخزينة الرئيسية)</option>
+                    <option value="delayed">آجل على حساب العميل</option>
+                </select>
+            </div>
+            <button class="action-btn" onclick="confirmPendingInvoice('${actionId}', this)">✅ تأكيد وحفظ الفاتورة الآن</button>
+        </div>
+    `;
+
+    appendBotMessage(html, `جهزت فاتورة باسم ${custName} بإجمالي ${fmtMoney(totalInv)} جنيه، اضغط تأكيد للحفظ.`);
+}
+
+function confirmPendingInvoice(actionId, btnEl) {
+    const data = pendingActions[actionId];
+    if (!data) return;
+    btnEl.disabled = true;
+
+    const payMode = document.getElementById('payMode_' + actionId)?.value || 'cash';
+    if (payMode === 'delayed' && (!data.customerName || data.customerName === 'عميل نقدي')) {
+        alert('لا يمكن حفظ فاتورة آجل بدون اسم عميل!');
+        btnEl.disabled = false;
+        return;
+    }
+
+    refreshAllLocalData();
+    const now = Date.now();
+    const todayIso = new Date().toISOString().split('T')[0];
+
+    // 1. مطابقة أو إنشاء العميل إذا لم يكن نقدياً
+    let finalCustId = data.customerId;
+    if (data.customerName && data.customerName !== 'عميل نقدي' && !finalCustId) {
+        let existingC = customersDB.find(c => c && !c.isDeleted && normText(c.name) === normText(data.customerName));
+        if (existingC) {
+            finalCustId = existingC.id;
+        } else {
+            finalCustId = (window.Utils && window.Utils.generateUniqueId) ? window.Utils.generateUniqueId() : String(now);
+            customersDB.push({
+                id: finalCustId,
+                name: data.customerName,
+                phone: '',
+                balance: 0,
+                transactions: [],
+                lastActivityDate: todayIso,
+                _lastModified: now
+            });
+            if (typeof DB !== 'undefined' && DB.saveCustomers) DB.saveCustomers(customersDB);
+        }
+    }
+
+    // 2. خصم المخزن بنظام (FIFO) وإنشاء دفعة عجز سالبة عند النفاد (مطابق لـ sales_3.html)
+    data.items.forEach(soldItem => {
+        let prod = productsDB.find(p => String(p.id) === String(soldItem.id));
+        if (!prod) return;
+        let qtyToDeduct = parseFloat(soldItem.qty) || 0;
+
+        if (Array.isArray(prod.lots) && prod.lots.length > 0) {
+            for (let i = 0; i < prod.lots.length && qtyToDeduct > 0; i++) {
+                let lotStock = parseFloat(prod.lots[i].stock) || 0;
+                if (lotStock > 0) {
+                    if (lotStock >= qtyToDeduct) {
+                        prod.lots[i].stock = Number((lotStock - qtyToDeduct).toFixed(2));
+                        qtyToDeduct = 0;
+                    } else {
+                        qtyToDeduct = Number((qtyToDeduct - lotStock).toFixed(2));
+                        prod.lots[i].stock = 0;
+                    }
+                }
+            }
+            prod.lots = prod.lots.filter(l => (parseFloat(l.stock) || 0) !== 0);
+            if (qtyToDeduct > 0) {
+                prod.lots.push({
+                    id: 'lot_def_' + now,
+                    supplier: 'سحب بالسالب (عجز)',
+                    stock: -Number(qtyToDeduct.toFixed(2)),
+                    buyPrice: soldItem.buyPrice || prod.buyPrice || 0,
+                    sellPrice: soldItem.price,
+                    date: todayIso
+                });
+            }
+            prod.stock = prod.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
+        } else {
+            prod.stock = Number(((parseFloat(prod.stock) || 0) - qtyToDeduct).toFixed(2));
+        }
+        prod._lastModified = now;
+    });
+
+    if (typeof DB !== 'undefined' && DB.saveProducts) DB.saveProducts(productsDB);
+
+    // 3. حفظ الفاتورة وتسجيل حركة الخزينة
+    let invId = (window.Utils && window.Utils.generateUniqueId) ? window.Utils.generateUniqueId() : String(now);
+    let paidAmt = payMode === 'cash' ? data.total : 0;
+    let remAmt = Number((data.total - paidAmt).toFixed(2));
+
+    let newInv = {
+        id: invId,
+        invoiceNo: invId.slice(-6),
+        date: todayIso,
+        timestamp: now,
+        _lastModified: now,
+        customer: data.customerName === 'عميل نقدي' ? '' : data.customerName,
+        customerId: finalCustId || '',
+        type: remAmt > 0 ? 'delayed' : 'sales',
+        total: data.total,
+        discount: 0,
+        paid: paidAmt,
+        remaining: remAmt,
+        vault: 'main',
+        items: data.items
+    };
+
+    salesInvoicesDB.unshift(newInv);
+    if (typeof DB !== 'undefined' && DB.saveSalesInvoices) DB.saveSalesInvoices(salesInvoicesDB);
+
+    if (paidAmt > 0 && typeof DB !== 'undefined' && DB.recordTreasuryTransaction) {
+        DB.recordTreasuryTransaction({
+            id: 'tr_' + now,
+            type: 'sales',
+            vault: 'main',
+            amountAdd: paidAmt,
+            amountDeduct: 0,
+            date: todayIso,
+            customerId: finalCustId || '',
+            customer: data.customerName,
+            invoiceNo: newInv.invoiceNo,
+            notes: `فاتورة بيع ذكية رقم #${newInv.invoiceNo}`
+        });
+    }
+
+    delete pendingActions[actionId];
+    btnEl.textContent = "✔️ تم حفظ الفاتورة والخصم من المخزن بنجاح";
+    speakArabic("تم حفظ الفاتورة بنجاح");
+}
+
+// ─── 2. تجهيز كارت مصروف سريع ───
+function handleCreateExpenseIntent(text) {
+    let numMatch = text.match(/(\d+(?:\.\d+)?)/);
+    if (!numMatch) {
+        appendBotMessage("⚠️ يرجى تحديد مبلغ المصروف، مثلاً: <b>سجل مصروف 50 جنيه شاي وضيافة</b>");
+        return;
+    }
+    let amount = parseFloat(numMatch[1]);
+    let notes = text.replace(/سجل مصروف|اضف مصروف|طلع مصروف|اصرف|\d+(?:\.\d+)?|جنيه|ج\.م/gi, '').trim() || 'مصروف نثريات';
+    let actionId = 'act_exp_' + Date.now();
+    pendingActions[actionId] = { amount, notes };
+
+    let html = `
+        <div class="ai-card" id="${actionId}">
+            <div class="ai-card-title"><span>💸 معاينة تسجيل مصروف</span></div>
+            <div style="font-size:14px; margin-bottom:8px;">
+                المبلغ: <b style="color:var(--neon-red);">${fmtMoney(amount)} ج</b> | البيان: <b>${notes}</b>
+            </div>
+            <button class="action-btn" onclick="confirmPendingExpense('${actionId}', this)">✅ تأكيد صرف المبلغ من الخزينة الرئيسية</button>
+        </div>
+    `;
+    appendBotMessage(html, `تأكيد تسجيل مصروف بمبلغ ${amount} جنيه بيان ${notes}`);
+}
+
+function confirmPendingExpense(actionId, btnEl) {
+    let data = pendingActions[actionId];
+    if (!data) return;
+    btnEl.disabled = true;
+
+    let todayIso = new Date().toISOString().split('T')[0];
+    if (typeof DB !== 'undefined' && DB.recordTreasuryTransaction) {
+        DB.recordTreasuryTransaction({
+            id: 'exp_' + Date.now(),
+            type: 'expense',
+            vault: 'main',
+            amountAdd: 0,
+            amountDeduct: data.amount,
+            date: todayIso,
+            category: 'مصروفات عامة',
+            notes: data.notes
+        });
+    }
+    delete pendingActions[actionId];
+    btnEl.textContent = "✔️ تم خصم المصروف من الخزينة بنجاح";
+    speakArabic("تم تسجيل المصروف بنجاح");
+}
+
+// ─── 3. إضافة سريعة للنواقص (النوتة الذكية) ───
+function handleAddShortageIntent(text) {
+    let itemText = text.replace(/سجل في النواقص|ضيف في النواقص|هات في النواقص|اكتب في النوته/gi, '').trim();
+    if (!itemText) {
+        appendBotMessage("⚠️ اكتب اسم الصنف المطلوب إضافته للنواقص، مثلاً: <b>ضيف في النواقص 10 سلك دش</b>");
+        return;
+    }
+
+    let now = Date.now();
+    let newNote = {
+        id: 'note_' + now,
+        text: itemText,
+        date: new Date().toLocaleDateString('ar-EG'),
+        timestamp: now,
+        _lastModified: now,
+        completed: false
+    };
+
+    smartNotesDB.unshift(newNote);
+    if (typeof DB !== 'undefined' && typeof DB.saveSmartNotes === 'function') {
+        DB.saveSmartNotes(smartNotesDB);
+    } else {
+        localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
+    }
+
+    appendBotMessage(`✅ تم تسجيل <b>"${itemText}"</b> في كشكول النواقص السحابي بنجاح!`, `تم إضافة ${itemText} في النواقص`);
+}
+
+/* ============================================================================
+   7. نظام تقارير الـ Gmail التلقائي + طابور الأوفلاين
+   ============================================================================ */
+function saveGmailConfig() {
+    let cfg = {
+        emailTo: document.getElementById('cfgEmailTo').value.trim(),
+        webhookUrl: document.getElementById('cfgWebhookUrl').value.trim(),
+        autoDaily: document.getElementById('cfgAutoDailyEmail').checked
+    };
+    localStorage.setItem('seraj_ai_gmail_cfg', JSON.stringify(cfg));
+    closeModal('gmailModal');
+    appendBotMessage("✅ تم حفظ إعدادات الربط مع الـ Gmail بنجاح!");
+}
+
+function loadGmailConfigUI() {
+    let cfg = JSON.parse(localStorage.getItem('seraj_ai_gmail_cfg') || '{}');
+    if (cfg.emailTo) document.getElementById('cfgEmailTo').value = cfg.emailTo;
+    if (cfg.webhookUrl) document.getElementById('cfgWebhookUrl').value = cfg.webhookUrl;
+    if (cfg.autoDaily) document.getElementById('cfgAutoDailyEmail').checked = true;
+}
+
+function copyGasCode() {
+    let code = document.getElementById('gasCodeBox').textContent;
+    navigator.clipboard.writeText(code);
+    alert("تم نسخ كود Google Apps Script بنجاح!");
+}
+
+function buildDailyReportHTML() {
+    refreshAllLocalData();
+    const range = extractDateRange('النهاردة');
+    let todaySales = 0, todayCount = 0, todayExp = 0;
+
+    salesInvoicesDB.forEach(inv => {
+        if (!inv || inv.isCanceled || inv.type === 'quotation' || inv.type === 'return') return;
+        let t = parseItemTime(inv);
+        if (t >= range.startMs && t <= range.endMs) {
+            todaySales += (parseFloat(inv.total) || 0);
+            todayCount++;
+        }
+    });
+
+    treasuryMovesDB.forEach(m => {
+        if (!m || m.isDeleted) return;
+        let t = parseItemTime(m);
+        if (t >= range.startMs && t <= range.endMs && m.type === 'expense') {
+            todayExp += (parseFloat(m.amountDeduct || m.amount) || 0);
+        }
+    });
+
+    let vaults = JSON.parse(localStorage.getItem('seraj_vaults_v2') || '{"main":0,"insta":0,"wallet":0}');
+    let lowStockCount = productsDB.filter(p => p && !p.isDeleted && (parseFloat(p.stock) || 0) <= 0).length;
+
+    return `
+        <div dir="rtl" style="font-family:Tahoma,Arial,sans-serif; max-width:600px; margin:auto; border:1px solid #ddd; border-radius:10px; overflow:hidden;">
+            <div style="background:#0f172a; color:#00f2fe; padding:16px; text-align:center;">
+                <h2 style="margin:0;">تقرير سراج كاشير اليومي</h2>
+                <p style="color:#cbd5e1; margin:5px 0 0;">التاريخ: ${new Date().toLocaleDateString('ar-EG')}</p>
+            </div>
+            <div style="padding:16px; background:#ffffff; color:#1e293b;">
+                <h3>📊 ملخص حركة اليوم:</h3>
+                <ul>
+                    <li><b>إجمالي مبيعات اليوم (${todayCount} فاتورة):</b> ${fmtMoney(todaySales)} ج.م</li>
+                    <li><b>إجمالي مصروفات اليوم:</b> ${fmtMoney(todayExp)} ج.م</li>
+                </ul>
+                <h3>🏦 أرصدة الخزائن الحالية:</h3>
+                <ul>
+                    <li><b>الخزينة الرئيسية:</b> ${fmtMoney(vaults.main)} ج.م</li>
+                    <li><b>إنستا باي:</b> ${fmtMoney(vaults.insta)} ج.م</li>
+                    <li><b>المحفظة الإلكترونية:</b> ${fmtMoney(vaults.wallet)} ج.م</li>
+                </ul>
+                <p style="background:#fef3c7; padding:10px; border-radius:6px;">
+                    📦 <b>تنبيه المخزن:</b> يوجد حالياً <b>${lowStockCount}</b> صنف رصيده صفر أو بالسالب.
+                </p>
+            </div>
+        </div>
+    `;
+}
+
+function sendDailyReportToGmail(fromModal = false) {
+    if (fromModal) saveGmailConfig();
+    let cfg = JSON.parse(localStorage.getItem('seraj_ai_gmail_cfg') || '{}');
+    if (!cfg.emailTo || !cfg.webhookUrl) {
+        openModal('gmailModal');
+        appendBotMessage("⚠️ يرجى إدخال بريدك الـ Gmail ورابط Google Script أولاً في نافذة الإعدادات التي فُتحت أمامك.");
+        return;
+    }
+
+    let payload = {
+        to: cfg.emailTo,
+        subject: `📊 تقرير سراج كاشير اليومي - ${new Date().toLocaleDateString('ar-EG')}`,
+        html: buildDailyReportHTML(),
+        timestamp: Date.now()
+    };
+
+    if (!navigator.onLine) {
+        queueEmailOffline(payload);
+        appendBotMessage("📴 الجهاز غير متصل بالإنترنت حالياً؛ تم حفظ التقرير في <b>طابور الإيميلات الذكي</b> وسيتم إرساله إلى الجيميل تلقائياً فور عودة الإنترنت!");
+        return;
+    }
+
+    appendBotMessage("⏳ جاري إرسال التقرير المالي المفصل إلى بريدك على الـ Gmail...");
+    dispatchEmailWebhook(cfg.webhookUrl, payload, true);
+}
+
+function dispatchEmailWebhook(webhookUrl, payload, notifyChat = false) {
+    fetch(webhookUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+    }).then(() => {
+        if (notifyChat) {
+            appendBotMessage(`✅ تم إرسال التقرير المالي بنجاح إلى بريدك: <b>${payload.to}</b>`, "تم إرسال التقرير إلى الجيميل بنجاح");
+        }
+    }).catch(() => {
+        queueEmailOffline(payload);
+    });
+}
+
+function queueEmailOffline(payload) {
+    let q = JSON.parse(localStorage.getItem('seraj_email_queue') || '[]');
+    q.push(payload);
+    localStorage.setItem('seraj_email_queue', JSON.stringify(q));
+}
+
+function flushEmailQueue() {
+    if (!navigator.onLine) return;
+    let cfg = JSON.parse(localStorage.getItem('seraj_ai_gmail_cfg') || '{}');
+    if (!cfg.webhookUrl) return;
+    let q = JSON.parse(localStorage.getItem('seraj_email_queue') || '[]');
+    if (q.length === 0) return;
+
+    localStorage.setItem('seraj_email_queue', '[]');
+    q.forEach(item => dispatchEmailWebhook(cfg.webhookUrl, item, false));
+}
+
+function checkAutoNightlyEmail() {
+    let cfg = JSON.parse(localStorage.getItem('seraj_ai_gmail_cfg') || '{}');
+    if (!cfg.autoDaily || !cfg.emailTo || !cfg.webhookUrl) return;
+    let now = new Date();
+    if (now.getHours() >= 22) {
+        let todayKey = now.toISOString().split('T')[0];
+        if (localStorage.getItem('seraj_last_auto_email_date') !== todayKey) {
+            localStorage.setItem('seraj_last_auto_email_date', todayKey);
+            sendDailyReportToGmail(false);
+        }
+    }
+}
+
+/* ============================================================================
+   8. إدارة قاموس التدريب الذكي وواجهة الشات
+   ============================================================================ */
+function saveCustomRuleDirect(trigger, meaning) {
+    let dict = JSON.parse(localStorage.getItem('seraj_ai_custom_dict') || '[]');
+    dict = dict.filter(r => normText(r.trigger) !== normText(trigger));
+    dict.push({ trigger, meaning });
+    localStorage.setItem('seraj_ai_custom_dict', JSON.stringify(dict));
+    renderCustomRulesList();
+}
+
+function addCustomRule() {
+    let trig = document.getElementById('dictTrigger').value.trim();
+    let mean = document.getElementById('dictMeaning').value.trim();
+    if (!trig || !mean) return;
+    saveCustomRuleDirect(trig, mean);
+    document.getElementById('dictTrigger').value = '';
+    document.getElementById('dictMeaning').value = '';
+}
+
+function deleteCustomRule(idx) {
+    let dict = JSON.parse(localStorage.getItem('seraj_ai_custom_dict') || '[]');
+    dict.splice(idx, 1);
+    localStorage.setItem('seraj_ai_custom_dict', JSON.stringify(dict));
+    renderCustomRulesList();
+}
+
+function renderCustomRulesList() {
+    let dict = JSON.parse(localStorage.getItem('seraj_ai_custom_dict') || '[]');
+    let container = document.getElementById('dictListContainer');
+    if (!container) return;
+    if (dict.length === 0) {
+        container.innerHTML = `<div style="font-size:12px; color:var(--text-muted); text-align:center;">لا توجد كلمات مخصصة مضافة بعد.</div>`;
+        return;
+    }
+    container.innerHTML = dict.map((r, i) => `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-dark); padding:7px 10px; border-radius:8px; margin-bottom:6px; font-size:12px;">
+            <span><b>"${r.trigger}"</b> &larr; ${r.meaning}</span>
+            <button onclick="deleteCustomRule(${i})" style="background:none; border:none; color:var(--neon-red); cursor:pointer; font-weight:800;">حذف</button>
+        </div>
+    `).join('');
+}
+
+function appendUserMessage(text) {
+    const chat = document.getElementById('chatContainer');
+    const row = document.createElement('div');
+    row.className = 'msg-row user';
+    row.innerHTML = `
+        <div class="msg-bubble">${text}</div>
+        <span class="msg-time">${new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+    `;
+    chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function appendBotMessage(htmlContent, spokenSummary = null) {
+    const chat = document.getElementById('chatContainer');
+    const row = document.createElement('div');
+    row.className = 'msg-row bot';
+    row.innerHTML = `
+        <div class="msg-bubble">${htmlContent}</div>
+        <span class="msg-time">مساعد سراج • ${new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}</span>
+    `;
+    chat.appendChild(row);
+    chat.scrollTop = chat.scrollHeight;
+
+    if (spokenSummary) {
+        speakArabic(spokenSummary);
+    }
+}
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+</script>
+</body>
+</html>

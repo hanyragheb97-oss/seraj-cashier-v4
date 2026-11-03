@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تقرير حركة الخزينة - سراج كاشير</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-main: #ffffff;
+        }
+
+        body { 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); 
+            color: var(--text-main); 
+            margin: 0; padding: 0; user-select: none; overflow-x: hidden; 
+            -webkit-tap-highlight-color: transparent; min-height: 100vh; padding-bottom: 90px;
+        }
+
+        .header { 
+            background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: var(--text-main); 
+            padding: 15px 20px; display: flex; align-items: center; justify-content: center; 
+            font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; 
+            border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);
+        }
+
+        .movements-container { max-width: 800px; margin: auto; padding: 15px; }
+
+        .filter-top-bar { display: flex; gap: 10px; margin-bottom: 15px; }
+        .filter-dropdown-box { 
+            flex: 1; position: relative; background: rgba(19, 17, 44, 0.6); 
+            border: 2px solid var(--neon-border); border-radius: 16px; padding: 12px 15px; 
+            display: flex; justify-content: space-between; align-items: center; cursor: pointer; 
+            font-size: 15px; font-weight: bold; color: var(--text-main); box-sizing: border-box; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25);
+        }
+
+        .dropdown-menu { position: absolute; top: 100%; right: 0; background: #13112c; border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.8); display: none; z-index: 100; margin-top: 8px; overflow: hidden; width: 220px; text-align: right;}
+        .dropdown-item { padding: 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 15px; color: var(--text-main);}
+        .dropdown-item:active { background-color: rgba(168, 85, 247, 0.25); }
+
+        .totals-summary-bar { background: rgba(19, 17, 44, 0.7); border: 2px solid var(--neon-border); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 8px; align-items: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; box-shadow: 0 0 15px var(--neon-glow);}
+        .total-add { color: #00ff66 !important; }
+        .total-deduct { color: #ff1a40 !important; }
+
+        table { width: 100%; border-collapse: collapse; background: rgba(19, 17, 44, 0.7); backdrop-filter: blur(10px); border-radius: 16px; overflow: hidden; box-shadow: 0 0 15px var(--neon-glow); border: 2px solid var(--neon-border); margin-bottom: 20px;}
+        table th { background-color: rgba(168, 85, 247, 0.25); color: var(--text-main); padding: 14px 10px; font-size: 16px; text-align: center; white-space: nowrap; border-bottom: 2px solid var(--neon-border);}
+        table td { padding: 14px 10px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; font-size: 16px; font-weight: bold; color: var(--text-main);}
+        table td:first-child { text-align: right; }
+
+        /* ================= الشريط السفلي ================= */
+        .unified-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background-color: rgba(19, 17, 44, 0.95); border-top: 1px solid var(--neon-border); display: flex; padding: 10px 15px; gap: 8px; z-index: 100; box-shadow: 0 -4px 25px var(--neon-glow); align-items: center;}
+        .header-back-btn { background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;}
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+        .bottom-bar-dropdown { flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); border-radius: 12px; padding: 0 12px; height: 45px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; color: var(--text-main); cursor: pointer; position: relative; box-shadow: 0 0 10px var(--neon-glow);}
+        .bottom-bar-btn { flex: 1; background-color: var(--card-bg); color: var(--text-main); border: 1px solid #3b82f6; border-radius: 12px; height: 45px; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 5px; cursor: pointer; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); position: relative;}
+        
+        .sub-accordion-content { display: none; background: rgba(10, 8, 25, 0.95); padding: 0;}
+        .sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-main); text-align: right; border-right: 2px solid #ec4899;}
+
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5, 7, 15, 0.85); display: none; justify-content: center; align-items: center; z-index: 300; backdrop-filter: blur(8px);}
+        .compact-modal { background: rgba(19, 17, 44, 0.95); padding: 25px; border-radius: 24px; width: 92%; max-width: 440px; box-shadow: 0 0 45px rgba(168, 85, 247, 0.6); border: 2px solid var(--neon-border); color: var(--text-main);}
+        .compact-header { border-bottom: 2px solid rgba(168, 85, 247, 0.3); padding-bottom: 15px; margin-bottom: 20px; text-align: center;}
+        .compact-header h3 { margin: 0; font-size: 20px; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 16px;}
+        .input-group input { width: 100%; padding: 12px; font-size: 18px; text-align: center; border: 2px solid var(--neon-border); border-radius: 14px; font-weight: bold; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: var(--text-main); outline: none;}
+        .btn-group { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 20px;}
+        .btn-group button { flex: 1; padding: 14px; border: none; border-radius: 16px; cursor: pointer; font-size: 18px; font-weight: bold; transition: all 0.2s;}
+        .confirm-btn { background: rgba(7, 9, 19, 0.95) !important; border: 2px solid #ec4899 !important; color: white !important; box-shadow: 0 0 15px rgba(236, 72, 153, 0.4);}
+        .cancel-btn { background: var(--card-bg) !important; border: 2px solid var(--neon-border) !important; color: var(--text-main) !important;}
+
+/* إعدادات الطباعة */
+#thermalPrintArea { display: none; }
+        
+        /* 1. إعدادات طباعة A4 العادية أو الـ PDF */
+        @media print {
+            @page { margin: 10mm; size: A4 portrait; }
+            body { margin: 0; padding: 0; background: #fff; color: #000; }
+            .header, .search-container, .unified-bottom-bar, .modal-overlay { display: none !important; }
+            #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
+            .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; background: white; color: black; border: 1px solid #000; box-shadow: none;}
+            .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
+            .report-table td { padding: 10px; border: 1px solid #000; color: black;}
+            .exp-name { color: black !important; text-shadow: none !important; }
+            .amount-box { border: 1px solid #000 !important; color: #000 !important; background: transparent !important; padding: 4px 8px; box-shadow: none !important;}
+            .total-row { background-color: #ddd !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; border-top: 2px solid #000;}
+            #grandTotal { color: black !important; font-weight: bold; }
+        }
+        
+        /* 2. إعدادات الطباعة الحرارية (بكرة 80mm) */
+        @media print {
+            body.thermal-print-mode #pdf-wrapper { display: none !important; }
+            body.thermal-print-mode #thermalPrintArea { display: block !important; width: 76mm; margin: 0 auto; padding: 5px; font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: #000; }
+            body.thermal-print-mode .print-header { font-size: 18px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px dashed #000; padding-bottom: 5px; text-align: center;}
+            body.thermal-print-mode .print-meta { font-size: 13px; margin-bottom: 15px; text-align: center; line-height: 1.4; font-weight: bold;}
+            body.thermal-print-mode .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px;}
+            body.thermal-print-mode .print-table th { border-bottom: 1px solid #000; padding: 4px 0; text-align: center;}
+            body.thermal-print-mode .print-table td { padding: 6px 0; border-bottom: 1px dotted #888; text-align: center;}
+            body.thermal-print-mode .print-footer { text-align: center; font-size: 11px; margin-top: 15px; border-top: 1px dashed #000; padding-top: 5px;}
+        }
+    </style>
+</head>
+<body onclick="closeAllMenus(event)">
+
+    <div class="header">
+        <span style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">تقرير حركة الخزينة</span>
+    </div>
+
+    <div class="movements-container" id="pdf-wrapper">
+        <div class="filter-top-bar" onclick="event.stopPropagation()">
+            <div class="filter-dropdown-box" onclick="toggleMovementFilterMenu(event)">
+                <span id="currentMovementFilterLabel">جميع الحركات</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="movementFilterDropdown">
+                    <div class="dropdown-item" onclick="setMovementFilter('all')">جميع الحركات</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('sales')">فواتير البيع</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('return_sale')">فواتير المرتجع</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('purchase')">فواتير الشراء</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('customers')">سندات العملاء</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('suppliers')">سندات الموردين</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('expenses')">المصروفات</div>
+                    <div class="dropdown-item" onclick="setMovementFilter('direct')">الخزينة مباشرة</div>
+                </div>
+            </div>
+
+            <div class="filter-dropdown-box" onclick="toggleVaultFilterMenu(event)">
+                <span id="currentVaultFilterLabel">الرئيسية (كاش)</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="vaultFilterDropdown">
+                    <div class="dropdown-item" onclick="setVaultFilter('all')">كل الخزائن</div>
+                    <div class="dropdown-item" onclick="setVaultFilter('main')">الرئيسية (كاش)</div>
+                    <div class="dropdown-item" onclick="setVaultFilter('insta')">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" onclick="setVaultFilter('wallet')">المحفظة الإلكترونية</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="totals-summary-bar">
+            <div style="display: flex; justify-content: space-around; width: 100%;">
+                <div>إضافات: <span class="total-add" id="sumAddVal">0.00</span></div>
+                <div>خصومات: <span class="total-deduct" id="sumDeductVal">0.00</span></div>
+            </div>
+            <div style="border-top: 1px dashed rgba(168,85,247,0.4); padding-top: 8px; width: 100%; text-align: center; font-size: 17px;">
+                الصافي (الفرق): <span id="sumNetVal" style="font-weight: bold;">0.00</span>
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th style="text-align: right;">البيان / الملاحظات</th>
+                    <th>إضافة (+)</th>
+                    <th>خصم (-)</th>
+                </tr>
+            </thead>
+            <tbody id="movementsTableBody"></tbody>
+        </table>
+    </div>
+
+    <!-- مساحة الطباعة الحرارية المخفية -->
+    <div id="thermalPrintArea">
+        <div class="print-header">محلات سراج LED</div>
+        <div class="print-meta" id="thermalPrintMeta">حركة الخزينة</div>
+        <div style="font-size: 13px; margin-bottom: 10px; font-weight: bold; text-align: right;" id="thermalTotalsArea"></div>
+        <table class="print-table">
+            <thead><tr style="border-bottom: 1px solid black;"><th style="text-align: right;">البيان</th><th style="text-align:center;">إضافة</th><th style="text-align:center;">خصم</th></tr></thead>
+            <tbody id="printTableBody"></tbody>
+        </table>
+        <div class="print-footer">تم الإصدار من نظام سراج كاشير</div>
+    </div>
+
+    <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+        <button class="header-back-btn" onclick="window.location.href='smart_accountant.html'">
+            <span class="arrow">⬅</span>
+            <span class="text">BACK</span>
+        </button>
+
+        <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event)">
+            <span>📅 <span id="currentDurationLabelOutside" style="margin-right: 2px;">اخر 30 يوم</span></span>
+            <span>▼</span>
+            <div class="dropdown-menu" id="durationDropdownOutside" style="left:0; right:auto; bottom: 120%; top: auto;">
+                <div class="dropdown-item" onclick="setDurationFilter('اليوم', 'today')">اليوم</div>
+                <div class="dropdown-item" onclick="setDurationFilter('أمس', 'yesterday')">أمس</div>
+                <div class="dropdown-item" onclick="setDurationFilter('اخر 7 ايام', '7days')">آخر 7 أيام</div>
+                <div class="dropdown-item" onclick="setDurationFilter('هذا الشهر', 'thisMonth')">هذا الشهر</div>
+                <div class="dropdown-item" onclick="setDurationFilter('اخر 30 يوم', '30days')">آخر 30 يوم</div>
+                <div class="dropdown-item" onclick="setDurationFilter('الشهر الماضى', 'lastMonth')">الشهر الماضي</div>
+                <div class="dropdown-item" onclick="setDurationFilter('مدى العمل', 'allTime')">مدى العمل</div>
+                <div class="dropdown-item" onclick="openCustomDateModal()">📅 تاريخ مخصص...</div>
+            </div>
+        </div>
+
+        <div class="bottom-bar-btn" onclick="togglePrintOptions(event)">
+            🖨️ خيارات
+            <div class="dropdown-menu" id="floatingPrintMenu" style="left:0; right:auto; bottom: 120%; top: auto;">
+                <div class="dropdown-item" onclick="handlePrintAction('thermal')">🖨️ طابعة حرارية / A4</div>
+                <div class="dropdown-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')"><span>📊 إكسيل</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="excelSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('excel_export')">📤 تصدير إكسيل</div>
+                </div>
+                <div class="dropdown-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')"><span>📄 PDF</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="pdfSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة التاريخ المخصص -->
+    <div class="modal-overlay" id="customDateModal">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header"><h3>تحديد فترة مخصصة</h3></div>
+            <div class="input-group"><label>من تاريخ:</label><input type="date" id="startDateInput"></div>
+            <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="endDateInput"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="applyCustomDateRange()">تطبيق البحث</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="db.js"></script>
+    <script>
+        // المتغيرات الافتراضية
+        let currentMovementFilter = 'all';
+        let currentVaultFilter = 'main'; // الافتراضي الخزينة الرئيسية
+        let currentDurationFilter = '30days';
+        let customStartDate = '';
+        let customEndDate = '';
+
+        function closeAllMenus() {
+            ['movementFilterDropdown', 'vaultFilterDropdown', 'durationDropdownOutside', 'floatingPrintMenu', 'excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                let el = document.getElementById(id); if(el) el.style.display = 'none';
+            });
+        }
+
+        function toggleMovementFilterMenu(e) { e.stopPropagation(); closeAllMenus(); document.getElementById('movementFilterDropdown').style.display = 'block'; }
+        function toggleVaultFilterMenu(e) { e.stopPropagation(); closeAllMenus(); document.getElementById('vaultFilterDropdown').style.display = 'block'; }
+        function toggleDurationMenu(e) { e.stopPropagation(); closeAllMenus(); document.getElementById('durationDropdownOutside').style.display = 'block'; }
+        function togglePrintOptions(e) { e.stopPropagation(); closeAllMenus(); document.getElementById('floatingPrintMenu').style.display = 'block'; }
+        
+        function toggleAccordionSubMenu(e, subMenuId) {
+            e.stopPropagation(); 
+            let menu = document.getElementById(subMenuId);
+            let currentDisplay = menu.style.display;
+            ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+                if(id !== subMenuId) { let el = document.getElementById(id); if(el) el.style.display = 'none'; }
+            });
+            menu.style.display = currentDisplay === 'block' ? 'none' : 'block';
+        }
+
+        function setMovementFilter(mode) {
+            currentMovementFilter = mode;
+            let labels = {
+                'all': 'جميع الحركات', 'sales': 'فواتير البيع', 'return_sale': 'فواتير المرتجع',
+                'purchase': 'فواتير الشراء', 'customers': 'سندات العملاء', 'suppliers': 'سندات الموردين',
+                'expenses': 'المصروفات', 'direct': 'الخزينة مباشرة'
+            };
+            let labelEl = document.getElementById('currentMovementFilterLabel');
+            if (labelEl) labelEl.innerText = labels[mode];
+            
+            closeAllMenus();
+            if (typeof renderMovementsTable === 'function') renderMovementsTable();
+            
+            setTimeout(function() {
+                if(typeof closeAllMenus === 'function') closeAllMenus();
+            }, 50);
+        }
+
+        function setVaultFilter(vault) {
+            currentVaultFilter = vault;
+            let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
+            let labelEl = document.getElementById('currentVaultFilterLabel');
+            if (labelEl) labelEl.innerText = labels[vault];
+            
+            closeAllMenus();
+            if (typeof renderMovementsTable === 'function') renderMovementsTable();
+            
+            setTimeout(function() {
+                if(typeof closeAllMenus === 'function') closeAllMenus();
+            }, 50);
+        }
+
+        function setDurationFilter(duration) {
+            if(duration === 'custom') {
+                closeAllMenus();
+                let modal = document.getElementById('customDateModal');
+                if (modal) modal.style.display = 'flex';
+                return;
+            }
+            currentDurationFilter = duration;
+            let labels = { 'today': 'اليوم', 'yesterday': 'أمس', '7days': 'آخر 7 أيام', 'thisMonth': 'هذا الشهر', '30days': 'آخر 30 يوم', 'lastMonth': 'الشهر الماضي', 'allTime': 'مدى العمل' };
+            let txt = labels[duration];
+            let els = ['currentDurationLabelOutside', 'currentDurationLabelInside', 'currentDurationLabelList', 'currentDurationLabelForm'];
+            els.forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.innerText = txt;
+            });
+            
+            closeAllMenus();
+            if (typeof renderMovementsTable === 'function') renderMovementsTable();
+            if (typeof renderExpensesList === 'function') renderExpensesList();
+            
+            setTimeout(function() {
+                if(typeof closeAllMenus === 'function') closeAllMenus();
+            }, 50);
+        }
+
+        function openCustomDateModal() {
+            closeAllMenus();
+            document.getElementById('customDateModal').style.display = 'flex';
+        }
+
+        function applyCustomDateRange() {
+            customStartDate = document.getElementById('startDateInput').value;
+            customEndDate = document.getElementById('endDateInput').value;
+            if(!customStartDate || !customEndDate) return alert("اختر التاريخين!");
+            currentDurationFilter = 'custom';
+            document.getElementById('currentDurationLabelOutside').innerText = `${customStartDate} إلى ${customEndDate}`;
+            document.getElementById('customDateModal').style.display = 'none';
+            renderTable();
+        }
+
+// ================= بناء جدول حركة الخزينة (تسريع بالقراءة المحلية والخلفية) =================
+        function renderTable() {
+            // القراءة السريعة من ذاكرة الموبايل (Local Storage)
+            let localData = localStorage.getItem('seraj_treasury_moves');
+            let movementsDB = [];
+            if (localData) {
+                try { movementsDB = JSON.parse(localData); } catch (e) { movementsDB = typeof DB !== 'undefined' ? (DB.getTreasuryMoves() || []) : []; }
+            } else {
+                movementsDB = typeof DB !== 'undefined' ? (DB.getTreasuryMoves() || []) : [];
+            }
+
+            const tbody = document.getElementById('movementsTableBody');
+            const printTbody = document.getElementById('printTableBody');
+            
+            // علامة تحميل سريعة عشان الصفحة متتشنجش وتفتح فوراً
+            tbody.innerHTML = `<tr><td colspan="3" style="padding:30px; color:#38bdf8; text-align:center; font-weight:bold; font-size:18px;">جاري تجهيز حركة الخزينة... ⏳</td></tr>`;
+
+            // تنفيذ الحسابات والرص في الخلفية
+            setTimeout(() => {
+                let list = [...movementsDB];
+
+                if(currentMovementFilter !== 'all') list = list.filter(m => m.type === currentMovementFilter);
+                if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+
+                const todayStr = new Date().toISOString().split('T')[0];
+                list = list.filter(m => {
+                    let mDate = m.date || todayStr;
+                    if(currentDurationFilter === 'today') return mDate === todayStr;
+                    if(currentDurationFilter === 'yesterday') { let y = new Date(); y.setDate(y.getDate()-1); return mDate === y.toISOString().split('T')[0]; }
+                    if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); return mDate >= d.toISOString().split('T')[0]; }
+                    if(currentDurationFilter === 'thisMonth') { return mDate.slice(0,7) === todayStr.slice(0,7); }
+                    if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); return mDate >= d.toISOString().split('T')[0]; }
+                    if(currentDurationFilter === 'lastMonth') {
+                        let y = new Date().getFullYear(); let mo = new Date().getMonth();
+                        if(mo === 0) { mo = 12; y = y - 1; }
+                        let lastMStr = y + '-' + String(mo).padStart(2,'0'); return mDate.slice(0,7) === lastMStr;
+                    }
+                    if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+                        return mDate >= customStartDate && mDate <= customEndDate;
+                    }
+                    return true;
+                });
+
+                let totalAdd = 0;
+                let totalDeduct = 0;
+                let htmlContent = '';
+                let printHtmlContent = '';
+
+                if(list.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="3" style="padding:30px; color:#f59e0b; text-align:center; font-weight:bold;">لا توجد حركات خزينة مسجلة للفترة المحددة</td></tr>`;
+                    document.getElementById('sumAddVal').innerText = "0.00";
+                    document.getElementById('sumDeductVal').innerText = "0.00";
+                    document.getElementById('sumNetVal').innerText = "0.00";
+                    return;
+                }
+
+                // ترتيب ذكي: الأحدث فوق
+                list.sort((a, b) => {
+                    let dDiff = new Date(b.date || 0) - new Date(a.date || 0);
+                    if(dDiff !== 0) return dDiff;
+                    return (b.id || 0) - (a.id || 0);
+                });
+
+                list.forEach(m => {
+                    let addVal = parseFloat(m.amountAdd) || 0;
+                    let dedVal = parseFloat(m.amountDeduct) || 0;
+                    totalAdd += addVal;
+                    totalDeduct += dedVal;
+
+                    let deviceHtml = '';
+                    if(m._device) {
+                        let editTag = (m._lastModifiedBy && m._lastModifiedBy !== m._device) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
+                        deviceHtml = `<div style="font-size:11px; color:#38bdf8; margin-top:5px; font-weight:normal;">💻 ${m._device} ${editTag}</div>`;
+                    }
+
+                    // تجميع كود الـ HTML في نص واحد بدل إضافته سطر سطر (سرعة مضاعفة 10 مرات)
+                    htmlContent += `
+                        <tr>
+                            <td style="text-align: right;">${m.notes}<br><span style="font-size:11px; opacity:0.75;">${m.date} (${m.vault || 'main'})</span>${deviceHtml}</td>
+                            <td class="total-add">${addVal > 0 ? addVal.toFixed(2) : '-'}</td>
+                            <td class="total-deduct">${dedVal > 0 ? dedVal.toFixed(2) : '-'}</td>
+                        </tr>
+                    `;
+
+                    printHtmlContent += `
+                        <tr>
+                            <td style="text-align: right; padding-right:5px;">${m.notes}<br><span style="font-size:10px;">${m.date}</span></td>
+                            <td style="text-align: center;">${addVal > 0 ? addVal.toFixed(2) : '-'}</td>
+                            <td style="text-align: center;">${dedVal > 0 ? dedVal.toFixed(2) : '-'}</td>
+                        </tr>
+                    `;
+                });
+
+                // رص الداتا كلها مرة واحدة
+                tbody.innerHTML = htmlContent;
+                printTbody.innerHTML = printHtmlContent;
+
+                document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+                document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+
+                let net = totalAdd - totalDeduct;
+                let netEl = document.getElementById('sumNetVal');
+                netEl.innerText = net.toFixed(2);
+                netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+
+                // تجهيز هيدر الطباعة الحرارية
+                document.getElementById('thermalPrintMeta').innerHTML = `تقرير حركة الخزينة <br> ${document.getElementById('currentVaultFilterLabel').innerText} <br> ${document.getElementById('currentDurationLabelOutside').innerText}`;
+                document.getElementById('thermalTotalsArea').innerHTML = `إجمالي الإضافات: ${totalAdd.toFixed(2)} ج<br>إجمالي الخصومات: ${totalDeduct.toFixed(2)} ج<br>الصافي: ${net.toFixed(2)} ج`;
+
+            }, 50); // تأخير 50 ملي ثانية كافي جداً لتسريع واجهة المستخدم
+        }
+        function handlePrintAction(action) {
+            closeAllMenus();
+            if (action === 'thermal') {
+                document.body.classList.add('thermal-print-mode');
+                window.print();
+                setTimeout(() => document.body.classList.remove('thermal-print-mode'), 1000);
+            }
+            if (action === 'excel_export') exportToExcel();
+            if (action === 'pdf_export') exportToPDF();
+        }
+
+        function exportToExcel() {
+            let data = [["البيان / الملاحظات", "التاريخ", "الخزينة", "إضافة (+)", "خصم (-)"]];
+            let rows = document.querySelectorAll('#tableBody tr');
+            if(rows.length === 0 || rows[0].innerText.includes('لا توجد')) return alert("لا يوجد بيانات للتصدير");
+            
+            let localData = localStorage.getItem('seraj_treasury_moves');
+            let list = localData ? JSON.parse(localData) : (typeof DB !== 'undefined' ? DB.getTreasuryMoves() : []);
+            
+            // تطبيق نفس الفلاتر للتصدير
+            if(currentMovementFilter !== 'all') list = list.filter(m => m.type === currentMovementFilter);
+            if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+
+            list.forEach(m => {
+                data.push([m.notes, m.date, (m.vault || 'main'), (m.amountAdd || 0), (m.amountDeduct || 0)]);
+            });
+
+            data.push([]);
+            data.push(["إجمالي الإضافات", "", "", document.getElementById('sumAddVal').innerText, ""]);
+            data.push(["إجمالي الخصومات", "", "", "", document.getElementById('sumDeductVal').innerText]);
+            data.push(["الصافي", "", "", document.getElementById('sumNetVal').innerText, ""]);
+
+            let ws = XLSX.utils.aoa_to_sheet(data);
+            let wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "حركة_الخزينة");
+            XLSX.writeFile(wb, "Treasury_Movements_" + new Date().toISOString().slice(0,10) + ".xlsx");
+        }
+
+        function exportToPDF() {
+            document.body.classList.remove('thermal-print-mode');
+            let element = document.getElementById('pdf-wrapper');
+            html2pdf().set({ 
+                margin: 10, 
+                filename: 'Treasury_Movements.pdf', 
+                html2canvas: { scale: 2 },
+                pagebreak: { mode: 'avoid-all' } 
+            }).from(element).save();
+        }
+
+        window.onload = () => { 
+            if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme(); 
+            renderTable(); 
+        };
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+        });
+    }
+
+
+</script>
+
+<!-- ============================================================== -->
+
+<!-- 🚀 1. كود المراقبة الذكي لإغلاق جميع القوائم المنسدلة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+document.addEventListener('click', function(event) {
+
+if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
+
+if (typeof closeAllMenus === 'function') {
+
+closeAllMenus();
+
+}
+
+}
+
+});
+
+</script>
+
+
+
+<!-- ============================================================== -->
+
+<!-- 🚀 2. ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+window.addEventListener('popstate', function(event) {
+
+// لما المستخدم يدوس على زرار الموبايل، ننده دالة الزرار الأزرق فوراً
+
+if (typeof goBackSmart === 'function') {
+
+goBackSmart();
+
+}
+
+});
+
+</script>
+</body> 
+</html>

@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>سجل فواتير المشتريات - سراج كاشير</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --neon-border: #a855f7;
+            --neon-glow: rgba(168, 85, 247, 0.4);
+            --bg-dark-1: #070913;
+            --bg-dark-2: #120f29;
+            --card-bg: rgba(19, 17, 44, 0.88);
+            --text-white: #ffffff;
+        }
+        
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); color: var(--text-white); margin: 0; padding: 0; user-select: none; overflow-x: hidden; -webkit-tap-highlight-color: transparent; min-height: 100vh; padding-bottom: 90px;}
+        .view-section { display: none; }
+        .active-view { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        .header { background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: #ffffff; padding: 15px 20px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);}
+        
+        .history-container { max-width: 800px; margin: auto; min-height: 100vh;}
+        
+        .filter-section { background: rgba(19, 17, 44, 0.85); backdrop-filter: blur(10px); padding: 15px; border-bottom: 2px solid var(--neon-border); position: sticky; top: 62px; z-index: 40; box-shadow: 0 4px 15px var(--neon-glow);}
+        .filter-header-row { display: flex; justify-content: space-between; align-items: center; gap: 10px;}
+        
+        .filter-select-top { flex: 1; padding: 12px; font-size: 18px; border: 2px solid var(--neon-border); border-radius: 14px; background-color: rgba(19, 17, 44, 0.6); font-weight: bold; color: #ffffff; outline: none; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); text-shadow: 0 0 6px rgba(255,255,255,0.8); text-align: center; text-align-last: center;}
+        
+        .search-toggle-btn { background: rgba(19, 17, 44, 0.9); color: #ffffff; border: 2px solid var(--neon-border); border-radius: 14px; padding: 0 18px; font-size: 22px; display: flex; justify-content: center; align-items: center; cursor: pointer; box-shadow: 0 0 12px rgba(168, 85, 247, 0.3); transition: all 0.2s;}
+        .search-toggle-btn:active { box-shadow: 0 0 25px rgba(168, 85, 247, 0.8); filter: brightness(1.3); }
+        
+        .full-search-area { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed rgba(168, 85, 247, 0.4); animation: fadeIn 0.2s;}
+        .search-container { position: relative; display: flex; width: 100%;}
+        .search-input { flex: 1; padding: 12px; font-size: 16px; border: 2px solid var(--neon-border); border-radius: 14px; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); outline: none; font-weight: bold;}
+        .search-input:focus { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); }
+        
+        .radio-group { display: flex; justify-content: space-around; font-size: 16px; font-weight: bold; color: #ffffff; margin-top: 12px; text-shadow: 0 0 6px rgba(255,255,255,0.6);}
+        .radio-group label { display: flex; align-items: center; gap: 5px; cursor: pointer;}
+        
+        .dropdown-list { position: absolute; top: 100%; right: 0; width: 100%; background: #13112c; border: 2px solid var(--neon-border); border-radius: 0 0 16px 16px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 35px rgba(0,0,0,0.5);}
+        .list-search-item { padding: 12px 15px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; display: flex; align-items: center; justify-content: space-between; color: #ffffff; text-shadow: 0 0 6px rgba(255,255,255,0.8);}
+        
+        .debt-summary-bar { background: rgba(0, 255, 102, 0.15); border: 2px solid #00ff66; color: white; padding: 12px; margin: 10px 15px; border-radius: 12px; text-align: center; font-size: 18px; font-weight: bold; box-shadow: 0 0 15px rgba(0, 255, 102, 0.4); display: none; }
+        
+        .invoice-list { padding: 5px 10px;}
+        .invoice-card { background: rgba(19, 17, 44, 0.7); backdrop-filter: blur(10px); border-radius: 12px; margin-bottom: 10px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 0 10px rgba(168, 85, 247, 0.15); border: 2px solid var(--neon-border); cursor: pointer; transition: 0.2s;}
+        .invoice-card:active { background-color: rgba(168, 85, 247, 0.25); box-shadow: 0 0 20px rgba(168, 85, 247, 0.6); transform: scale(0.98); }
+        .inv-info { text-align: right; }
+        .inv-customer { font-size: 16px; font-weight: bold; color: #ffffff; margin-bottom: 3px; text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);}
+        .inv-meta { font-size: 13px; color: #cbd5e1; line-height: 1.4; font-weight: bold;}
+        .inv-amount { font-size: 20px; font-weight: bold; transition: color 0.3s; }
+
+        .details-container { padding: 15px; max-width: 800px; margin: auto; background: transparent; min-height: 100vh;}
+        .details-header-card { background: rgba(19, 17, 44, 0.7); backdrop-filter: blur(10px); border: 2px solid var(--neon-border); padding: 16px; border-radius: 16px; margin-bottom: 20px; font-size: 17px; line-height: 1.8; box-shadow: 0 0 20px var(--neon-glow); color: #ffffff;}
+        
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; text-align: center; font-size: 16px; background: rgba(19, 17, 44, 0.7); backdrop-filter: blur(10px); box-shadow: 0 0 20px var(--neon-glow); border-radius: 16px; overflow: hidden; border: 2px solid var(--neon-border);}
+        table th { background-color: rgba(168, 85, 247, 0.15); padding: 12px; border-bottom: 2px solid var(--neon-border); color: #ffffff; font-weight: bold; text-shadow: 0 0 8px rgba(255,255,255,0.8);}
+        table td { padding: 16px 10px; border-bottom: 2px solid var(--neon-border); color: #ffffff; font-weight: bold;}
+        table tr:last-child td { border-bottom: none; }
+
+        .details-total { font-size: 24px; font-weight: bold; color: #00ff66; text-align: center; padding: 20px; background: rgba(19, 17, 44, 0.8); border-radius: 16px; margin-top: 20px; border: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow); text-shadow: 0 0 12px rgba(0, 255, 102, 0.9);}
+        
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5, 7, 15, 0.8); display: none; justify-content: center; align-items: center; z-index: 200; backdrop-filter: blur(8px);}
+        .modal-content { background: rgba(19, 17, 44, 0.95); padding: 25px; border-radius: 24px; width: 92%; max-width: 440px; box-shadow: 0 0 45px rgba(168, 85, 247, 0.5); border: 2px solid var(--neon-border);}
+        .modal-header { border-bottom: 2px solid rgba(168, 85, 247, 0.3); padding-bottom: 15px; margin-bottom: 20px; text-align: center;}
+        .modal-header h3 { margin: 0; font-size: 20px; color: #ffffff; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 16px; color: #ffffff;}
+        .input-group input { width: 100%; padding: 12px; font-size: 18px; text-align: center; border: 2px solid var(--neon-border); border-radius: 14px; font-weight: bold; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px var(--neon-glow); outline: none;}
+        .btn-group { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 20px;}
+        .btn-group button { flex: 1; padding: 14px; border: none; border-radius: 16px; cursor: pointer; font-size: 18px; font-weight: bold; }
+        .confirm-btn { background: rgba(7, 9, 19, 0.95) !important; border: 2px solid #ec4899 !important; color: var(--text-white) !important; box-shadow: 0 0 15px rgba(236, 72, 153, 0.4) !important;}
+        .cancel-btn { background: rgba(19, 17, 44, 0.8) !important; border: 2px solid var(--neon-border) !important; color: #ffffff !important;}
+
+        /* ================= الشريط السفلي الموحد والباك ================= */
+        .unified-bottom-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background-color: rgba(19, 17, 44, 0.95); 
+            border-top: 1px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 8px; z-index: 100; 
+            box-shadow: 0 -4px 25px var(--neon-glow);
+            align-items: center;
+        }
+
+        .header-back-btn {
+            background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px;
+            padding: 0 15px; height: 45px; cursor: pointer; display: flex;
+            flex-direction: column; align-items: center; justify-content: center;
+            box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;
+        }
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        .bottom-bar-dropdown { 
+            flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); 
+            border-radius: 12px; padding: 0 12px; height: 45px; display: flex; 
+            justify-content: space-between; align-items: center; font-size: 14px; 
+            font-weight: bold; color: var(--text-white); cursor: pointer; position: relative;
+            box-shadow: 0 0 10px var(--neon-glow);
+        }
+        
+        .bottom-bar-btn { 
+            flex: 1; background-color: var(--card-bg); color: var(--text-white); 
+            border: 1px solid #3b82f6; border-radius: 12px; height: 45px; 
+            font-size: 14px; font-weight: bold; display: flex; justify-content: center; 
+            align-items: center; gap: 5px; cursor: pointer;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); position: relative;
+        }
+        
+        .dropdown-menu { position: absolute; bottom: 120%; background: #13112c; border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.8); display: none; z-index: 101; overflow: hidden; width: 220px; text-align: right; }
+        .dropdown-menu-item { padding: 12px 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 14px; color: #ffffff; display: flex; justify-content: space-between; align-items: center;}
+        .dropdown-menu-item:active { background-color: rgba(168, 85, 247, 0.25); }
+        .dropdown-menu-item.disabled { color: #9ca3af; cursor: not-allowed; }
+        
+        .sub-accordion-content { display: none; background: rgba(10, 8, 25, 0.95); padding: 0;}
+        .sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-white); text-align: right; border-right: 2px solid #ec4899;}
+        .sub-dropdown-item:last-child { border-bottom: none; }
+
+/* إعدادات الطباعة */
+#thermalPrintArea { display: none; }
+        
+        /* 1. إعدادات طباعة A4 العادية أو الـ PDF */
+        @media print {
+            @page { margin: 10mm; size: A4 portrait; }
+            body { margin: 0; padding: 0; background: #fff; color: #000; }
+            .header, .search-container, .unified-bottom-bar, .modal-overlay { display: none !important; }
+            #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
+            .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; background: white; color: black; border: 1px solid #000; box-shadow: none;}
+            .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
+            .report-table td { padding: 10px; border: 1px solid #000; color: black;}
+            .exp-name { color: black !important; text-shadow: none !important; }
+            .amount-box { border: 1px solid #000 !important; color: #000 !important; background: transparent !important; padding: 4px 8px; box-shadow: none !important;}
+            .total-row { background-color: #ddd !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; border-top: 2px solid #000;}
+            #grandTotal { color: black !important; font-weight: bold; }
+        }
+        
+        /* 2. إعدادات الطباعة الحرارية (بكرة 80mm) */
+        @media print {
+            body.thermal-print-mode #pdf-wrapper { display: none !important; }
+            body.thermal-print-mode #thermalPrintArea { display: block !important; width: 76mm; margin: 0 auto; padding: 5px; font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: #000; }
+            body.thermal-print-mode .print-header { font-size: 18px; font-weight: bold; margin-bottom: 5px; border-bottom: 1px dashed #000; padding-bottom: 5px; text-align: center;}
+            body.thermal-print-mode .print-meta { font-size: 13px; margin-bottom: 15px; text-align: center; line-height: 1.4; font-weight: bold;}
+            body.thermal-print-mode .print-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 13px;}
+            body.thermal-print-mode .print-table th { border-bottom: 1px solid #000; padding: 4px 0; text-align: center;}
+            body.thermal-print-mode .print-table td { padding: 6px 0; border-bottom: 1px dotted #888; text-align: center;}
+            body.thermal-print-mode .print-footer { text-align: center; font-size: 11px; margin-top: 15px; border-top: 1px dashed #000; padding-top: 5px;}
+        }
+    </style>
+</head>
+<body onclick="closeAllMenus(event)">
+
+    <!-- الشاشة 1: الأرشيف (فواتير المشتريات) -->
+    <div id="invoices-list-view" class="view-section active-view">
+        <div class="header">
+            <span id="mainPageTitle" style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">سجل فواتير المشتريات</span>
+        </div>
+        
+        <div class="history-container">
+            <div class="filter-section">
+                <div class="filter-header-row">
+                    <select class="filter-select-top" id="invoiceTypeFilter" onchange="applyMainFilter()"> <option value="purchases" selected>فواتير المشتريات (الكل)</option> <option value="delayed" style="color: #00ff66;">فواتير آجلة (غير مسددة)</option> 
+                    </select>
+
+
+                    <button class="search-toggle-btn" onclick="toggleFullSearch(event)">🔍</button>
+                </div>
+
+                <div class="full-search-area" id="fullSearchArea" onclick="event.stopPropagation()">
+                    <div class="search-container">
+                        <input type="text" id="historySearchInput" class="search-input" placeholder="ادخل بيانات البحث..." oninput="handleSearchInput()" onclick="this.select()">
+                        <div id="supplierDropdown" class="dropdown-list"></div>
+                    </div>
+                    <div class="radio-group">
+                        <label><input type="radio" name="searchType" value="date" onchange="resetSearch()"> التاريخ</label>
+                        <label><input type="radio" name="searchType" value="customer" onchange="resetSearch()" checked> المورد</label>
+                        <label><input type="radio" name="searchType" value="number" onchange="resetSearch()"> الفاتورة</label>
+                    </div>
+                </div>
+            </div>
+
+            <div id="debtSummaryBar" class="debt-summary-bar">
+                إجمالي المديونيات للموردين: <span id="debtSummaryTotal">0.00</span> ج
+            </div>
+
+            <div class="invoice-list" id="invoiceListContainer"></div>
+        </div>
+    </div>
+
+    <!-- الشاشة 2: العرض (تفاصيل الفاتورة) -->
+    <div id="invoice-details-view" class="view-section">
+        <div class="header"><span style="text-shadow: 0 0 12px rgba(255, 255, 255, 0.9);">عرض فاتورة المشتريات</span></div>
+        <div class="details-container" id="invoiceDetailsContainer"></div>
+    </div>
+
+    <!-- ======== شريط التحكم السفلي المعتمد ======== -->
+    <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+        
+        <button class="header-back-btn" onclick="goBackSmart()">
+            <span class="arrow">⬅</span>
+            <span class="text">BACK</span>
+        </button>
+
+        <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event)">
+            <span>📅 <span id="currentDurationLabelOutside" style="margin-right: 2px;">اخر 7 ايام</span></span>
+            <span>▼</span>
+            <div class="dropdown-menu" id="durationDropdownOutside" style="left:0; right:auto;">
+                <div class="dropdown-menu-item" onclick="filterByDate('اليوم', 'today')">اليوم</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('أمس', 'yesterday')">أمس</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('اخر 7 ايام', '7days')">اخر 7 ايام</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('هذا الشهر', 'this_month')">هذا الشهر</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('اخر 30 يوم', '30days')">اخر 30 يوم</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('الشهر الماضى', 'last_month')">الشهر الماضى</div>
+                <div class="dropdown-menu-item" onclick="filterByDate('مدى العمل', 'all_time')">مدى العمل (الكل)</div>
+                <div class="dropdown-menu-item" onclick="openCustomDateModal()">📅 تاريخ مخصص...</div>
+            </div>
+        </div>
+
+        <div class="bottom-bar-btn" onclick="togglePrintOptions(event)">
+            🖨️ خيارات
+            <div class="dropdown-menu" id="floatingPrintMenu" style="left:0; right:auto;">
+                <div class="dropdown-menu-item" onclick="handlePrintAction('thermal')">🖨️ طابعة حرارية / A4</div>
+                
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'excelSubOptionsList')"><span>📊 إكسيل</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="excelSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('excel_export')">📤 تصدير إكسيل</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('غير متاح')">📥 استيراد إكسيل</div>
+                </div>
+
+                <div class="dropdown-menu-item" onclick="toggleAccordionSubMenu(event, 'pdfSubOptionsList')"><span>📄 PDF</span> <span>▼</span></div>
+                <div class="sub-accordion-content" id="pdfSubOptionsList">
+                    <div class="sub-dropdown-item" onclick="handlePrintAction('pdf_export')">📤 تصدير PDF</div>
+                    <div class="sub-dropdown-item disabled" onclick="alert('غير متاح')">📥 استيراد PDF</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- النافذة المنبثقة للتاريخ -->
+    <div class="modal-overlay" id="customDateModal">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header"><h3>تحديد تاريخ مخصص</h3></div>
+            <div class="input-group"><label>من تاريخ:</label><input type="date" id="dateFrom"></div>
+            <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="dateTo"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="applyCustomDate()">تطبيق البحث</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="printListArea"></div>
+    <div id="printReceiptArea"></div>
+
+<script src="db.js"></script>
+<script>
+    let suppliersDB = [];
+    let invoicesDB = [];
+    
+    let currentDateFilter = '7days';
+    let customDateFrom = null;
+    let customDateTo = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+         if(typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme();
+         
+         suppliersDB = DB.getSuppliers() || [];
+         
+         // اصطياد فواتير المشتريات
+         if (typeof DB.getPurchasesInvoices === 'function') invoicesDB = DB.getPurchasesInvoices() || [];
+         else if (typeof DB.getPurchaseInvoices === 'function') invoicesDB = DB.getPurchaseInvoices() || [];
+         else if (typeof DB.getPurchases === 'function') invoicesDB = DB.getPurchases() || [];
+
+         filterByDate('اخر 7 ايام', '7days');
+    });
+
+    function goBackSmart() {
+        if (document.getElementById('invoice-details-view').classList.contains('active-view')) {
+            switchView('invoices-list-view');
+        } else {
+            window.location.href = 'smart_accountant.html'; 
+        }
+    }
+
+    function closeAllMenus(e) {
+        let dr = document.getElementById('supplierDropdown'); if(dr) dr.style.display = 'none';
+        let d1 = document.getElementById('durationDropdownOutside'); if(d1) d1.style.display = 'none';
+        let actMenu = document.getElementById('floatingPrintMenu'); if(actMenu) actMenu.style.display = 'none';
+        ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+            let el = document.getElementById(id);
+            if(el) el.style.display = 'none';
+        });
+    }
+
+    function togglePrintOptions(e) {
+        e.stopPropagation(); 
+        let m = document.getElementById('floatingPrintMenu');
+        let isVisible = m.style.display === 'block';
+        closeAllMenus();
+        if(!isVisible) m.style.display = 'block';
+    }
+
+    function toggleDurationMenu(e) {
+        e.stopPropagation(); 
+        let m = document.getElementById('durationDropdownOutside');
+        let isVisible = m.style.display === 'block';
+        closeAllMenus();
+        if(!isVisible) m.style.display = 'block';
+    }
+
+    function toggleAccordionSubMenu(e, subMenuId) {
+        e.stopPropagation(); 
+        let menu = document.getElementById(subMenuId);
+        let currentDisplay = menu.style.display;
+        ['excelSubOptionsList', 'pdfSubOptionsList'].forEach(id => {
+            if(id !== subMenuId) { let el = document.getElementById(id); if(el) el.style.display = 'none'; }
+        });
+        menu.style.display = currentDisplay === 'block' ? 'none' : 'block';
+    }
+
+    function toggleFullSearch(e) {
+        e.stopPropagation();
+        const box = document.getElementById('fullSearchArea');
+        if (box.style.display === 'block') { box.style.display = 'none'; } 
+        else { closeAllMenus(); box.style.display = 'block'; }
+    }
+
+    function handlePrintAction(action) {
+        closeAllMenus();
+        let isDetails = document.getElementById('invoice-details-view').classList.contains('active-view');
+        
+        if (isDetails) {
+            if (action === 'thermal') { document.body.classList.add('thermal-print-mode'); printSingleInvoiceThermal(); }
+            if (action === 'excel_export') exportSingleInvoiceExcel();
+            if (action === 'pdf_export') exportSingleInvoicePDF();
+        } else {
+            if (action === 'thermal') { document.body.classList.remove('thermal-print-mode'); printInvoiceList(); }
+            if (action === 'excel_export') exportListExcel();
+            if (action === 'pdf_export') exportListPDF();
+        }
+    }
+
+    function isSameDay(d1, d2) { return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate(); }
+    
+    function checkDateFilter(itemDateStr) {
+        let today = new Date();
+        today.setHours(23, 59, 59, 999); 
+        let iDate = new Date(itemDateStr);
+        
+        let diffDays = (today.getTime() - iDate.getTime()) / (1000 * 3600 * 24);
+        let yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(23, 59, 59, 999);
+        
+        if (currentDateFilter === 'all_time') return true;
+        if (currentDateFilter === 'today') return isSameDay(iDate, today);
+        if (currentDateFilter === 'yesterday') return isSameDay(iDate, yesterday);
+        if (currentDateFilter === '7days') return diffDays >= 0 && diffDays <= 7;
+        if (currentDateFilter === '30days') return diffDays >= 0 && diffDays <= 30;
+        if (currentDateFilter === 'this_month') return iDate.getMonth() === today.getMonth() && iDate.getFullYear() === today.getFullYear();
+        if (currentDateFilter === 'last_month') {
+            let lm = new Date(today.getFullYear(), today.getMonth()-1, 1);
+            return iDate.getMonth() === lm.getMonth() && iDate.getFullYear() === lm.getFullYear();
+        }
+        if (currentDateFilter === 'custom') {
+            if(customDateFrom && customDateTo) {
+                let dStr = iDate.toISOString().split('T')[0];
+                return (dStr >= customDateFrom && dStr <= customDateTo);
+            }
+        }
+        return false;
+    }
+
+    function filterByDate(label, val) { currentDateFilter = val; let outsideLabel = document.getElementById('currentDurationLabelOutside'); if(outsideLabel) outsideLabel.innerText = label; let printLabel = document.getElementById('printDurationLabel'); if(printLabel) printLabel.innerText = label;
+     // هنا بنقوله حدّث الجدول بعد ما تختار التاريخ   // 
+   if(typeof renderInvoicesHistory === 'function') renderInvoicesHistory(); 
+   // خدعة التأخير الزمني لقفل القائمة  // 
+  setTimeout(function() { if(typeof closeAllMenus === 'function') closeAllMenus(); }, 50); }
+
+    function openCustomDateModal() {
+        closeAllMenus();
+        document.getElementById('customDateModal').style.display = 'flex';
+    }
+
+    function applyCustomDate() {
+        let f = document.getElementById('dateFrom').value;
+        let t = document.getElementById('dateTo').value;
+        if(f && t) {
+            currentDateFilter = 'custom';
+            customDateFrom = f;
+            customDateTo = t;
+            let label = `${f} إلى ${t}`;
+            document.getElementById('currentDurationLabelOutside').innerText = 'تاريخ مخصص';
+            document.getElementById('customDateModal').style.display = 'none';
+            renderInvoicesHistory();
+        }
+    }
+
+    function applyMainFilter() {
+        const select = document.getElementById('invoiceTypeFilter');
+        const text = select.options[select.selectedIndex].text;
+        document.getElementById('mainPageTitle').innerText = text;
+        renderInvoicesHistory();
+    }
+
+    function switchView(viewId) {
+        document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
+        document.getElementById(viewId).classList.add('active-view');
+        if(viewId === 'invoices-list-view') renderInvoicesHistory();
+    }
+
+    function handleSearchInput() {
+        const query = document.getElementById('historySearchInput').value.trim().toLowerCase();
+        const searchType = document.querySelector('input[name="searchType"]:checked').value;
+        const dropdown = document.getElementById('supplierDropdown');
+        dropdown.innerHTML = '';
+        
+        if (searchType === 'customer' && query.length > 0) {
+            const filtered = suppliersDB.filter(s => s.name.toLowerCase().includes(query));
+            if (filtered.length > 0) {
+                dropdown.style.display = 'block';
+                filtered.forEach(s => {
+                    const div = document.createElement('div'); div.className = 'list-search-item'; div.innerText = s.name;
+                    div.onclick = (e) => { e.stopPropagation(); document.getElementById('historySearchInput').value = s.name; dropdown.style.display = 'none'; renderInvoicesHistory(); };
+                    dropdown.appendChild(div);
+                });
+            } else dropdown.style.display = 'none';
+        } else dropdown.style.display = 'none';
+        renderInvoicesHistory();
+    }
+
+    function resetSearch() {
+        document.getElementById('historySearchInput').value = '';
+        document.getElementById('supplierDropdown').style.display = 'none';
+        renderInvoicesHistory();
+    }
+
+    function formatIdDisplay(id) {
+        let idStr = id.toString();
+        if(idStr.length > 10) return idStr.slice(-5);
+        return idStr;
+    }
+
+    function getFilteredInvoices() {
+        const filterType = document.getElementById('invoiceTypeFilter').value;
+        const searchQuery = document.getElementById('historySearchInput').value.toLowerCase();
+        const searchType = document.querySelector('input[name="searchType"]:checked').value;
+        
+        let sortedInvoices = [...invoicesDB].sort((a, b) => {
+            let timeA = a.timestamp || new Date(a.date || 0).getTime();
+            let timeB = b.timestamp || new Date(b.date || 0).getTime();
+            if (timeB !== timeA) return timeB - timeA;
+            return b.id - a.id;
+        });
+
+        return sortedInvoices.filter(inv => {
+            if(inv.isDeleted || inv.deleted || inv.status === 'deleted' || inv.type === 'deleted') return false;
+            if(inv.isCancelled || inv.isCanceled || inv.cancelled || inv.canceled || inv.status === 'cancelled' || inv.type === 'canceled') return false;
+
+            if (filterType === 'purchases' && inv.type === 'return') return false;
+            if (filterType === 'return' && inv.type !== 'return') return false;
+            
+            if (filterType === 'delayed') {
+                let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (parseFloat(inv.remaining) || 0);
+                if (rem <= 0) return false; 
+            }
+            
+            if (searchQuery !== '') {
+                if (searchType === 'number' && !inv.id.toString().includes(searchQuery)) return false;
+                if (searchType === 'customer') {
+                    let sName = inv.supplier || inv.supplierName || inv.name || inv.customer || "مورد عام";
+                    if (!sName.toLowerCase().includes(searchQuery)) return false;
+                }
+                if (searchType === 'date' && !inv.date.includes(searchQuery)) return false;
+            }
+
+            if (!checkDateFilter(inv.date || inv.timestamp || Date.now())) return false;
+
+            return true;
+        });
+    }
+
+    function renderInvoicesHistory() {
+
+const container = document.getElementById('invoiceListContainer');
+
+const filterType = document.getElementById('invoiceTypeFilter').value;
+
+container.innerHTML = '';
+
+
+let filteredInvoices = getFilteredInvoices();
+
+let totalDebt = 0;
+
+
+
+filteredInvoices.forEach(inv => {
+
+let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (parseFloat(inv.remaining) || 0);
+
+totalDebt += rem;
+
+
+
+const card = document.createElement('div');
+
+card.className = 'invoice-card';
+
+
+card.onclick = (e) => {
+
+e.stopPropagation();
+
+closeAllMenus();
+
+openInvoiceDetails(inv.id);
+
+};
+
+
+
+let subTotal = (inv.items || []).reduce((sum, item) => {
+
+let itemTotal = item.total !== undefined ? parseFloat(item.total) : ((parseFloat(item.price) || parseFloat(item.purchasePrice) || 0) * (parseFloat(item.qty) || 0));
+
+return sum + (isNaN(itemTotal) ? 0 : itemTotal);
+
+}, 0);
+
+let finalTotal = subTotal - (parseFloat(inv.discount) || 0);
+
+
+
+// تم إزالة أكواد المرتجع، وأصبح لدينا فقط (آجل / مسدد)
+
+let badge = (rem > 0) ? '🟢 آجل' : '🔴 مسدد';
+
+let amountColor = (rem > 0) ? '#00ff66' : '#ff1a40';
+
+let shadowColor = (rem > 0) ? 'rgba(0, 255, 102, 0.8)' : 'rgba(255, 26, 64, 0.8)';
+
+
+
+let supName = inv.supplier || inv.supplierName || inv.name || inv.customer || "مورد عام";
+
+
+
+card.innerHTML = `
+
+<div class="inv-info">
+
+<div class="inv-customer">${supName} <span style="font-size:12px;">(${badge})</span></div>
+
+<div class="inv-meta">فاتورة مشتريات رقم: ${formatIdDisplay(inv.id)}</div>
+
+<div class="inv-meta">${inv.date}</div>
+
+</div>
+
+<div class="inv-amount" style="color: ${amountColor}; text-shadow: 0 0 12px ${shadowColor};">${finalTotal.toFixed(2)}</div>
+
+`;
+
+container.appendChild(card);
+
+});
+
+
+
+const debtBar = document.getElementById('debtSummaryBar');
+
+if (filterType === 'delayed') {
+
+debtBar.style.display = 'block';
+
+document.getElementById('debtSummaryTotal').innerText = totalDebt.toFixed(2);
+
+} else {
+
+debtBar.style.display = 'none';
+
+}
+
+} 
+
+
+
+    function openInvoiceDetails(invoiceId) {
+        let selectedInv = invoicesDB.find(i => i.id === invoiceId);
+        if(!selectedInv) return;
+        
+        let sub = (selectedInv.items || []).reduce((s, i) => s + (i.total !== undefined ? i.total : (parseFloat(i.price) || parseFloat(i.purchasePrice) || 0) * (parseFloat(i.qty) || 0)), 0);
+        let finalReq = sub - (parseFloat(selectedInv.discount)||0);
+        
+        let notesHtml = selectedInv.notes ? `<div style="color:#facc15; font-weight:bold; margin-top:10px; padding-top:10px; border-top:1px dashed rgba(255,255,255,0.3);">ملاحظات الفاتورة: ${selectedInv.notes}</div>` : '';
+        let supName = selectedInv.supplier || selectedInv.supplierName || selectedInv.name || selectedInv.customer || "مورد عام";
+
+        let html = `
+            <div class="details-header-card">
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#ffffff; font-weight:bold;">رقم الفاتورة: <strong>${formatIdDisplay(selectedInv.id)}</strong></span>
+                    <span style="color:#ffffff; font-weight:bold;">التاريخ: <strong>${selectedInv.date}</strong></span>
+                </div>
+                <div style="color:#ffffff; font-weight:bold;">المورد: <strong style="color:#00ff66;">${supName}</strong></div>
+                ${notesHtml}
+            </div>
+            <table>
+                <thead><tr><th style="text-align:right;">الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+                <tbody>
+        `;
+        
+        (selectedInv.items || []).forEach(item => {
+            let itemTot = item.total !== undefined ? item.total : (parseFloat(item.price) || parseFloat(item.purchasePrice) || 0) * (parseFloat(item.qty) || 0);
+            html += `<tr><td style="text-align:right; color:#ffffff; font-weight:bold;">${item.name}</td><td>${item.qty}</td><td>${item.price || item.purchasePrice || 0}</td><td style="color:#00ff66; font-weight:bold; text-shadow: 0 0 8px rgba(0, 255, 102, 0.8);">${itemTot.toFixed(2)}</td></tr>`;
+        });
+        
+        html += `</tbody></table>
+        <div class="details-total" style="background: rgba(19, 17, 44, 0.95);">الإجمالي: <span style="color:#00ff66;">${finalReq.toFixed(2)} جنيه</span></div>`;
+        
+        document.getElementById('invoiceDetailsContainer').innerHTML = html;
+        window.activeViewedInvoiceId = invoiceId; 
+        switchView('invoice-details-view'); 
+    }
+
+    function printInvoiceList() {
+        let list = getFilteredInvoices();
+        if(list.length === 0) return alert("لا توجد فواتير للطباعة");
+        
+        let rows = '';
+        let total = 0;
+        let totalRem = 0;
+        
+        list.forEach(inv => {
+            let sub = (inv.items || []).reduce((s, i) => s + (i.total || ((i.price || i.purchasePrice) * i.qty)), 0);
+            let fin = sub - (parseFloat(inv.discount)||0);
+            let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (parseFloat(inv.remaining) || 0);
+            total += fin;
+            totalRem += rem;
+            
+            let tType = inv.type === 'return' ? 'مرتجع' : (rem > 0) ? 'آجل' : 'مسدد';
+            let supName = inv.supplier || inv.supplierName || inv.name || inv.customer || "مورد عام";
+            rows += `<tr><td>${formatIdDisplay(inv.id)}</td><td>${supName}</td><td>${inv.date}</td><td>${tType}</td><td>${fin.toFixed(2)}</td><td>${rem.toFixed(2)}</td></tr>`;
+        });
+
+        document.getElementById('printListArea').innerHTML = `
+            <div style="padding: 20px;">
+                <h2 style="text-align:center;">سجل فواتير المشتريات - ${document.getElementById('currentDurationLabelOutside').innerText}</h2>
+                <table class="list-print-table">
+                    <thead><tr><th>الفاتورة</th><th>المورد</th><th>التاريخ</th><th>الحالة</th><th>الإجمالي</th><th>المتبقي</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                <div style="margin-top:20px; font-weight:bold; text-align:left;">
+                    <p>إجمالي الفواتير المحددة: ${total.toFixed(2)} ج</p>
+                    <p>إجمالي المديونيات المتبقية: ${totalRem.toFixed(2)} ج</p>
+                </div>
+            </div>
+        `;
+        
+        document.body.classList.remove('thermal-print-mode');
+        window.print();
+    }
+
+    function printSingleInvoiceThermal() {
+        let inv = invoicesDB.find(i => i.id === window.activeViewedInvoiceId);
+        if(!inv) return;
+        let sub = (inv.items || []).reduce((s, i) => s + (i.total !== undefined ? i.total : (parseFloat(i.price) || parseFloat(i.purchasePrice) || 0) * (parseFloat(i.qty) || 0)), 0);
+        let finalReq = sub - (parseFloat(inv.discount)||0);
+        let rem = finalReq - (parseFloat(inv.paid)||0);
+        
+        let itemsHtml = '';
+        (inv.items || []).forEach(item => {
+            let itemTot = item.total !== undefined ? item.total : (parseFloat(item.price) || parseFloat(item.purchasePrice) || 0) * (parseFloat(item.qty) || 0);
+            itemsHtml += `<tr><td>${item.name}</td><td>${item.price || item.purchasePrice || 0}</td><td>${item.qty}</td><td>${itemTot.toFixed(2)}</td></tr>`;
+        });
+        
+        let supName = inv.supplier || inv.supplierName || inv.name || inv.customer || "مورد عام";
+        let printHtml = `
+            <div class="print-header">محلات سراج LED</div>
+            <div class="print-meta">
+                رقم: ${formatIdDisplay(inv.id)}<br>
+                تاريخ: ${inv.date}<br>
+                المورد: ${supName}<br>
+                ${inv.notes ? 'ملاحظات: ' + inv.notes + '<br>' : ''}
+            </div>
+            <table class="print-table">
+                <thead><tr><th>الصنف</th><th>السعر</th><th>الكمية</th><th>الإجمالي</th></tr></thead>
+                <tbody>${itemsHtml}</tbody>
+            </table>
+            <div class="print-totals">
+                الإجمالي: ${sub.toFixed(2)}<br>
+                الخصم: ${(parseFloat(inv.discount)||0).toFixed(2)}<br>
+                الصافي: ${finalReq.toFixed(2)}<br>
+                المدفوع: ${(parseFloat(inv.paid)||0).toFixed(2)}<br>
+                المتبقي: ${rem.toFixed(2)}
+            </div>
+            <div class="print-footer">شكراً لتعاملكم!</div>
+        `;
+        document.getElementById('printReceiptArea').innerHTML = printHtml;
+        window.print();
+        setTimeout(() => document.body.classList.remove('thermal-print-mode'), 1000);
+    }
+
+    function exportListExcel() {
+        let list = getFilteredInvoices();
+        if(list.length === 0) return alert("لا توجد بيانات للتصدير");
+        
+        let excelData = [["رقم الفاتورة", "اسم المورد", "التاريخ", "النوع", "إجمالي الفاتورة", "المدفوع", "المتبقي"]];
+        list.forEach(inv => {
+            let sub = (inv.items || []).reduce((s, i) => s + (i.total || ((i.price || i.purchasePrice) * i.qty)), 0);
+            let fin = sub - (parseFloat(inv.discount)||0);
+            let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (parseFloat(inv.remaining) || 0);
+            let paid = parseFloat(inv.paid) || 0;
+            let tType = inv.type === 'return' ? 'مرتجع' : (rem > 0) ? 'آجل' : 'مسدد';
+            let supName = inv.supplier || inv.supplierName || inv.name || inv.customer || "مورد عام";
+            
+            excelData.push([formatIdDisplay(inv.id), supName, inv.date, tType, fin, paid, rem]);
+        });
+
+        let ws = XLSX.utils.aoa_to_sheet(excelData);
+        let wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "فواتير_المشتريات");
+        XLSX.writeFile(wb, "Purchases_Invoices_List_" + new Date().toISOString().slice(0,10) + ".xlsx");
+    }
+
+    function exportListPDF() {
+        document.body.classList.remove('thermal-print-mode');
+        let element = document.getElementById('invoices-list-view');
+        html2pdf().set({ margin: 10, filename: 'Purchases_Invoices_List.pdf', html2canvas: { scale: 2 } }).from(element).save();
+    }
+
+    function exportSingleInvoiceExcel() {
+        let inv = invoicesDB.find(i => i.id === window.activeViewedInvoiceId);
+        if(!inv) return;
+        let supName = inv.supplier || inv.supplierName || inv.name || inv.customer || "مورد عام";
+        let excelData = [
+            ["رقم الفاتورة", formatIdDisplay(inv.id), "التاريخ", inv.date],
+            ["المورد", supName, "النوع", inv.type],
+            ["ملاحظات", inv.notes || ""],
+            [],
+            ["اسم الصنف", "السعر", "الكمية", "الإجمالي"]
+        ];
+        let sub = 0;
+        (inv.items || []).forEach(item => {
+            let itemTot = item.total !== undefined ? item.total : (parseFloat(item.price) || parseFloat(item.purchasePrice) || 0) * (parseFloat(item.qty) || 0);
+            excelData.push([item.name, item.price || item.purchasePrice || 0, item.qty, itemTot]);
+            sub += itemTot;
+        });
+        let finalReq = sub - (parseFloat(inv.discount)||0);
+        excelData.push([]);
+        excelData.push(["الإجمالي", sub]);
+        excelData.push(["الخصم", parseFloat(inv.discount)||0]);
+        excelData.push(["الصافي", finalReq]);
+        excelData.push(["المدفوع", parseFloat(inv.paid)||0]);
+        excelData.push(["المتبقي", finalReq - (parseFloat(inv.paid)||0)]);
+
+        let ws = XLSX.utils.aoa_to_sheet(excelData);
+        let wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "فاتورة_مشتريات");
+        XLSX.writeFile(wb, `Purchase_Invoice_${formatIdDisplay(inv.id)}.xlsx`);
+    }
+
+    function exportSingleInvoicePDF() {
+        document.body.classList.remove('thermal-print-mode');
+        let element = document.getElementById('invoiceDetailsContainer');
+        html2pdf().set({ margin: 10, filename: `Purchase_Invoice_${window.activeViewedInvoiceId}.pdf`, html2canvas: { scale: 2 } }).from(element).save();
+    }
+
+    window.onload = () => { 
+        if(typeof DB !== 'undefined') DB.applySavedTheme();
+        filterByDate('اخر 7 ايام', '7days'); 
+    };
+</script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
+                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
+        });
+    }
+
+
+</script>
+
+<!-- ============================================================== -->
+
+<!-- 🚀 1. كود المراقبة الذكي لإغلاق جميع القوائم المنسدلة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+document.addEventListener('click', function(event) {
+
+if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
+
+if (typeof closeAllMenus === 'function') {
+
+closeAllMenus();
+
+}
+
+}
+
+});
+
+</script>
+
+
+
+<!-- ============================================================== -->
+
+<!-- 🚀 2. ربط زرار رجوع الموبايل بزرار الـ BACK الأزرق مباشرة -->
+
+<!-- ============================================================== -->
+
+<script>
+
+window.addEventListener('popstate', function(event) {
+
+// لما المستخدم يدوس على زرار الموبايل، ننده دالة الزرار الأزرق فوراً
+
+if (typeof goBackSmart === 'function') {
+
+goBackSmart();
+
+}
+
+});
+
+</script>
+</body> 
+</html>

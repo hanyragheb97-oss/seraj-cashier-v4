@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+
+<html lang="ar" dir="rtl">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>تقرير حسابات العملاء - سراج LED</title>
+
+
+
+<link rel="manifest" href="manifest.json">
+
+<meta name="theme-color" content="#070913">
+
+
+
+<!-- ✅ الربط بملف التصميم الموحد ✅ -->
+
+<link rel="stylesheet" href="style.css">
+
+
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+
+
+<style>
+
+/* 🔥 الحل الجذري لفك تجميد الشاشة (السكرول) 🔥 */
+
+html, body {
+
+overflow-x: hidden !important;
+
+overflow-y: auto !important;
+
+height: 100% !important;
+
+-webkit-overflow-scrolling: touch !important;
+
+}
+
+
+.view-section { display: none; }
+
+.active-view {
+
+display: block !important;
+
+animation: fadeIn 0.3s ease;
+
+overflow-y: auto !important; /* إجبار الشاشة النشطة على السكرول */
+
+height: 100vh !important;
+
+-webkit-overflow-scrolling: touch !important; /* لدعم السحب بمرونة على الموبايل */
+
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+
+
+.customers-container, .account-container {
+
+max-width: 800px;
+
+margin: auto;
+
+padding: 15px;
+
+padding-bottom: 160px !important; /* مساحة أكبر تحت عشان الشريط السفلي ما يغطيش الأسماء */
+
+} 
+
+
+
+
+.view-section { display: none; }
+
+.active-view { display: block !important; animation: fadeIn 0.3s ease; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+
+
+.customers-container, .account-container { max-width: 800px; margin: auto; padding: 15px; padding-bottom: 120px; }
+
+
+.search-box { background: rgba(19, 17, 44, 0.6); border: 2px solid var(--neon-border); border-radius: 16px; display: flex; align-items: center; padding: 5px; margin-bottom: 15px; box-shadow: 0 0 15px var(--neon-glow); }
+
+.search-box input { flex: 1; padding: 10px; font-size: 18px; border: none; background: transparent; color: var(--text-main); font-weight: bold; outline: none; }
+
+
+.customer-card { background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 16px; padding: 15px; margin-bottom: 15px; box-shadow: 0 0 15px var(--neon-glow); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+
+.customer-card:active { background-color: var(--neon-glow); }
+
+
+.cus-info { display: flex; flex-direction: column; gap: 5px; }
+
+.cus-name { font-size: 18px; font-weight: bold; color: var(--text-main); }
+
+.cus-balance { font-size: 20px; font-weight: bold; }
+
+
+/* الألوان الصحيحة للأرصدة */
+
+.balance-debtor { color: #ff1a40; text-shadow: 0 0 8px rgba(255,26,64,0.4); } /* عليه فلوس لينا - أحمر */
+
+.balance-creditor { color: #00ff66; text-shadow: 0 0 8px rgba(0,255,102,0.4); } /* له فلوس عندنا - أخضر */
+
+.balance-zero { color: var(--text-main); }
+
+
+
+table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 12px; overflow: hidden; margin-top: 15px; border: 2px solid var(--neon-border); }
+
+table th { background: var(--neon-glow); padding: 12px; color: var(--text-main); }
+
+table td { padding: 12px; text-align: center; border-bottom: 1px solid rgba(168, 85, 247, 0.2); font-weight: bold; }
+
+
+.readonly-banner { background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; text-align: center; padding: 8px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 14px; box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
+
+
+
+/* شريط القوائم المنسدلة السفلي */
+
+.dropdown-menu { position: absolute; bottom: 100%; right: 0; background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.7); display: none; z-index: 100; margin-bottom: 8px; overflow: hidden; width: 200px; text-align: right; }
+
+.dropdown-item { padding: 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 15px; color: var(--text-main); }
+
+.dropdown-item:active { background-color: var(--neon-glow); }
+
+.bottom-bar-dropdown { flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); border-radius: 12px; padding: 0 12px; height: 45px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; cursor: pointer; position: relative; }
+
+</style>
+
+</head>
+
+<body>
+
+
+
+<!-- الشاشة 1: قائمة العملاء -->
+
+<div id="customers-main-view" class="view-section active-view">
+
+<div class="header">
+
+<span>تقارير حسابات العملاء</span>
+
+</div>
+
+
+<div class="customers-container">
+
+<div class="readonly-banner">👁️ وضع العرض فقط (لا يمكن التعديل)</div>
+
+
+<div class="search-box">
+
+<input type="text" id="customerSearchInput" placeholder="🔍 ابحث عن عميل..." onkeyup="filterCustomers()">
+
+</div>
+
+
+<div id="customersListContainer">
+
+<!-- كروت العملاء تظهر هنا -->
+
+</div>
+
+</div>
+
+
+
+<div class="unified-bottom-bar" onclick="event.stopPropagation()">
+
+<!-- زرار الرجوع يوجه للمحاسب الذكي -->
+
+<button class="header-back-btn" onclick="window.location.href='smart_accountant.html'">
+
+<span class="arrow">⬅</span>
+
+<span class="text">BACK</span>
+
+</button>
+
+<div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'mainDurationDropdown')">
+
+<span id="mainDurationLabel">اخر 30 يوم</span> <span>▼</span>
+
+<div class="dropdown-menu" id="mainDurationDropdown">
+
+<div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('custom')">📅 فترة مخصصة</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+<!-- الشاشة 2: كشف حساب العميل -->
+
+<div id="customer-account-view" class="view-section" style="display:none;">
+
+<div class="header">
+
+<span id="activeCustomerName">اسم العميل</span>
+
+</div>
+
+
+
+<div class="account-container">
+
+<div class="readonly-banner">👁️ كشف حساب مفصل (للعرض والطباعة)</div>
+
+
+
+<div class="balance-box" style="background: var(--card-bg); padding: 20px; border-radius: 16px; text-align: center; border: 2px solid var(--neon-border); margin-bottom: 20px;">
+
+<div style="font-size: 16px; opacity: 0.9;">إجمالي الحساب (الرصيد)</div>
+
+<div id="activeCustomerBalance" style="font-size: 28px; font-weight: bold; margin-top: 10px;">0.00</div>
+
+<div id="activeCustomerStatus" style="font-size: 14px; margin-top: 5px;">---</div>
+
+</div>
+
+
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>التاريخ</th>
+
+<th>البيان</th>
+
+<th>عليه (+)</th>
+
+<th>له (-)</th>
+
+</tr>
+
+</thead>
+
+<tbody id="customerMovesTable">
+
+<!-- يتم حقن الحركات هنا -->
+
+</tbody>
+
+</table>
+
+</div>
+
+
+
+<div class="unified-bottom-bar" onclick="event.stopPropagation()">
+
+<button class="header-back-btn" onclick="switchView('customers-main-view')">
+
+<span class="arrow">⬅</span>
+
+<span class="text">BACK</span>
+
+</button>
+
+
+<div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'accDurationDropdown')">
+
+<span id="accDurationLabel">اخر 30 يوم</span> <span>▼</span>
+
+<div class="dropdown-menu" id="accDurationDropdown">
+
+<div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('custom')">📅 فترة مخصصة</div>
+
+<div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+
+</div>
+
+</div>
+
+
+
+<div class="bottom-bar-dropdown" onclick="togglePrintMenu(event)" style="flex: 0.5; justify-content: center; background: transparent; border: 1px solid #3b82f6;">
+
+🖨️ طباعة
+
+<div class="dropdown-menu" id="printMenuDropdown" style="left: 0; right: auto; width: 180px;">
+
+<div class="dropdown-item" onclick="exportToPDF()">📄 تصدير PDF منسق</div>
+
+<div class="dropdown-item" onclick="exportToExcel()">📊 تصدير Excel</div>
+
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+<!-- نافذة اختيار التاريخ المخصص -->
+
+<div class="modal-overlay" id="customDateModal" style="display: none;">
+
+<div class="compact-modal" onclick="event.stopPropagation()">
+
+<div class="compact-header"><h3>تحديد فترة مخصصة</h3></div>
+
+<div class="form-row" style="margin-bottom:15px;">
+
+<label style="display:block; margin-bottom:5px;">من تاريخ:</label>
+
+<input type="date" id="customStartDate" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--neon-border); background:var(--card-bg); color:white; text-align:center;">
+
+</div>
+
+<div class="form-row" style="margin-bottom:15px;">
+
+<label style="display:block; margin-bottom:5px;">إلى تاريخ:</label>
+
+<input type="date" id="customEndDate" style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--neon-border); background:var(--card-bg); color:white; text-align:center;">
+
+</div>
+
+<div class="btn-group" style="display:flex; gap:10px;">
+
+<button style="flex:1; padding:10px; border-radius:8px; background:var(--neon-glow); border:none; color:white;" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+
+<button style="flex:1; padding:10px; border-radius:8px; background:var(--neon-border); border:none; color:white; font-weight:bold;" onclick="applyCustomDate()">تطبيق</button>
+
+</div>
+
+</div>
+
+</div>
+
+
+
+<script src="db.js"></script>
+
+
+
+<script>
+
+let customersDB = [];
+
+let currentDurationFilter = '30days';
+
+let activeCustomerId = null;
+
+let activeCustomerNameStr = '';
+
+let customStartDateValue = '';
+
+let customEndDateValue = '';
+
+
+
+function switchView(viewId) {
+
+document.querySelectorAll('.view-section').forEach(v => {
+
+v.classList.remove('active-view');
+
+});
+
+document.getElementById(viewId).classList.add('active-view');
+
+}
+
+
+
+function closeAllMenus() {
+
+['mainDurationDropdown', 'accDurationDropdown', 'printMenuDropdown'].forEach(id => {
+
+let el = document.getElementById(id);
+
+if(el) el.style.display = 'none';
+
+});
+
+}
+
+
+
+function toggleDurationMenu(e, menuId) {
+
+e.stopPropagation();
+
+let el = document.getElementById(menuId);
+
+let isVisible = el.style.display === 'block';
+
+closeAllMenus();
+
+if(!isVisible) el.style.display = 'block';
+
+}
+
+
+
+function togglePrintMenu(e) {
+
+e.stopPropagation();
+
+let el = document.getElementById('printMenuDropdown');
+
+let isVisible = el.style.display === 'block';
+
+closeAllMenus();
+
+if(!isVisible) el.style.display = 'block';
+
+}
+
+
+
+function setDurationFilter(duration) {
+
+if(duration === 'custom') {
+
+closeAllMenus();
+
+let modal = document.getElementById('customDateModal');
+
+if (modal) modal.style.display = 'flex';
+
+return;
+
+}
+
+
+
+currentDurationFilter = duration;
+
+let labels = { 'today': 'اليوم', 'yesterday': 'أمس', '7days': 'آخر 7 أيام', 'thisMonth': 'هذا الشهر', '30days': 'آخر 30 يوم', 'allTime': 'مدى العمل' };
+
+
+let mLabel = document.getElementById('mainDurationLabel');
+
+let aLabel = document.getElementById('accDurationLabel');
+
+if(mLabel) mLabel.innerText = labels[duration];
+
+if(aLabel) aLabel.innerText = labels[duration];
+
+
+closeAllMenus();
+
+renderCustomersList();
+
+if(activeCustomerId) openCustomerAccount(activeCustomerId);
+
+
+
+// إغلاق القوائم لضمان عدم التعليق
+
+setTimeout(function() {
+
+if(typeof closeAllMenus === 'function') closeAllMenus();
+
+}, 50);
+
+}
+
+
+
+function applyCustomDate() {
+
+let start = document.getElementById('customStartDate').value;
+
+let end = document.getElementById('customEndDate').value;
+
+
+if(!start || !end) {
+
+alert('الرجاء تحديد تاريخ البداية والنهاية');
+
+return;
+
+}
+
+
+
+customStartDateValue = start;
+
+customEndDateValue = end;
+
+currentDurationFilter = 'custom';
+
+
+let labelTxt = `من ${start} إلى ${end}`;
+
+let mLabel = document.getElementById('mainDurationLabel');
+
+let aLabel = document.getElementById('accDurationLabel');
+
+if(mLabel) mLabel.innerText = labelTxt;
+
+if(aLabel) aLabel.innerText = labelTxt;
+
+
+
+document.getElementById('customDateModal').style.display = 'none';
+
+renderCustomersList();
+
+if(activeCustomerId) openCustomerAccount(activeCustomerId);
+
+}
+
+
+
+function isDateInRange(dateStr) {
+
+if(currentDurationFilter === 'allTime') return true;
+
+let d = new Date(dateStr);
+
+let now = new Date();
+
+now.setHours(0,0,0,0);
+
+
+if (currentDurationFilter === 'today') {
+
+return d.toDateString() === now.toDateString();
+
+} else if (currentDurationFilter === 'yesterday') {
+
+let yest = new Date(now);
+
+yest.setDate(yest.getDate() - 1);
+
+return d.toDateString() === yest.toDateString();
+
+} else if (currentDurationFilter === '7days') {
+
+let last7 = new Date(now);
+
+last7.setDate(last7.getDate() - 7);
+
+return d >= last7;
+
+} else if (currentDurationFilter === 'thisMonth') {
+
+return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+
+} else if (currentDurationFilter === '30days') {
+
+let last30 = new Date(now);
+
+last30.setDate(last30.getDate() - 30);
+
+return d >= last30;
+
+} else if (currentDurationFilter === 'custom') {
+
+if(!customStartDateValue || !customEndDateValue) return true;
+
+let start = new Date(customStartDateValue);
+
+let end = new Date(customEndDateValue);
+
+end.setHours(23,59,59,999);
+
+return d >= start && d <= end;
+
+}
+
+return true;
+
+}
+
+
+
+function renderCustomersList(query = '') {
+
+if(typeof DB !== 'undefined' && DB.getCustomers) {
+
+customersDB = DB.getCustomers() || [];
+
+}
+
+
+
+const container = document.getElementById('customersListContainer');
+
+container.innerHTML = '';
+
+
+
+let filtered = customersDB.filter(c => c.name && c.name.toLowerCase().includes(query.toLowerCase()));
+
+
+
+if(filtered.length === 0) {
+
+container.innerHTML = '<div style="text-align:center; padding:20px;">لا يوجد عملاء مطابقين للبحث</div>';
+
+return;
+
+}
+
+
+
+filtered.forEach(cus => {
+
+let bal = parseFloat(cus.balance) || 0;
+
+let balClass = bal > 0 ? 'balance-debtor' : (bal < 0 ? 'balance-creditor' : 'balance-zero');
+
+let balText = bal > 0 ? `${bal.toFixed(2)} عليه` : (bal < 0 ? `${Math.abs(bal).toFixed(2)} له` : '0.00');
+
+
+
+let card = document.createElement('div');
+
+card.className = 'customer-card';
+
+card.onclick = () => openCustomerAccount(cus.id);
+
+card.innerHTML = `
+
+<div class="cus-info">
+
+<span class="cus-name">${cus.name}</span>
+
+<span style="font-size:12px; opacity:0.7;">${cus.phone || 'بدون هاتف'}</span>
+
+</div>
+
+<div class="cus-balance ${balClass}">
+
+${balText}
+
+</div>
+
+`;
+
+container.appendChild(card);
+
+});
+
+}
+
+
+
+function filterCustomers() {
+
+let q = document.getElementById('customerSearchInput').value;
+
+renderCustomersList(q);
+
+}
+
+
+
+function openCustomerAccount(id) {
+
+activeCustomerId = id;
+
+let cus = customersDB.find(c => c.id === id);
+
+if(!cus) return;
+
+
+
+activeCustomerNameStr = cus.name;
+
+document.getElementById('activeCustomerName').innerText = cus.name;
+
+
+let bal = parseFloat(cus.balance) || 0;
+
+let balEl = document.getElementById('activeCustomerBalance');
+
+let statEl = document.getElementById('activeCustomerStatus');
+
+
+balEl.innerText = Math.abs(bal).toFixed(2);
+
+if(bal > 0) {
+
+balEl.style.color = '#ff1a40';
+
+statEl.innerText = 'عليه (مدين)';
+
+} else if (bal < 0) {
+
+balEl.style.color = '#00ff66';
+
+statEl.innerText = 'له (دائن)';
+
+} else {
+
+balEl.style.color = 'var(--text-main)';
+
+statEl.innerText = 'رصيد مصفر';
+
+}
+
+
+
+renderCustomerMovesTable(cus);
+
+switchView('customer-account-view');
+
+}
+
+
+
+function renderCustomerMovesTable(cus) {
+
+const tbody = document.getElementById('customerMovesTable');
+
+tbody.innerHTML = '';
+
+
+
+let moves = [];
+
+
+if(typeof DB !== 'undefined') {
+
+let invoices = DB.getSalesInvoices ? (DB.getSalesInvoices() || []) : [];
+
+invoices.forEach(inv => {
+
+if(inv.customer === cus.name || inv.customerId === cus.id) {
+
+if(!isDateInRange(inv.date)) return;
+
+
+if(inv.type === 'sales') {
+
+let total = inv.items.reduce((sum, item) => sum + ((item.price * item.qty) || item.total), 0) - (inv.discount || 0);
+
+moves.push({ date: inv.date, notes: `فاتورة مبيعات #${inv.id}`, add: total, deduct: inv.paid || 0 });
+
+} else if(inv.type === 'return') {
+
+let total = inv.items.reduce((sum, item) => sum + ((item.price * item.qty) || item.total), 0);
+
+moves.push({ date: inv.date, notes: `فاتورة مرتجع #${inv.id}`, add: 0, deduct: total });
+
+}
+
+}
+
+});
+
+
+
+let tMoves = DB.getTreasuryMoves ? (DB.getTreasuryMoves() || []) : [];
+
+tMoves.forEach(m => {
+
+if((m.type === 'customers' || m.type === 'customer_receipt' || m.type === 'customer_payment') && m.notes.includes(cus.name)) {
+
+if(!isDateInRange(m.date)) return;
+
+moves.push({ date: m.date, notes: m.notes, add: m.amountAdd || 0, deduct: m.amountDeduct || 0 });
+
+}
+
+});
+
+}
+
+
+
+if(moves.length === 0) {
+
+tbody.innerHTML = '<tr><td colspan="4" style="padding:20px;">لا توجد حركات مسجلة لهذا العميل في هذه الفترة</td></tr>';
+
+return;
+
+}
+
+
+
+moves.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+
+
+moves.forEach(m => {
+
+tbody.innerHTML += `
+
+<tr>
+
+<td style="font-size:12px; opacity:0.8;">${m.date}</td>
+
+<td style="font-size:14px;">${m.notes}</td>
+
+<td style="color:#ff1a40;">${m.add > 0 ? m.add.toFixed(2) : '-'}</td>
+
+<td style="color:#00ff66;">${m.deduct > 0 ? m.deduct.toFixed(2) : '-'}</td>
+
+</tr>
+
+`;
+
+});
+
+}
+
+
+
+function exportToPDF() {
+
+    if(!activeCustomerId) return;
+
+
+// إغلاق القائمة أولاً
+
+closeAllMenus();
+
+
+
+// تجهيز التصميم للطباعة
+
+let printDiv = document.createElement('div');
+
+printDiv.style.direction = 'rtl';
+
+printDiv.style.padding = '20px';
+
+printDiv.style.fontFamily = 'Arial, sans-serif';
+
+printDiv.style.backgroundColor = '#fff'; // خلفية بيضاء
+
+
+// جلب البيانات من الشاشة
+
+let customerName = activeCustomerNameStr;
+
+let balance = document.getElementById('activeCustomerBalance').innerText;
+
+let status = document.getElementById('activeCustomerStatus').innerText;
+
+let duration = document.getElementById('accDurationLabel').innerText;
+
+
+// جلب صفوف الجدول
+
+let tableHTML = document.getElementById('customerMovesTable').innerHTML;
+
+
+// 🔥 التعديل هنا: إجبار خانات التاريخ والبيان على اللون الأسود الواضح والخط العريض 🔥
+
+tableHTML = tableHTML.replace(/opacity:\s*0\.8;?/g, 'opacity: 1;');
+
+tableHTML = tableHTML.replace(/font-size:12px;/g, 'font-size:12px; color:#000; font-weight:bold;');
+
+tableHTML = tableHTML.replace(/font-size:14px;/g, 'font-size:14px; color:#000; font-weight:bold;');
+
+
+
+// بناء هيكل الكشف الرسمي بخلفية بيضاء
+
+let htmlContent = `
+
+<div style="text-align: center; border-bottom: 3px double #333; padding-bottom: 15px; margin-bottom: 20px;">
+
+<h1 style="margin: 0; font-size: 28px; color: #000;">سراج LED</h1>
+
+<h2 style="margin: 5px 0; color: #333;">كشف حساب مفصل</h2>
+
+</div>
+
+
+<div style="margin-bottom: 20px; font-size: 16px; line-height: 1.8; border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #fff; color: #000;">
+
+<div style="display: flex; justify-content: space-between;">
+
+<div><strong>اسم العميل:</strong> ${customerName}</div>
+
+<div><strong>عن الفترة:</strong> ${duration}</div>
+
+</div>
+
+<div style="margin-top: 10px; font-size: 18px;">
+
+<strong>الرصيد النهائي:</strong> <span style="font-weight: bold; padding: 3px 8px; border: 1px solid #000; background: #fff; color: #000;">${balance} (${status})</span>
+
+</div>
+
+</div>
+
+
+
+<table style="width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; margin-bottom: 30px; background-color: #fff; color: #000;">
+
+<thead>
+
+<tr style="background-color: #f5f5f5; border: 2px solid #333; color: #000;">
+
+<th style="border: 1px solid #333; padding: 12px; width: 20%;">التاريخ</th>
+
+<th style="border: 1px solid #333; padding: 12px; width: 40%;">البيان / الملاحظات</th>
+
+<th style="border: 1px solid #333; padding: 12px; width: 20%;">عليه (+)</th>
+
+<th style="border: 1px solid #333; padding: 12px; width: 20%;">له (-)</th>
+
+</tr>
+
+</thead>
+
+<tbody style="border: 2px solid #333;">
+
+${tableHTML}
+
+</tbody>
+
+</table>
+
+
+<div style="margin-top: 40px; text-align: left; font-size: 12px; color: #333; border-top: 1px solid #ccc; padding-top: 10px;">
+
+<p>تاريخ الإصدار: ${new Date().toLocaleString('ar-EG')}</p>
+
+<p>تم الإصدار بواسطة نظام سراج كاشير</p>
+
+</div>
+
+`;
+
+
+printDiv.innerHTML = htmlContent;
+
+
+// إعدادات جودة الـ PDF
+
+let opt = {
+
+margin: 10,
+
+filename: `كشف_حساب_${customerName}.pdf`,
+
+image: { type: 'jpeg', quality: 1 },
+
+html2canvas: { scale: 3, useCORS: true, backgroundColor: "#ffffff" },
+
+jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+
+};
+
+
+// تنفيذ التحميل
+
+if (typeof html2pdf !== 'undefined') {
+
+html2pdf().set(opt).from(printDiv).save();
+
+} else {
+
+alert('يجب أن تكون متصلاً بالإنترنت لتحميل مكتبة تصدير الـ PDF');
+
+}
+
+} 
+
+
+
+
+
+
+
+function exportToExcel() {
+
+if(!activeCustomerId) return;
+
+let table = document.getElementById('customerMovesTable');
+
+let ws = XLSX.utils.table_to_sheet(table);
+
+let wb = XLSX.utils.book_new();
+
+XLSX.utils.book_append_sheet(wb, ws, "كشف الحساب");
+
+XLSX.writeFile(wb, `كشف_حساب_${activeCustomerNameStr}.xlsx`);
+
+closeAllMenus();
+
+}
+
+
+
+// ==============================================================
+
+// 🚀 أكواد التشغيل والإغلاق الذكي
+
+// ==============================================================
+
+window.onload = () => {
+
+if (typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme();
+
+renderCustomersList();
+
+history.pushState(null, null, window.location.href);
+
+};
+
+
+
+document.addEventListener('click', function(event) {
+
+if (!event.target.closest('.bottom-bar-dropdown, .dropdown-menu, .compact-modal')) {
+
+closeAllMenus();
+
+}
+
+});
+
+
+
+window.addEventListener('popstate', function(event) {
+
+let accView = document.getElementById('customer-account-view');
+
+if (accView && accView.classList.contains('active-view')) {
+
+switchView('customers-main-view');
+
+history.pushState(null, null, window.location.href);
+
+} else {
+
+window.location.href = 'smart_accountant.html';
+
+}
+
+});
+
+</script>
+
+</body>
+
+</html> 
+
