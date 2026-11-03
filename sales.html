@@ -131,13 +131,25 @@
             <input type="number" id="modalRemaining" value="0" readonly dir="ltr">
         </div>
 
-        <div class="compact-row">
-            <select id="modalVaultSelect">
-                <option value="main">الخزينة (كاش)</option>
-                <option value="insta">إنستا (InstaPay)</option>
-                <option value="wallet">محفظة إلكترونية</option>
-            </select>
-            <input type="text" id="modalNotes" placeholder="ملاحظات...">
+        <div style="position: relative; margin-bottom: 15px;">
+            <label style="display: block; font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; text-align: right;">الخزينة</label>
+            
+            <!-- الحقل المخفي الذي سيقرأ منه كود الحفظ -->
+            <input type="hidden" id="modalTreasury" value="main">
+            
+            <!-- القائمة المرئية البديلة -->
+            <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; padding: 14px 16px; font-size: 20px; font-weight: bold; background: rgba(19, 17, 44, 0.6); color: var(--text-main); border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 0 10px var(--neon-glow);" onclick="toggleCustomSelect(event, 'modalTreasuryDropdown')">
+                <span style="font-size: 14px; color: var(--neon-border);">▼</span>
+                <span id="modalTreasuryLabel">الخزينة الرئيسية (كاش)</span>
+                <span></span>
+                
+                <!-- الخيارات المنسدلة (تفتح لأعلى) -->
+                <div class="dropdown-list" id="modalTreasuryDropdown" style="display: none; position: absolute; left: 0; right: 0; bottom: 100%; top: auto; margin-bottom: 8px; border-radius: 12px; width: 100%; background: #13112c; border: 2px solid var(--neon-border); box-shadow: 0 -10px 25px rgba(0,0,0,0.8); z-index: 1000; overflow: hidden;">
+                    <div class="dropdown-item" style="padding: 12px; text-align: center; border-bottom: 1px solid var(--neon-glow); color: var(--text-main); font-size: 18px;" onclick="setCustomSelect('modalTreasury', 'modalTreasuryLabel', 'main', 'الخزينة الرئيسية (كاش)', event)">الخزينة الرئيسية (كاش)</div>
+                    <div class="dropdown-item" style="padding: 12px; text-align: center; border-bottom: 1px solid var(--neon-glow); color: var(--text-main); font-size: 18px;" onclick="setCustomSelect('modalTreasury', 'modalTreasuryLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
+                    <div class="dropdown-item" style="padding: 12px; text-align: center; color: var(--text-main); font-size: 18px;" onclick="setCustomSelect('modalTreasury', 'modalTreasuryLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                </div>
+            </div>
         </div>
 
         <div class="compact-row">
@@ -1584,6 +1596,37 @@ window.addEventListener('seraj:updated', (e) => {
         }
     }
 });
+</script>
+
+<script>
+    // دوال تشغيل القائمة المنسدلة المخصصة للخزينة
+    function toggleCustomSelect(event, dropdownId) {
+        event.stopPropagation();
+        const dropdown = document.getElementById(dropdownId);
+        // إغلاق أي قوائم أخرى مفتوحة
+        document.querySelectorAll('.dropdown-list').forEach(list => {
+            if(list.id !== dropdownId) list.style.display = 'none';
+        });
+        // تبديل حالة القائمة الحالية
+        dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+    }
+
+    function setCustomSelect(inputId, labelId, value, text, event) {
+        event.stopPropagation();
+        // تحديث القيمة المخفية (التي تعتمد عليها دالة الحفظ)
+        document.getElementById(inputId).value = value;
+        // تحديث النص الظاهر للمستخدم
+        document.getElementById(labelId).innerText = text;
+        // إغلاق القائمة
+        document.getElementById(inputId + 'Dropdown').style.display = 'none';
+    }
+
+    // إغلاق القوائم عند الضغط في أي مكان فارغ بالشاشة
+    window.addEventListener('click', function() {
+        document.querySelectorAll('.treasury-select .dropdown-list').forEach(list => {
+            list.style.display = 'none';
+        });
+    });
 </script>
 
 </body>
