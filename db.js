@@ -20,10 +20,24 @@ const firebaseConfig = {
 
 let cloudReady = false;
 let myDeviceName = localStorage.getItem('seraj_device_name');
-if (!myDeviceName) {
-    myDeviceName = prompt("مرحباً بك في نسخة االأصليه (سراج كاشير) 🛠️\nبرجاء إدخال اسم مميز لهذا الجهاز:");
-    if (!myDeviceName || myDeviceName.trim() === "") myDeviceName = "جهاز تجريبي";
+let myDevicePrefix = localStorage.getItem('seraj_device_prefix');
+
+if (!myDeviceName || !myDevicePrefix) {
+    // 1. إجبار إدخال اسم المستخدم
+    while (!myDeviceName || myDeviceName.trim() === "") {
+        myDeviceName = prompt("مرحباً بك في (سراج كاشير) 🛠️\n🛑 إجباري: أدخل اسم هذا المستخدم/الجهاز (مثال: هاني أو كاشير 1):");
+    }
+    
+    // 2. إجبار إدخال حرف مميز بالإنجليزية
+    while (!myDevicePrefix || !/^[a-zA-Z]$/.test(myDevicePrefix)) {
+        myDevicePrefix = prompt("🛑 إجباري: أدخل حرف إنجليزي واحد مميز ليكون بادئة فواتير هذا الجهاز (مثال: A أو B أو C):");
+    }
+    
+    myDeviceName = myDeviceName.trim();
+    myDevicePrefix = myDevicePrefix.toUpperCase();
+    
     localStorage.setItem('seraj_device_name', myDeviceName);
+    localStorage.setItem('seraj_device_prefix', myDevicePrefix);
 }
 
 let currentStoreId = localStorage.getItem('seraj_store_id') || 'DemoStore';
@@ -143,9 +157,41 @@ window.Utils = {
         return d.toLocaleDateString('ar-EG') + ' ' + d.toLocaleTimeString('ar-EG');
     },
 
-    generateInvoiceId: function() {
-        let prefix = (myDeviceName || 'DEV').substring(0, 3).toUpperCase();
-        return prefix + '-' + Date.now() + '-' + Math.floor(Math.random() * 100);
+    generateInvoiceId: function(type = 'sales') {
+        let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
+        
+        let invoices = [];
+        try {
+            invoices = type === 'sales' 
+                ? safeParseJSON(localStorage.getItem('seraj_sales_invoices'), [])
+                : safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
+        } catch (e) {
+            invoices = [];
+        }
+
+        // البحث عن الفواتير التي تبدأ بنفس حرف هذا الجهاز فقط
+        let deviceInvoices = invoices.filter(inv => {
+            let invNo = String(inv.invoiceNo || inv.id || '');
+            return invNo.startsWith(devPrefix + '-');
+        });
+
+        let maxNum = 99; // البداية دائماً من 100 (99 + 1)
+        
+        if (deviceInvoices.length > 0) {
+            deviceInvoices.forEach(inv => {
+                let invNo = String(inv.invoiceNo || inv.id || '');
+                let parts = invNo.split('-');
+                if (parts.length > 1) {
+                    let numPart = parseInt(parts[1], 10);
+                    if (!isNaN(numPart) && numPart > maxNum) {
+                        maxNum = numPart;
+                    }
+                }
+            });
+        }
+
+        let nextNum = maxNum + 1;
+        return `${devPrefix}-${nextNum}`;
     },
 
     generateUniqueId: function(prefix = '') {
