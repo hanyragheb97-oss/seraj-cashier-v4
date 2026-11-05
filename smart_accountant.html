@@ -1278,6 +1278,7 @@ function renderNotesList() {
         }
 
         function saveNote() {
+            // 1. جلب البيانات من الواجهة
             let titleInput = document.getElementById('note-title');
             let commentInput = document.getElementById('note-comment');
             let title = titleInput ? titleInput.value.trim() : '';
@@ -1288,29 +1289,46 @@ function renderNotesList() {
             if (tbody) {
                 let rows = tbody.querySelectorAll('tr');
                 rows.forEach(tr => {
-                    let name = tr.cells[0].innerText;
-                    let qty = tr.querySelector('.qty-val').value;
+                    // تنظيف اسم الصنف من أي أكواد مخفية أو كلمة (مؤرشف) لضمان حفظه بشكل نظيف
+                    let rawName = tr.cells[0].innerText || '';
+                    let name = rawName.replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
+                    
+                    let qtyInput = tr.querySelector('.qty-val');
+                    let qty = qtyInput ? qtyInput.value : 0;
+                    
                     let stateBadge = tr.querySelector('.state-badge');
                     let stateVal = stateBadge ? stateBadge.innerText : '';
                     let stateColor = 'state-orange';
                     if (stateBadge && stateBadge.classList.contains('state-red')) stateColor = 'state-red';
                     if (stateBadge && stateBadge.classList.contains('state-green')) stateColor = 'state-green';
+                    
                     let supplierInput = tr.querySelector('.sup-val');
                     let supplier = supplierInput ? supplierInput.value : '';
                     
-                    items.push({ name, qty, state: stateVal, stateColor, supplier });
+                    if(name !== '') {
+                        items.push({ name, qty, state: stateVal, stateColor, supplier });
+                    }
                 });
             }
             
-// الشرط الجديد: لو العنوان فارغ (أو اتقمسح) ومافيش أصناف جوه النوتة خالص
-if (title === '' && items.length === 0) {
+            // 2. جلب أحدث نسخة من النوتات من المحرك المركزي مباشرة (لمنع تضارب البيانات)
+            let currentNotesDB = [];
+            if (typeof window.DB !== 'undefined' && typeof window.DB.getSmartNotes === 'function') {
+                currentNotesDB = window.DB.getSmartNotes() || [];
+            } else {
+                try { currentNotesDB = JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]'); } catch(e) {}
+            }
+            
+            let existingIndex = currentNotesDB.findIndex(n => n.id === currentEditingNoteId);
+
+            // 3. الحذف التلقائي لو النوتة فارغة
+            if (title === '' && items.length === 0) {
                 if (existingIndex > -1) {
-                    smartNotesDB.splice(existingIndex, 1);
-                    // الاعتماد كلياً على المحرك المركزي في الحذف
+                    currentNotesDB.splice(existingIndex, 1);
                     if (typeof window.DB !== 'undefined' && typeof window.DB.saveSmartNotes === 'function') {
-                        window.DB.saveSmartNotes(smartNotesDB);
+                        window.DB.saveSmartNotes(currentNotesDB);
                     } else {
-                        localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
+                        localStorage.setItem('seraj_smart_notes', JSON.stringify(currentNotesDB));
                     }
                 }
                 renderNotesList();
@@ -1318,10 +1336,8 @@ if (title === '' && items.length === 0) {
                 return;
             }
             
-            // لو فيها بيانات، تكمل عملية الحفظ بشكل طبيعي
+            // 4. تجهيز كائن النوتة وتوليد ID من المحرك المركزي للنوتة الجديدة
             let finalTitle = title !== '' ? title : 'ملاحظة بدون اسم';
-            
-            // استخدام المولد المركزي لإنشاء ID فريد لو النوتة جديدة
             let finalId = currentEditingNoteId;
             if (!finalId) {
                 finalId = (typeof window.generateUniqueId === 'function') ? window.generateUniqueId() : Date.now().toString();
@@ -1334,22 +1350,29 @@ if (title === '' && items.length === 0) {
                 items, 
                 date: new Date().toISOString(),
                 _lastModified: Date.now(),
-                updatedBy: (typeof myDeviceName !== 'undefined') ? myDeviceName : (localStorage.getItem('seraj_device_name') || 'جهاز بالمحل')
+                updatedBy: (typeof window.myDeviceName !== 'undefined') ? window.myDeviceName : (localStorage.getItem('seraj_device_name') || 'جهاز بالمحل')
             };
             
+            // 5. التحديث أو الإضافة للمصفوفة
             if (existingIndex > -1) {
-                smartNotesDB[existingIndex] = noteObj;
+                currentNotesDB[existingIndex] = noteObj;
             } else {
-                smartNotesDB.unshift(noteObj);
+                currentNotesDB.unshift(noteObj);
             }
             
-            // الاعتماد كلياً على بوابة الحفظ المركزية
+            // 6. الإرسال للمحرك المركزي (db.js) ليقوم بالحفظ والمزامنة فوراً
             if (typeof window.DB !== 'undefined' && typeof window.DB.saveSmartNotes === 'function') {
-                window.DB.saveSmartNotes(smartNotesDB);
+                window.DB.saveSmartNotes(currentNotesDB);
             } else {
-                localStorage.setItem('seraj_smart_notes', JSON.stringify(smartNotesDB));
+                localStorage.setItem('seraj_smart_notes', JSON.stringify(currentNotesDB));
             }
             
+            // تحديث المتغير المحلي لضمان استقرار العرض
+            if (typeof smartNotesDB !== 'undefined') {
+                smartNotesDB = currentNotesDB;
+            }
+            
+            // 7. إغلاق المودال وإعادة رسم الكروت
             renderNotesList();
             closeNoteModal();
         }
