@@ -739,26 +739,31 @@ let vaultsDB = {};
         let renderLimitExpenses = 50;
         let searchDebounceTimeout;
 
-       // ==========================================
-// دالة الحماية للتواريخ (المحسنة للتوافق مع db.js وضمان المطابقة المحلية)
+// ==========================================
+// دالة الحماية للتواريخ (المحسنة للتوافق مع db.js المركزية وتجنب فروق التوقيت)
 // ==========================================
 function getSafeTime(dateVal) {
+    if (window.Utils && typeof window.Utils.getSafeTime === 'function') {
+        return window.Utils.getSafeTime(dateVal);
+    }
     if (!dateVal) return 0;
-    if (typeof dateVal === 'number') return dateVal;
+    if (typeof dateVal === 'number') {
+        return dateVal < 10000000000 ? dateVal * 1000 : dateVal;
+    }
     let s = String(dateVal).trim();
+    if (/^\d+$/.test(s)) {
+        let num = Number(s);
+        return num < 10000000000 ? num * 1000 : num;
+    }
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
         let p = s.split('-');
-        return new Date(p[0], p[1]-1, p[2], 12, 0, 0).getTime();
+        return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0).getTime();
+    }
+    let parts = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (parts) {
+        return new Date(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1]), 12, 0, 0).getTime();
     }
     let d = new Date(s);
-    if (isNaN(d.getTime())) {
-        let parts = s.match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/);
-        if (parts) {
-            let p1 = parseInt(parts[1]), p2 = parseInt(parts[2]), p3 = parseInt(parts[3]);
-            if (p1 > 1000) d = new Date(p1, p2 - 1, p3, 12, 0, 0); 
-            else if (p3 > 1000) d = new Date(p3, p2 - 1, p1, 12, 0, 0); 
-        }
-    }
     return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
@@ -786,15 +791,12 @@ document.addEventListener('click', function(e) {
             });
         }
 
-        // الاستماع للتحديثات المركزية من السحابة أو الصفحات الأخرى
-        window.addEventListener('seraj:updated', (e) => {
+// الاستماع للتحديثات المركزية من السحابة أو الصفحات الأخرى
+window.addEventListener('seraj:updated', (e) => {
             if (window.DB && typeof window.DB.getTreasuryMoves === 'function') {
                 treasuryMovements = window.DB.getTreasuryMoves(true) || [];
             }
             updateTreasuryUI();
-            if (e && e.detail && e.detail.collection === 'treasury_moves') {
-                renderMovementsTable();
-            }
             let activeView = document.querySelector('.active-view');
             if(activeView) {
                 if(activeView.id === 'treasury-movements-view') renderMovementsTable();
@@ -1113,10 +1115,10 @@ function updateTreasuryUI() {
 // 1. دالة عرض حركات الخزينة الشاملة
 // ==========================================
 function renderMovementsTable() {
-    // جلب أحدث الحركات دائماً لضمان التحديث الفوري دون الحاجة لعمل Refresh
-    if (typeof DB !== 'undefined') {
-        treasuryMovements = DB.getTreasuryMoves(true) || [];
-        vaultsDB = DB.getVaults() || {};
+    // إجبار السحب المباشر المدمج من db.js دائماً (فك الحظر)
+    if (window.DB && typeof window.DB.getTreasuryMoves === 'function') {
+        treasuryMovements = window.DB.getTreasuryMoves(true) || [];
+        vaultsDB = typeof window.DB.recalculateVaultBalances === 'function' ? window.DB.recalculateVaultBalances(true) : (window.DB.getVaults() || {});
     }
 
     const tbody = document.getElementById('movementsTableBody');
@@ -1124,20 +1126,24 @@ function renderMovementsTable() {
 
     let list = [...treasuryMovements];
 
-    // الترتيب الزمني الدقيق (بالأحدث مطلقاً بناءً على الـ timestamp ثم التاريخ ثم رقم الحركة)
-    const calcTime = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? window.Utils.getSafeTime : getSafeTime;
+    // ترتيب باستخدام الـ timestamp الجاهز من db.js
     list.sort((a, b) => {
-        let timeA = calcTime(a.timestamp || a.date);
-        let timeB = calcTime(b.timestamp || b.date);
+        let timeA = a.timestamp || new Date(a.date).getTime() || 0;
+        let timeB = b.timestamp || new Date(b.date).getTime() || 0;
         if (timeB !== timeA) return timeB - timeA;
         return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
+    // فلترة الأنواع مع السماح التام للفواتير
     if(currentMovementFilter !== 'all') {
         if(currentMovementFilter === 'customers') {
             list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
         } else if (currentMovementFilter === 'suppliers') {
             list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+        } else if (currentMovementFilter === 'purchase') {
+            list = list.filter(m => m.type === 'purchase' || m.type === 'purchases' || m.type === 'purchase_return');
+        } else if (currentMovementFilter === 'sales') {
+            list = list.filter(m => m.type === 'sales' || m.type === 'sale' || m.type === 'return_sale');
         } else {
             list = list.filter(m => m.type === currentMovementFilter);
         }
@@ -1145,45 +1151,46 @@ function renderMovementsTable() {
 
     if(currentVaultFilter !== 'all') {
         list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+
     }
 
-    const now = new Date();
-    const todayStr = getLocalDateStr(now);
+    if(currentVaultFilter !== 'all') {
+        list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+    }
+
+    // إعداد تواريخ المقارنة الآمنة (اليوم وأمس) لمنع التصفير بسبب الساعات
+// جلب تاريخ اليوم والأمس بصيغة YYYY-MM-DD لتطابق ما يرسله db.js
+const now = new Date();
+    
+    // دالة محلية سريعة لإنتاج YYYY-MM-DD
+    const getLocalYYYYMMDD = (d) => {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+
+    const todayStr = getLocalYYYYMMDD(now);
     let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
-    const yestStr = getLocalDateStr(yestDate);
+    const yestStr = getLocalYYYYMMDD(yestDate);
 
     list = list.filter(m => {
-        let itemTime = getSafeTime(m.date || m.timestamp);
-        let itemDateStr = getLocalDateStr(itemTime);
+        let mDate = m.date || todayStr; // التاريخ قادم نظيف من السيرفر
+        let itemTime = m.timestamp || new Date(mDate).getTime();
 
-        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
-        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
-        if(currentDurationFilter === '7days') { 
-            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime(); 
-        }
-        if(currentDurationFilter === 'thisMonth') {
-            let d = new Date(itemTime);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }
-        if(currentDurationFilter === '30days') {
-            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime();
-        }
+        if(currentDurationFilter === 'today') return mDate === todayStr;
+        if(currentDurationFilter === 'yesterday') return mDate === yestStr;
+        if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0); return itemTime >= d.getTime(); }
+        if(currentDurationFilter === 'thisMonth') return mDate.slice(0,7) === todayStr.slice(0,7);
+        if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0); return itemTime >= d.getTime(); }
         if(currentDurationFilter === 'lastMonth') {
-            let d = new Date(itemTime);
             let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+            let lastMStr = getLocalYYYYMMDD(lastM).slice(0,7);
+            return mDate.slice(0,7) === lastMStr;
         }
         if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
-            let sTime = getSafeTime(customStartDate);
-            let eTime = getSafeTime(customEndDate) + 86399999;
-            return itemTime >= sTime && itemTime <= eTime;
+            return mDate >= customStartDate && mDate <= customEndDate;
         }
         return true;
     });
 
-    // 1. حساب الإجماليات على 100% من البيانات
     let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
     let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
 
@@ -1200,31 +1207,29 @@ function renderMovementsTable() {
         return;
     }
 
-    // 2. تطبيق الحد الأقصى (Render Limit 50) والحقن المجمع (DocumentFragment)
     const fragment = document.createDocumentFragment();
-
     let paginatedList = list.slice(0, renderLimitMovements);
 
     paginatedList.forEach(m => {
         const tr = document.createElement('tr');
         let lastTap = 0;
         tr.onclick = () => {
-            let now = Date.now();
-            if (now - lastTap < 350) {
+            let tapNow = Date.now();
+            if (tapNow - lastTap < 350) {
                 selectedMovementId = m.id;
                 document.getElementById('actionSheetModal').style.display = 'flex';
                 lastTap = 0;
             } else {
-                lastTap = now;
+                lastTap = tapNow;
             }
         };
 
         let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
         let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
-        
+
         let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
         let typeStr = typeLabels[m.type] || 'حركة خزينة';
-        let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+        let invoiceNum = m.invoiceNo || m.purchaseId || m.billId || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
         let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
 
         tr.innerHTML = `
@@ -1234,13 +1239,12 @@ function renderMovementsTable() {
                 <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
                 <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
             </td>
-            <td class="total-add">${(m.amountAdd || 0).toFixed(2)}</td>
-            <td class="total-deduct">${(m.amountDeduct || 0).toFixed(2)}</td>
+            <td class="total-add">${(parseFloat(m.amountAdd) || 0).toFixed(2)}</td>
+            <td class="total-deduct">${(parseFloat(m.amountDeduct) || 0).toFixed(2)}</td>
         `;
         fragment.appendChild(tr);
     });
 
-    // إضافة زر "عرض المزيد" إذا كانت القائمة أكبر من الحد الأقصى
     if (list.length > renderLimitMovements) {
         const moreTr = document.createElement('tr');
         moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
@@ -1248,7 +1252,7 @@ function renderMovementsTable() {
         fragment.appendChild(moreTr);
     }
 
-    tbody.appendChild(fragment); // حقن مرة واحدة فقط (Single DOM Injection)
+    tbody.appendChild(fragment);
 }
 
 // ==========================================
@@ -1288,38 +1292,34 @@ function renderExpensesList() {
         });
     }
 
-    const now = new Date();
-    const todayStr = getLocalDateStr(now);
+// جلب تاريخ اليوم والأمس بصيغة YYYY-MM-DD لتطابق ما يرسله db.js
+const now = new Date();
+    
+    // دالة محلية سريعة لإنتاج YYYY-MM-DD
+    const getLocalYYYYMMDD = (d) => {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+
+    const todayStr = getLocalYYYYMMDD(now);
     let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
-    const yestStr = getLocalDateStr(yestDate);
+    const yestStr = getLocalYYYYMMDD(yestDate);
 
-    expenses = expenses.filter(m => {
-        let itemTime = getSafeTime(m.date || m.timestamp);
-        let itemDateStr = getLocalDateStr(itemTime);
+    list = list.filter(m => {
+        let mDate = m.date || todayStr; // التاريخ قادم نظيف من السيرفر
+        let itemTime = m.timestamp || new Date(mDate).getTime();
 
-        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
-        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
-        if(currentDurationFilter === '7days') { 
-            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime(); 
-        }
-        if(currentDurationFilter === 'thisMonth') {
-            let d = new Date(itemTime);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }
-        if(currentDurationFilter === '30days') {
-            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime();
-        }
+        if(currentDurationFilter === 'today') return mDate === todayStr;
+        if(currentDurationFilter === 'yesterday') return mDate === yestStr;
+        if(currentDurationFilter === '7days') { let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0); return itemTime >= d.getTime(); }
+        if(currentDurationFilter === 'thisMonth') return mDate.slice(0,7) === todayStr.slice(0,7);
+        if(currentDurationFilter === '30days') { let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0); return itemTime >= d.getTime(); }
         if(currentDurationFilter === 'lastMonth') {
-            let d = new Date(itemTime);
             let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+            let lastMStr = getLocalYYYYMMDD(lastM).slice(0,7);
+            return mDate.slice(0,7) === lastMStr;
         }
         if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
-            let sTime = getSafeTime(customStartDate);
-            let eTime = getSafeTime(customEndDate) + 86399999;
-            return itemTime >= sTime && itemTime <= eTime;
+            return mDate >= customStartDate && mDate <= customEndDate;
         }
         return true;
     });
