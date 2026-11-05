@@ -9,13 +9,9 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#070913">
     <script src="print_manager.js"></script>
-    <!-- ربط ملف التصميم الخارجي كما طلبت -->
-    <link rel="stylesheet" href="style.css">
-
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
+<!-- ربط ملف التصميم الخارجي كما طلبت -->
+<link rel="stylesheet" href="style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         /* ========================================================= */
         /* 🚀 أكواد كسر التجميد وإصلاح تعارضات التمرير */
@@ -122,7 +118,7 @@
         .main-action-btn:active { filter: brightness(1.2); transform: scale(0.96); }
 
         /* أزرار الإعدادات والمصروفات الداخلية */
-        .expense-trigger-btn { background-color: var(--card-bg-solid); color: var(--accent-red); border: 2px solid var(--accent-red); width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--btn-cancel-glow); margin-bottom: 10px;}
+        .expense-trigger-btn { background-color: var(--card-bg-solid); color: var(--accent-red); border: 2px solid var(--accent-red); width: 100%; margin: auto; display: block; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--btn-cancel-glow); margin-bottom: 10px; box-sizing: border-box;}
         .program-settings-btn { background-color: var(--card-bg-solid); color: var(--neon-border); border: 2px solid var(--neon-border); width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--neon-glow); margin-bottom: 20px;}
         .expense-trigger-btn:active, .program-settings-btn:active { transform: scale(0.95); }
 
@@ -270,35 +266,37 @@
         </div>
     </div>
 
-    <!-- الشاشة 1: لوحة الخزينة الرئيسية -->
-    <div id="treasury-main-view" class="view-section">
-        <div class="header">
-            <span>الخزينة</span>
+<!-- الشاشة 1: لوحة الخزينة الرئيسية -->
+<div id="treasury-main-view" class="view-section">
+    <div class="header">
+        <span>الخزينة</span>
+    </div>
+
+    <div class="treasury-container">
+        <div class="vault-cards-row">
+            <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main')">
+                <div class="v-title">الرئيسية (كاش)</div>
+                <div class="v-val" id="vaultMainBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta')">
+                <div class="v-title">إنستا (InstaPay)</div>
+                <div class="v-val" id="vaultInstaBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet')">
+                <div class="v-title">المحفظة الإلكترونية</div>
+                <div class="v-val" id="vaultWalletBal">0.00</div>
+            </div>
         </div>
 
-        <div class="treasury-container">
-            <div class="vault-cards-row">
-                <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main', true)">
-                    <div class="v-title">الرئيسية (كاش)</div>
-                    <div class="v-val" id="vaultMainBal">0.00</div>
+        <div class="treasury-card">
+            <div class="balance-box" onclick="openMovementsWithVault(currentSelectedVault)" style="cursor: pointer;" title="اضغط لعرض حركات هذه الخزينة">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #facc15; font-weight: normal; opacity: 0.85; margin-bottom: 6px;">
+                    <span>اضغط</span>
+                    <span>للتفاصيل 📋</span>
                 </div>
-                <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta', true)">
-                    <div class="v-title">إنستا (InstaPay)</div>
-                    <div class="v-val" id="vaultInstaBal">0.00</div>
-                </div>
-                <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet', true)">
-                    <div class="v-title">المحفظة الإلكترونية</div>
-                    <div class="v-val" id="vaultWalletBal">0.00</div>
-                </div>
+                <div class="balance-title" id="mainBalanceBoxTitle">الرصيد الحالي للرئيسية (كاش)</div>
+                <div class="balance-value" id="currentSelectedVaultBalance">0.00</div>
             </div>
-
-            <div class="treasury-card">
-                <div class="treasury-label">* الخزينة أو الصندوق أو الدرج يشمل المبالغ النقدية السائلة والرقمية</div>
-
-                <div class="balance-box">
-                    <div class="balance-title">الرصيد الحالي للخزينة المحددة</div>
-                    <div class="balance-value" id="currentSelectedVaultBalance">0.00</div>
-                </div>
 
                 <div class="radio-group">
                     <label style="color: #00ff66; text-shadow: 0 0 8px rgba(0,255,102,0.5);"><input type="radio" name="trType" value="add" checked> ➕ إضافة مبلغ</label>
@@ -409,7 +407,7 @@
                 </div>
             </div>
 
-            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط مطولاً على أي سطر لفتح خيارات التعديل أو الحذف</div>
+            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط ضغطتين متتاليتين على أي سطر لفتح خيارات التعديل أو الحذف</div>
 
             <div class="table-wrapper">
                 <table>
@@ -451,36 +449,35 @@
         </div>
     </div>
 
-    <!-- الشاشة 3: صفحة إضافة المصروفات -->
-    <div id="treasury-expense-form-view" class="view-section">
-        <div class="header">
-            <span class="header-title-left">المصروفات</span>
-            <button class="header-action-btn" onclick="switchView('treasury-expense-list-view')">العرض 📋</button>
+<!-- الشاشة 3: صفحة إضافة المصروفات -->
+<div id="treasury-expense-form-view" class="view-section">
+    <div class="header">
+        <span>المصروفات</span>
+    </div>
+
+    <div class="expense-form-container">
+        <div class="vault-cards-row">
+            <div class="vault-mini-card active-vault" id="expCardMain" onclick="selectExpVault('main')">
+                <div class="v-title">الرئيسية (كاش)</div>
+                <div class="v-val" id="expVaultMainBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="expCardInsta" onclick="selectExpVault('insta')">
+                <div class="v-title">إنستا (InstaPay)</div>
+                <div class="v-val" id="expVaultInstaBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="expCardWallet" onclick="selectExpVault('wallet')">
+                <div class="v-title">المحفظة الإلكترونية</div>
+                <div class="v-val" id="expVaultWalletBal">0.00</div>
+            </div>
         </div>
 
-        <div class="expense-form-container">
-            <div class="vault-cards-row">
-                <div class="vault-mini-card active-vault" id="expCardMain" onclick="selectExpVault('main')">
-                    <div class="v-title">الرئيسية (كاش)</div>
-                    <div class="v-val" id="expVaultMainBal">0.00</div>
-                </div>
-                <div class="vault-mini-card" id="expCardInsta" onclick="selectExpVault('insta')">
-                    <div class="v-title">إنستا (InstaPay)</div>
-                    <div class="v-val" id="expVaultInstaBal">0.00</div>
-                </div>
-                <div class="vault-mini-card" id="expCardWallet" onclick="selectExpVault('wallet')">
-                    <div class="v-title">المحفظة الإلكترونية</div>
-                    <div class="v-val" id="expVaultWalletBal">0.00</div>
-                </div>
+        <div class="treasury-card">
+            <div class="treasury-label" id="expActiveVaultLabel">الصرف من: الخزينة الرئيسية (كاش)</div>
+
+            <div class="balance-box" onclick="openExpensesWithVault(currentExpVault)" style="cursor: pointer;" title="اضغط لعرض مصروفات هذه الخزينة">
+                <div class="balance-title" id="expBalanceBoxTitle">الرصيد الحالي للرئيسية (كاش)</div>
+                <div class="balance-value" id="expSelectedVaultBalance">0.00</div>
             </div>
-
-            <div class="treasury-card">
-                <div class="treasury-label" id="expActiveVaultLabel">الصرف من: الخزينة الرئيسية (كاش)</div>
-
-                <div class="balance-box">
-                    <div class="balance-title">الرصيد المتاح</div>
-                    <div class="balance-value" id="expSelectedVaultBalance">0.00</div>
-                </div>
 
                 <div class="form-row">
                     <label>المبلغ:</label>
@@ -739,38 +736,231 @@ let vaultsDB = {};
         let searchDebounceTimeout;
 
        // ==========================================
-// دالة الحماية للتواريخ (المحسنة للتوافق مع db.js وضمان المطابقة المحلية)
-// ==========================================
-function getSafeTime(dateVal) {
-    if (!dateVal) return 0;
-    if (typeof dateVal === 'number') return dateVal;
-    let s = String(dateVal).trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-        let p = s.split('-');
-        return new Date(p[0], p[1]-1, p[2], 12, 0, 0).getTime();
-    }
-    let d = new Date(s);
-    if (isNaN(d.getTime())) {
-        let parts = s.match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/);
-        if (parts) {
-            let p1 = parseInt(parts[1]), p2 = parseInt(parts[2]), p3 = parseInt(parts[3]);
-            if (p1 > 1000) d = new Date(p1, p2 - 1, p3, 12, 0, 0); 
-            else if (p3 > 1000) d = new Date(p3, p2 - 1, p1, 12, 0, 0); 
+        // 1. دالة التواريخ الذكية (تمنع قراءة اليوم كشهر أمريكي وتدعم الأرقام العربية)
+        // ==========================================
+        function getSafeTime(dateVal) {
+            if (!dateVal) return 0;
+            if (typeof dateVal === 'number') return dateVal;
+            let s = String(dateVal).trim().replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+            if (/^\d{10,13}$/.test(s)) return parseInt(s, 10);
+
+            // فحص صريح لصيغ التاريخ YYYY-MM-DD أو DD/MM/YYYY قبل استخدام new Date
+            let parts = s.match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/);
+            if (parts) {
+                let p1 = parseInt(parts[1], 10), p2 = parseInt(parts[2], 10), p3 = parseInt(parts[3], 10);
+                if (p1 > 1000) return new Date(p1, p2 - 1, p3, 12, 0, 0).getTime(); // YYYY-MM-DD
+                if (p3 > 1000) return new Date(p3, p2 - 1, p1, 12, 0, 0).getTime(); // DD/MM/YYYY
+            }
+            let d = new Date(s);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
         }
-    }
-    return isNaN(d.getTime()) ? 0 : d.getTime();
-}
 
-function getLocalDateStr(dateVal) {
-    let t = getSafeTime(dateVal);
-    if (!t) return "";
-    let d = new Date(t);
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
- 
+        function getLocalDateStr(dateVal) {
+            let t = getSafeTime(dateVal);
+            if (!t) return "";
+            let d = new Date(t);
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
 
-// إغلاق أي قائمة مفتوحة وتحديث البيانات لحظياً
-document.addEventListener('click', function(e) {
+        function normalizeVaultKey(v) {
+            if (!v) return 'main';
+            let low = String(v).toLowerCase();
+            if (low.includes('insta') || low.includes('انستا') || low.includes('إنستا')) return 'insta';
+            if (low.includes('wallet') || low.includes('محفظ') || low.includes('كاش') && low.includes('فودافون') || low.includes('اتصالات')) return 'wallet';
+            return 'main';
+        }
+
+        // نوافذ تنبيه وتأكيد متوافقة مع جميع إصدارات db.js
+        function safeAlert(msg, type = 'info') {
+            if (typeof SerajAlert === 'function') SerajAlert(msg, type);
+            else alert(msg);
+        }
+
+        function safeConfirm(msg) {
+            return new Promise((resolve) => {
+                if (typeof SerajConfirm === 'function') {
+                    let res = SerajConfirm(msg, (ans) => resolve(ans));
+                    if (res && typeof res.then === 'function') res.then(resolve);
+                } else {
+                    resolve(confirm(msg));
+                }
+            });
+        }
+
+        // ==========================================
+        // 2. محرك التجميع الموحد والمزامنة اللحظية للخزينة
+        // ==========================================
+        function getRawTreasuryMoves() {
+            try { return JSON.parse(localStorage.getItem('seraj_treasury_moves') || '[]'); }
+            catch(e) { return []; }
+        }
+
+        function syncSingleMoveToCloud(moveObj, isDelete = false) {
+            let storeId = localStorage.getItem('seraj_store_id') || '9999';
+            let safeId = String(moveObj.id).replace(/[.#$\[\]]/g, "_");
+            if (window.dbCloud && navigator.onLine) {
+                let ref = window.dbCloud.ref('test_Stores/' + storeId + '/treasury_moves/' + safeId);
+                if (isDelete) ref.remove().catch(e => console.error(e));
+                else ref.set(moveObj).catch(e => console.error(e));
+            }
+        }
+
+        function buildUnifiedTreasuryMovements() {
+            let rawMoves = getRawTreasuryMoves();
+            let unified = [];
+            let linkedInvoiceKeys = new Set();
+
+            // 1. تجهيز حركات الخزينة المباشرة والمصروفات والسندات
+            rawMoves.forEach(m => {
+                if (!m || m.isCanceled) return;
+                let ts = getSafeTime(m.date || m.timestamp) || Date.now();
+                let dateStr = getLocalDateStr(ts);
+                let vKey = normalizeVaultKey(m.vault || m.treasury);
+
+                let addAmt = parseFloat(m.amountAdd) || 0;
+                let dedAmt = parseFloat(m.amountDeduct) || 0;
+                if (addAmt === 0 && dedAmt === 0 && m.amount) {
+                    let rawAmt = parseFloat(m.amount) || 0;
+                    if (m.direction === 'out' || m.type === 'payment' || m.type === 'customer_payment' || m.type === 'supplier_payment' || m.type === 'purchase_payment' || m.type === 'expenses' || m.type === 'purchase' || m.type === 'return_sale' || m.type === 'sales_return') {
+                        dedAmt = rawAmt;
+                    } else {
+                        addAmt = rawAmt;
+                    }
+                }
+
+                // توحيد مسمى النوع ليتطابق مع فلاتر صفحة الخزينة
+                let normType = m.type || 'direct';
+                if (normType === 'sale') normType = 'sales';
+                else if (normType === 'sales_return' || normType === 'return') normType = 'return_sale';
+                else if (normType === 'purchases') normType = 'purchase';
+                else if (normType === 'receipt' || normType === 'payment') {
+                    if (m.customerId || m.customer) normType = (normType === 'receipt') ? 'customer_receipt' : 'customer_payment';
+                    else if (m.supplierId || m.supplier) normType = (normType === 'receipt') ? 'supplier_receipt' : 'supplier_payment';
+                }
+
+                if ((normType.includes('customer') || normType.includes('supplier')) && !treasurySettings.cust) return;
+
+                if (m.invoiceNo) linkedInvoiceKeys.add(String(m.invoiceNo));
+                linkedInvoiceKeys.add(String(m.id));
+
+                unified.push({
+                    ...m,
+                    id: m.id,
+                    type: normType,
+                    vault: vKey,
+                    amountAdd: addAmt,
+                    amountDeduct: dedAmt,
+                    date: dateStr,
+                    timestamp: ts,
+                    notes: m.notes || (m.customer ? `سند عميل: ${m.customer}` : (m.supplier ? `سند مورد: ${m.supplier}` : 'حركة خزينة'))
+                });
+            });
+
+            // 2. دمج فواتير المبيعات والمرتجعات المدفوعة (دون تكرار)
+            if (treasurySettings.sales !== false) {
+                let sales = (typeof DB !== 'undefined' && typeof DB.getSalesInvoices === 'function')
+                    ? DB.getSalesInvoices()
+                    : JSON.parse(localStorage.getItem('seraj_sales_invoices') || '[]');
+
+                sales.forEach(inv => {
+                    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation') return;
+                    let invKey = String(inv.invoiceNo || inv.id || '');
+                    if (linkedInvoiceKeys.has(String(inv.id)) || (inv.invoiceNo && linkedInvoiceKeys.has(String(inv.invoiceNo)))) return;
+
+                    let paid = parseFloat(inv.initialPaid !== undefined && inv.initialPaid !== null ? inv.initialPaid : inv.paid) || 0;
+                    if (paid <= 0) return;
+
+                    let ts = getSafeTime(inv.date || inv.timestamp) || Date.now();
+                    let isRet = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                    let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
+                    let cName = inv.customer || inv.customerName || 'عميل نقدي';
+
+                    unified.push({
+                        id: inv.id,
+                        type: isRet ? 'return_sale' : 'sales',
+                        vault: vKey,
+                        amountAdd: isRet ? 0 : paid,
+                        amountDeduct: isRet ? paid : 0,
+                        notes: `${isRet ? 'مرتجع مبيعات' : 'فاتورة بيع'} - ${cName}`,
+                        date: getLocalDateStr(ts),
+                        timestamp: ts,
+                        invoiceNo: invKey,
+                        _device: inv._device || inv.cashier || 'نقطة بيع',
+                        _isInvoice: true
+                    });
+                });
+            }
+
+            // 3. دمج فواتير المشتريات المدفوعة (دون تكرار)
+            if (treasurySettings.purchase !== false) {
+                let purchases = (typeof DB !== 'undefined' && typeof DB.getPurchaseInvoices === 'function')
+                    ? DB.getPurchaseInvoices()
+                    : JSON.parse(localStorage.getItem('seraj_purchase_invoices') || '[]');
+
+                purchases.forEach(inv => {
+                    if (!inv || inv.isCanceled || inv.type === 'canceled') return;
+                    let invKey = String(inv.invoiceNo || inv.id || '');
+                    if (linkedInvoiceKeys.has(String(inv.id)) || (inv.invoiceNo && linkedInvoiceKeys.has(String(inv.invoiceNo)))) return;
+
+                    let paid = parseFloat(inv.initialPaid !== undefined && inv.initialPaid !== null ? inv.initialPaid : inv.paid) || 0;
+                    if (paid <= 0) return;
+
+                    let ts = getSafeTime(inv.date || inv.timestamp) || Date.now();
+                    let isRet = (inv.type === 'return' || inv.type === 'purchase_return');
+                    let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
+                    let sName = inv.supplier || inv.supplierName || 'مورد';
+
+                    unified.push({
+                        id: inv.id,
+                        type: 'purchase',
+                        vault: vKey,
+                        amountAdd: isRet ? paid : 0,
+                        amountDeduct: isRet ? 0 : paid,
+                        notes: `${isRet ? 'مرتجع مشتريات' : 'فاتورة شراء'} - ${sName}`,
+                        date: getLocalDateStr(ts),
+                        timestamp: ts,
+                        invoiceNo: invKey,
+                        _device: inv._device || inv.cashier || 'المشتريات',
+                        _isInvoice: true
+                    });
+                });
+            }
+
+            treasuryMovements = unified;
+            return unified;
+        }
+
+        function recalculateVaultBalances() {
+            let allMoves = buildUnifiedTreasuryMovements();
+            let calc = { main: 0, insta: 0, wallet: 0 };
+            allMoves.forEach(m => {
+                let v = normalizeVaultKey(m.vault);
+                calc[v] = (calc[v] || 0) + (parseFloat(m.amountAdd) || 0) - (parseFloat(m.amountDeduct) || 0);
+            });
+            vaultsDB = {
+                main: Math.round(calc.main * 100) / 100,
+                insta: Math.round(calc.insta * 100) / 100,
+                wallet: Math.round(calc.wallet * 100) / 100
+            };
+            localStorage.setItem('seraj_vaults_v2', JSON.stringify(vaultsDB));
+            return vaultsDB;
+        }
+
+        function refreshVaultCardsDOM() {
+            recalculateVaultBalances();
+            if (document.getElementById('vaultMainBal')) document.getElementById('vaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
+            if (document.getElementById('vaultInstaBal')) document.getElementById('vaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
+            if (document.getElementById('vaultWalletBal')) document.getElementById('vaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            if (document.getElementById('currentSelectedVaultBalance')) document.getElementById('currentSelectedVaultBalance').innerText = (vaultsDB[currentSelectedVault] || 0).toFixed(2);
+
+            if (document.getElementById('expVaultMainBal')) document.getElementById('expVaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
+            if (document.getElementById('expVaultInstaBal')) document.getElementById('expVaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
+            if (document.getElementById('expVaultWalletBal')) document.getElementById('expVaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            if (document.getElementById('expSelectedVaultBalance')) document.getElementById('expSelectedVaultBalance').innerText = (vaultsDB[currentExpVault] || 0).toFixed(2);
+        }
+
+        // إغلاق القوائم المفتوحة
+        document.addEventListener('click', function() {
             closeAllMenus();
         });
 
@@ -785,27 +975,45 @@ document.addEventListener('click', function(e) {
             });
         }
 
-        // الاستماع للتحديثات المركزية من السحابة أو الصفحات الأخرى
-        window.addEventListener('seraj:updated', (e) => {
-            if (window.DB && typeof window.DB.getTreasuryMoves === 'function') {
-                treasuryMovements = window.DB.getTreasuryMoves(true) || [];
-            }
-            updateTreasuryUI();
-            if (e && e.detail && e.detail.collection === 'treasury_moves') {
-                renderMovementsTable();
-            }
-            let activeView = document.querySelector('.active-view');
-            if(activeView) {
-                if(activeView.id === 'treasury-movements-view') renderMovementsTable();
-                if(activeView.id === 'treasury-expense-list-view') renderExpensesList();
-            }
+        // الاستماع للتحديثات المركزية والسحابية لحظياً
+        window.addEventListener('seraj:updated', () => {
+            refreshVaultCardsDOM();
+            renderMovementsTable(true);
+            renderExpensesList(true);
         });
+
+        window.addEventListener('storage', () => {
+            refreshVaultCardsDOM();
+            renderMovementsTable(true);
+            renderExpensesList(true);
+        });
+
+        // ربط رادار مباشر للسحابة داخل صفحة الخزينة لضمان التحديث اللحظي بين الأجهزة
+        let treasuryCloudHooked = false;
+        setInterval(() => {
+            if (!treasuryCloudHooked && window.dbCloud) {
+                treasuryCloudHooked = true;
+                let sId = localStorage.getItem('seraj_store_id') || '9999';
+                ['treasury_moves', 'sales_invoices', 'purchase_invoices'].forEach(col => {
+                    window.dbCloud.ref('test_Stores/' + sId + '/' + col).on('value', snap => {
+                        if (snap.exists()) {
+                            let valObj = snap.val();
+                            let arr = Array.isArray(valObj) ? valObj.filter(Boolean) : Object.values(valObj);
+                            localStorage.setItem('seraj_' + col, JSON.stringify(arr));
+                            refreshVaultCardsDOM();
+                            renderMovementsTable(true);
+                            renderExpensesList(true);
+                        }
+                    });
+                });
+            }
+        }, 1200);
 
         // ==========================================
         // الدوال الحساسة للتحكم في القوائم المنسدلة
         // ==========================================
         function toggleMovementFilterMenu(e) {
-            e.stopPropagation(); // منع انتقال الضغطة للخلفية
+            e.stopPropagation();
             let m = document.getElementById('movementFilterDropdown');
             let isBlock = (m.style.display === 'block');
             closeAllMenus();
@@ -851,8 +1059,7 @@ document.addEventListener('click', function(e) {
             } else if(viewId === 'treasury-movements-view') {
                 renderMovementsTable();
             } else if(viewId === 'treasury-expense-form-view') {
-                let t = new Date();
-                document.getElementById('fullExpDate').value = t.toISOString().split('T')[0];
+                document.getElementById('fullExpDate').value = getLocalDateStr(Date.now());
                 document.getElementById('fullExpAmount').value = '';
                 document.getElementById('fullExpDestination').value = '';
                 updateExpenseVaultUI();
@@ -861,148 +1068,150 @@ document.addEventListener('click', function(e) {
             }
         }
 
-        // ==========================================
-        // الحسابات الدقيقة (المحرك القديم المطابق تماماً)
-        // ==========================================
-        function recalculateVaultBalances() {
-            if (typeof DB !== 'undefined' && typeof DB.recalculateVaultBalances === 'function') {
-                vaultsDB = DB.recalculateVaultBalances() || { main: 0, insta: 0, wallet: 0 };
-            } else if (typeof DB !== 'undefined') {
-                vaultsDB = DB.getVaults() || { main: 0, insta: 0, wallet: 0 };
+        function updateTreasuryUI() {
+            refreshVaultCardsDOM();
+            selectVault(currentSelectedVault);
+            let trDateInput = document.getElementById('trDate');
+            if (trDateInput && !trDateInput.value) {
+                trDateInput.value = getLocalDateStr(Date.now());
             }
         }
 
-function updateTreasuryUI() {
-            recalculateVaultBalances(); 
-            document.getElementById('vaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
-            document.getElementById('vaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
-            document.getElementById('vaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
-            selectVault(currentSelectedVault);
-            let t = new Date();
-            document.getElementById('trDate').value = t.toISOString().split('T')[0];
-        }
-
         function updateExpenseVaultUI() {
-            recalculateVaultBalances(); 
-            document.getElementById('expVaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
-            document.getElementById('expVaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
-            document.getElementById('expVaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            refreshVaultCardsDOM();
             selectExpVault(currentExpVault);
         }
 
         function saveTreasuryTransaction() {
-            window.Utils.preventDoubleClick(event.target, async (btn) => {
-                let amount = parseFloat(document.getElementById('trAmount').value) || 0;
-                let notes = document.getElementById('trNotes').value.trim() || 'حركة خزينة مباشرة';
-                let date = document.getElementById('trDate').value;
-                let isAdd = document.querySelector('input[name="trType"]:checked').value === 'add';
+            let amount = parseFloat(document.getElementById('trAmount').value) || 0;
+            let notes = document.getElementById('trNotes').value.trim() || 'حركة خزينة مباشرة';
+            let date = document.getElementById('trDate').value || getLocalDateStr(Date.now());
+            let isAdd = document.querySelector('input[name="trType"]:checked').value === 'add';
 
-                if(amount <= 0) return await SerajAlert("برجاء إدخال مبلغ صحيح!");
+            if(amount <= 0) return safeAlert("برجاء إدخال مبلغ صحيح!", "error");
 
-                let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+            let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+            let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId() : (typeof window.generateUniqueId === 'function' ? window.generateUniqueId() : Date.now());
 
-                let moveObj = {
-                    id: window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now(),
-                    type: 'direct',
-                    vault: currentSelectedVault,
-                    amountAdd: isAdd ? amount : 0,
-                    amountDeduct: isAdd ? 0 : amount,
-                    notes: notes,
-                    date: date,
-                    _device: dName
-                };
+            let moveObj = {
+                id: newId,
+                type: 'direct',
+                vault: currentSelectedVault,
+                treasury: currentSelectedVault,
+                amountAdd: isAdd ? amount : 0,
+                amountDeduct: isAdd ? 0 : amount,
+                amount: amount,
+                notes: notes,
+                date: date,
+                timestamp: Date.now(),
+                _device: dName
+            };
 
-                if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-                    DB.recordTreasuryTransaction(moveObj);
-                } else {
-                    // طريقة احتياطية قديمة لو الـ DB مش جاهز
-                    treasuryMovements = DB.getTreasuryMoves() || [];
-                    treasuryMovements.push(moveObj);
-                    DB.saveTreasuryMoves(treasuryMovements);
-                    if(isAdd) vaultsDB[currentSelectedVault] = (vaultsDB[currentSelectedVault] || 0) + amount;
-                    else vaultsDB[currentSelectedVault] = (vaultsDB[currentSelectedVault] || 0) - amount;
-                    DB.saveVaults(vaultsDB);
-                }
+            let rawMoves = getRawTreasuryMoves();
+            rawMoves.unshift(moveObj);
+            if (typeof DB !== 'undefined' && typeof DB.saveTreasuryMoves === 'function') {
+                DB.saveTreasuryMoves(rawMoves);
+            } else {
+                localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
+            }
+            syncSingleMoveToCloud(moveObj, false);
 
-                await SerajAlert("تم حفظ الحركة بنجاح!");
-                document.getElementById('trAmount').value = '';
-                document.getElementById('trNotes').value = '';
-                updateTreasuryUI();
-                renderMovementsTable();
-            });
+            document.getElementById('trAmount').value = '';
+            document.getElementById('trNotes').value = '';
+            updateTreasuryUI();
+            if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
+            renderMovementsTable();
+            safeAlert("تم حفظ الحركة ومزامنتها بنجاح!", "success");
         }
 
         function saveFullExpense() {
-            window.Utils.preventDoubleClick(event.target, async (btn) => {
-                let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
-                let destination = document.getElementById('fullExpDestination').value.trim();
-                let date = document.getElementById('fullExpDate').value;
+            let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
+            let destination = document.getElementById('fullExpDestination').value.trim();
+            let date = document.getElementById('fullExpDate').value || getLocalDateStr(Date.now());
 
-                if(!destination) return await SerajAlert("برجاء إدخال جهة الصرف (خانة إجبارية)!");
-                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
+            if(!destination) return safeAlert("برجاء إدخال جهة الصرف (خانة إجبارية)!", "error");
+            if(amount <= 0) return safeAlert("أدخل مبلغ صحيح!", "error");
 
-                let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+            let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+            let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId() : (typeof window.generateUniqueId === 'function' ? window.generateUniqueId() : Date.now());
 
-                let moveObj = {
-                    id: window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now(),
-                    type: 'expenses',
-                    vault: currentExpVault,
-                    amountAdd: 0,
-                    amountDeduct: amount,
-                    notes: destination,
-                    date: date,
-                    _device: dName
-                };
+            let moveObj = {
+                id: newId,
+                type: 'expenses',
+                vault: currentExpVault,
+                treasury: currentExpVault,
+                amountAdd: 0,
+                amountDeduct: amount,
+                amount: amount,
+                notes: destination,
+                date: date,
+                timestamp: Date.now(),
+                _device: dName
+            };
 
-                if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-                    DB.recordTreasuryTransaction(moveObj);
-                } else {
-                    treasuryMovements = DB.getTreasuryMoves() || [];
-                    treasuryMovements.push(moveObj);
-                    DB.saveTreasuryMoves(treasuryMovements);
-                    vaultsDB[currentExpVault] = (vaultsDB[currentExpVault] || 0) - amount;
-                    DB.saveVaults(vaultsDB);
-                }
+            let rawMoves = getRawTreasuryMoves();
+            rawMoves.unshift(moveObj);
+            if (typeof DB !== 'undefined' && typeof DB.saveTreasuryMoves === 'function') {
+                DB.saveTreasuryMoves(rawMoves);
+            } else {
+                localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
+            }
+            syncSingleMoveToCloud(moveObj, false);
 
-                await SerajAlert("تم حفظ المصروف بنجاح!");
-                switchView('treasury-expense-list-view');
-            });
+            updateExpenseVaultUI();
+            if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
+            renderMovementsTable();
+            switchView('treasury-expense-list-view');
+            safeAlert("تم حفظ المصروف ومزامنته بنجاح!", "success");
         }
 
+// ==========================================
+        // دوال الاختيار وتغيير الخزائن
         // ==========================================
-        // دوال الاختيار وتغيير الخزائن (مع دعم الضغطتين السريعتين للدخول للحركة)
-        // ==========================================
-        let lastVaultTapTime = 0;
-        let lastVaultTapKey = '';
-
-        function selectVault(vaultKey, isUserClick = false) {
-            if (isUserClick) {
-                let now = Date.now();
-                if (lastVaultTapKey === vaultKey && (now - lastVaultTapTime) < 350) {
-                    lastVaultTapTime = 0;
-                    openMovementsWithVault(vaultKey);
-                    return;
-                }
-                lastVaultTapTime = now;
-                lastVaultTapKey = vaultKey;
-            }
-
+        function selectVault(vaultKey) {
             currentSelectedVault = vaultKey;
             document.querySelectorAll('#treasury-main-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
-            if(vaultKey === 'main') document.getElementById('cardVaultMain').classList.add('active-vault');
-            else if(vaultKey === 'insta') document.getElementById('cardVaultInsta').classList.add('active-vault');
-            else if(vaultKey === 'wallet') document.getElementById('cardVaultWallet').classList.add('active-vault');
+            
+            let titleText = "الرصيد الحالي للرئيسية (كاش)";
+            if(vaultKey === 'main') {
+                document.getElementById('cardVaultMain').classList.add('active-vault');
+                titleText = "الرصيد الحالي للرئيسية (كاش)";
+            } else if(vaultKey === 'insta') {
+                document.getElementById('cardVaultInsta').classList.add('active-vault');
+                titleText = "الرصيد الحالي لإنستا باي";
+            } else if(vaultKey === 'wallet') {
+                document.getElementById('cardVaultWallet').classList.add('active-vault');
+                titleText = "الرصيد الحالي للمحفظة الإلكترونية";
+            }
+            
+            let titleEl = document.getElementById('mainBalanceBoxTitle');
+            if(titleEl) titleEl.innerText = titleText;
             document.getElementById('currentSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
         }
 
         function selectExpVault(vaultKey) {
             currentExpVault = vaultKey;
             document.querySelectorAll('#treasury-expense-form-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
-            let labelName = "الرئيسية (كاش)";
-            if(vaultKey === 'main') { document.getElementById('expCardMain').classList.add('active-vault'); labelName = "الخزينة الرئيسية (كاش)"; }
-            else if(vaultKey === 'insta') { document.getElementById('expCardInsta').classList.add('active-vault'); labelName = "خزينة أنستا (InstaPay)"; }
-            else if(vaultKey === 'wallet') { document.getElementById('expCardWallet').classList.add('active-vault'); labelName = "خزينة المحفظة الإلكترونية"; }
+            
+            let labelName = "الخزينة الرئيسية (كاش)";
+            let boxTitle = "الرصيد الحالي للرئيسية (كاش)";
+            if(vaultKey === 'main') { 
+                document.getElementById('expCardMain').classList.add('active-vault'); 
+                labelName = "الخزينة الرئيسية (كاش)"; 
+                boxTitle = "الرصيد الحالي للرئيسية (كاش)";
+            } else if(vaultKey === 'insta') { 
+                document.getElementById('expCardInsta').classList.add('active-vault'); 
+                labelName = "خزينة أنستا (InstaPay)"; 
+                boxTitle = "الرصيد الحالي لإنستا باي";
+            } else if(vaultKey === 'wallet') { 
+                document.getElementById('expCardWallet').classList.add('active-vault'); 
+                labelName = "خزينة المحفظة الإلكترونية"; 
+                boxTitle = "الرصيد الحالي للمحفظة الإلكترونية";
+            }
+            
             document.getElementById('expActiveVaultLabel').innerText = `الصرف من: ${labelName}`;
+            let expTitleEl = document.getElementById('expBalanceBoxTitle');
+            if(expTitleEl) expTitleEl.innerText = boxTitle;
             document.getElementById('expSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
         }
 
@@ -1011,6 +1220,18 @@ function updateTreasuryUI() {
             let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
             document.getElementById('currentVaultFilterLabel').innerText = labels[vaultKey] || 'كل الخزائن';
             switchView('treasury-movements-view');
+        }
+
+        function openExpensesWithVault(vaultKey) {
+            let expFilterEl = document.getElementById('expVaultFilter');
+            if(expFilterEl) expFilterEl.value = vaultKey || 'all';
+            switchView('treasury-expense-list-view');
+        }
+
+        function openExpensesWithVault(vaultKey) {
+            let expFilterEl = document.getElementById('expVaultFilter');
+            if(expFilterEl) expFilterEl.value = vaultKey || 'all';
+            switchView('treasury-expense-list-view');
         }
 
         // ==========================================
@@ -1084,261 +1305,343 @@ function updateTreasuryUI() {
 
 
 // ==========================================
-// 1. دالة عرض حركات الخزينة الشاملة
-// ==========================================
-function renderMovementsTable() {
-    // جلب أحدث الحركات دائماً لضمان التحديث الفوري دون الحاجة لعمل Refresh
-    if (typeof DB !== 'undefined') {
-        treasuryMovements = DB.getTreasuryMoves(true) || [];
-        vaultsDB = DB.getVaults() || {};
-    }
+        // 1. دالة عرض حركات الخزينة الشاملة (مربوطة بالدمج الفوري)
+        // ==========================================
+        function renderMovementsTable(fromSync = false) {
+            refreshVaultCardsDOM();
 
-    const tbody = document.getElementById('movementsTableBody');
-    if(!tbody) return;
+            const tbody = document.getElementById('movementsTableBody');
+            if(!tbody) return;
 
-    let list = [...treasuryMovements];
+            let list = [...treasuryMovements];
 
-    // الترتيب الزمني الدقيق (بالأحدث مطلقاً بناءً على الـ timestamp ثم التاريخ ثم رقم الحركة)
-    const calcTime = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? window.Utils.getSafeTime : getSafeTime;
-    list.sort((a, b) => {
-        let timeA = calcTime(a.timestamp || a.date);
-        let timeB = calcTime(b.timestamp || b.date);
-        if (timeB !== timeA) return timeB - timeA;
-        return (Number(b.id) || 0) - (Number(a.id) || 0);
-    });
+            list.sort((a, b) => {
+                let timeA = getSafeTime(a.timestamp || a.date);
+                let timeB = getSafeTime(b.timestamp || b.date);
+                if (timeB !== timeA) return timeB - timeA;
+                return String(b.id).localeCompare(String(a.id));
+            });
 
-    if(currentMovementFilter !== 'all') {
-        if(currentMovementFilter === 'customers') {
-            list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
-        } else if (currentMovementFilter === 'suppliers') {
-            list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
-        } else {
-            list = list.filter(m => m.type === currentMovementFilter);
+            if(currentMovementFilter !== 'all') {
+                if(currentMovementFilter === 'customers') {
+                    list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+                } else if (currentMovementFilter === 'suppliers') {
+                    list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+                } else {
+                    list = list.filter(m => m.type === currentMovementFilter);
+                }
+            }
+
+            if(currentVaultFilter !== 'all') {
+                list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+            }
+
+            const now = new Date();
+            const todayStr = getLocalDateStr(now);
+            let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+            const yestStr = getLocalDateStr(yestDate);
+
+            list = list.filter(m => {
+                let itemTime = getSafeTime(m.date || m.timestamp);
+                let itemDateStr = getLocalDateStr(itemTime);
+
+                if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+                if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+                if(currentDurationFilter === '7days') { 
+                    let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime(); 
+                }
+                if(currentDurationFilter === 'thisMonth') {
+                    let d = new Date(itemTime);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }
+                if(currentDurationFilter === '30days') {
+                    let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime();
+                }
+                if(currentDurationFilter === 'lastMonth') {
+                    let d = new Date(itemTime);
+                    let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+                    return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+                }
+                if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+                    let sTime = getSafeTime(customStartDate) - 43200000;
+                    let eTime = getSafeTime(customEndDate) + 43200000;
+                    return itemTime >= sTime && itemTime <= eTime;
+                }
+                return true;
+            });
+
+            let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
+            let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
+
+            document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+            document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+            let net = totalAdd - totalDeduct;
+            let netEl = document.getElementById('sumNetVal');
+            netEl.innerText = net.toFixed(2);
+            netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+
+            tbody.innerHTML = '';
+            if(list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            let paginatedList = list.slice(0, renderLimitMovements);
+
+            paginatedList.forEach(m => {
+                const tr = document.createElement('tr');
+                let lastTap = 0;
+                tr.onclick = () => {
+                    let nowTap = Date.now();
+                    if (nowTap - lastTap < 350) {
+                        selectedMovementId = m.id;
+                        document.getElementById('actionSheetModal').style.display = 'flex';
+                        lastTap = 0;
+                    } else {
+                        lastTap = nowTap;
+                    }
+                };
+
+                let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
+                let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
+                
+                let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
+                let typeStr = typeLabels[m.type] || 'حركة خزينة';
+                let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+                let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
+
+                tr.innerHTML = `
+                    <td style="text-align: right;">
+                        <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}</div>
+                        <div style="font-size:15px; color:#ffffff;">${m.notes}</div>
+                        <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
+                        <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
+                    </td>
+                    <td class="total-add">${(m.amountAdd || 0).toFixed(2)}</td>
+                    <td class="total-deduct">${(m.amountDeduct || 0).toFixed(2)}</td>
+                `;
+                fragment.appendChild(tr);
+            });
+
+            if (list.length > renderLimitMovements) {
+                const moreTr = document.createElement('tr');
+                moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
+                moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
+                fragment.appendChild(moreTr);
+            }
+
+            tbody.appendChild(fragment);
+            if (!fromSync && document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                renderExpensesList(true);
+            }
         }
-    }
 
-    if(currentVaultFilter !== 'all') {
-        list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
-    }
+        // ==========================================
+        // 2. دالة عرض المصروفات
+        // ==========================================
+        function renderExpensesList(fromSync = false) {
+            if (!fromSync) buildUnifiedTreasuryMovements();
 
-    const now = new Date();
-    const todayStr = getLocalDateStr(now);
-    let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
-    const yestStr = getLocalDateStr(yestDate);
+            const container = document.getElementById('expensesListContainer');
+            if(!container) return;
 
-    list = list.filter(m => {
-        let itemTime = getSafeTime(m.date || m.timestamp);
-        let itemDateStr = getLocalDateStr(itemTime);
+            let expenses = treasuryMovements.filter(m => m.type === 'expenses');
 
-        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
-        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
-        if(currentDurationFilter === '7days') { 
-            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime(); 
+            expenses.sort((a, b) => {
+                let timeA = getSafeTime(a.timestamp || a.date);
+                let timeB = getSafeTime(b.timestamp || b.date);
+                if (timeB !== timeA) return timeB - timeA;
+                return String(b.id).localeCompare(String(a.id));
+            });
+
+            let selectedVault = document.getElementById('expVaultFilter');
+            if(selectedVault && selectedVault.value !== 'all') {
+                expenses = expenses.filter(e => (e.vault || 'main') === selectedVault.value);
+            }
+
+            let searchModeEl = document.querySelector('input[name="expSearchType"]:checked');
+            let searchMode = searchModeEl ? searchModeEl.value : 'date';
+            let queryEl = document.getElementById('expenseSearchInput');
+            let query = queryEl ? queryEl.value.trim().toLowerCase() : '';
+
+            if(query) {
+                expenses = expenses.filter(e => {
+                    if(searchMode === 'date') return getLocalDateStr(e.date) === query;
+                    else return String(e.notes || '').toLowerCase().includes(query);
+                });
+            }
+
+            const now = new Date();
+            const todayStr = getLocalDateStr(now);
+            let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+            const yestStr = getLocalDateStr(yestDate);
+
+            expenses = expenses.filter(m => {
+                let itemTime = getSafeTime(m.date || m.timestamp);
+                let itemDateStr = getLocalDateStr(itemTime);
+
+                if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+                if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+                if(currentDurationFilter === '7days') { 
+                    let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime(); 
+                }
+                if(currentDurationFilter === 'thisMonth') {
+                    let d = new Date(itemTime);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }
+                if(currentDurationFilter === '30days') {
+                    let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime();
+                }
+                if(currentDurationFilter === 'lastMonth') {
+                    let d = new Date(itemTime);
+                    let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+                    return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+                }
+                if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+                    let sTime = getSafeTime(customStartDate) - 43200000;
+                    let eTime = getSafeTime(customEndDate) + 43200000;
+                    return itemTime >= sTime && itemTime <= eTime;
+                }
+                return true;
+            });
+
+            container.innerHTML = '';
+            if(expenses.length === 0) {
+                container.innerHTML = `<div style="text-align:center; padding:30px; background:var(--card-bg); border-radius:16px; border:2px solid var(--neon-border);">لا توجد مصروفات مطابقة للبحث</div>`;
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            let paginatedExpenses = expenses.slice(0, renderLimitExpenses);
+
+            paginatedExpenses.forEach(exp => {
+                const card = document.createElement('div');
+                card.style.cssText = "background:var(--card-bg); border:2px solid var(--neon-border); border-radius:16px; padding:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2);";
+                
+                let deviceName = exp._device || exp.device || exp.addedBy || exp.cashier || exp.userName || exp.user_name || 'غير مسجل';
+                let editTag = (exp._lastModifiedBy && exp._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:5px;">✏️ ${exp._lastModifiedBy}</span>` : '';
+
+                card.innerHTML = `
+                    <div>
+                        <div style="font-size:17px; font-weight:bold;">${exp.notes}</div>
+                        <div style="font-size:13px; opacity:0.85; margin-top:4px;">⌚ ${exp.date} - (${exp.vault || 'main'})</div>
+                        <div style="font-size:12px; color:#38bdf8; margin-top:6px;">📱 ${deviceName} ${editTag}</div>
+                    </div>
+                    <div style="font-size:20px; font-weight:bold; color:#ff1a40;">${(exp.amountDeduct || 0).toFixed(2)} جنيه</div>
+                `;
+                
+                let lastTap = 0;
+                card.onclick = () => {
+                    let nowTap = Date.now();
+                    if (nowTap - lastTap < 350) {
+                        selectedMovementId = exp.id;
+                        document.getElementById('actionSheetModal').style.display = 'flex';
+                        lastTap = 0;
+                    } else {
+                        lastTap = nowTap;
+                    }
+                };
+
+                fragment.appendChild(card);
+            });
+
+            if (expenses.length > renderLimitExpenses) {
+                const moreBtn = document.createElement('div');
+                moreBtn.style.cssText = "text-align:center; padding:15px; margin-top:10px; color:#a855f7; font-weight:bold; background:rgba(168, 85, 247, 0.1); border-radius:12px; cursor:pointer;";
+                moreBtn.innerHTML = `⏬ عرض 50 مصروف أقدم... (${expenses.length - renderLimitExpenses} متبقي)`;
+                moreBtn.onclick = () => { renderLimitExpenses += 50; renderExpensesList(); };
+                fragment.appendChild(moreBtn);
+            }
+
+            container.appendChild(fragment);
         }
-        if(currentDurationFilter === 'thisMonth') {
-            let d = new Date(itemTime);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+
+        function openEditMovementModal() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            let m = treasuryMovements.find(x => String(x.id) === String(selectedMovementId));
+            if(!m) return;
+            if(m._isInvoice) return safeAlert("هذه حركة فاتورة؛ يتم تعديلها من سجل الفواتير مباشرة.", "error");
+
+            document.getElementById('editTrId').value = m.id;
+            document.getElementById('editTrAmount').value = m.amountAdd > 0 ? m.amountAdd : m.amountDeduct;
+            document.getElementById('editTrNotes').value = m.notes;
+            document.getElementById('editTrDate').value = getLocalDateStr(m.date || m.timestamp) || getLocalDateStr(Date.now());
+
+            if(m.amountAdd > 0) document.getElementById('editTypeAdd').checked = true;
+            else document.getElementById('editTypeDeduct').checked = true;
+
+            document.getElementById('editMovementModal').style.display = 'flex';
         }
-        if(currentDurationFilter === '30days') {
-            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime();
+
+        function saveEditedMovement() {
+            let id = document.getElementById('editTrId').value;
+            let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
+            let notes = document.getElementById('editTrNotes').value.trim() || 'بدون بيان';
+            let date = document.getElementById('editTrDate').value || getLocalDateStr(Date.now());
+            let isAdd = document.querySelector('input[name="editTrType"]:checked').value === 'add';
+
+            if(amount <= 0) return safeAlert("أدخل مبلغ صحيح!", "error");
+
+            let rawMoves = getRawTreasuryMoves();
+            let index = rawMoves.findIndex(x => String(x.id) === String(id));
+            if(index === -1) return safeAlert("تعذر العثور على الحركة لتعديلها!", "error");
+
+            let targetMove = rawMoves[index];
+            targetMove.amountAdd = isAdd ? amount : 0;
+            targetMove.amountDeduct = isAdd ? 0 : amount;
+            targetMove.amount = amount;
+            targetMove.notes = notes;
+            targetMove.date = date;
+            targetMove._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'المدير';
+
+            if (typeof DB !== 'undefined' && typeof DB.saveTreasuryMoves === 'function') {
+                DB.saveTreasuryMoves(rawMoves);
+            } else {
+                localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
+            }
+            syncSingleMoveToCloud(targetMove, false);
+
+            document.getElementById('editMovementModal').style.display = 'none';
+            updateTreasuryUI();
+            if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
+            renderMovementsTable();
+            renderExpensesList(true);
+            safeAlert("تم تحديث وحفظ الحركة بنجاح!", "success");
         }
-        if(currentDurationFilter === 'lastMonth') {
-            let d = new Date(itemTime);
-            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+
+        async function confirmDeleteMovement() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+
+            let m = treasuryMovements.find(x => String(x.id) === String(selectedMovementId));
+            if(!m) return;
+            if(m._isInvoice) return safeAlert("هذه حركة فاتورة؛ يتم حذفها أو إلغاؤها من سجل الفواتير.", "error");
+            
+            let isConfirmed = await safeConfirm("هل أنت متأكد من حذف هذه الحركة؟ سيتم مسحها نهائياً من النظام والسحابة وتعديل رصيد الخزينة.");
+            if(!isConfirmed) return;
+
+            let rawMoves = getRawTreasuryMoves();
+            let filteredMoves = rawMoves.filter(x => String(x.id) !== String(selectedMovementId));
+
+            if (typeof DB !== 'undefined' && typeof DB.saveTreasuryMoves === 'function') {
+                DB.saveTreasuryMoves(filteredMoves);
+            } else {
+                localStorage.setItem('seraj_treasury_moves', JSON.stringify(filteredMoves));
+            }
+            syncSingleMoveToCloud(m, true);
+
+            updateTreasuryUI();
+            if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
+            renderMovementsTable();
+            renderExpensesList(true);
+            safeAlert("تم حذف الحركة بنجاح من النظام والسحابة!", "success");
         }
-        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
-            let sTime = getSafeTime(customStartDate);
-            let eTime = getSafeTime(customEndDate) + 86399999;
-            return itemTime >= sTime && itemTime <= eTime;
-        }
-        return true;
-    });
-
-    // 1. حساب الإجماليات على 100% من البيانات
-    let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
-    let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
-
-    document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
-    document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
-    let net = totalAdd - totalDeduct;
-    let netEl = document.getElementById('sumNetVal');
-    netEl.innerText = net.toFixed(2);
-    netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
-
-    tbody.innerHTML = '';
-    if(list.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
-        return;
-    }
-
-    // 2. تطبيق الحد الأقصى (Render Limit 50) والحقن المجمع (DocumentFragment)
-    const fragment = document.createDocumentFragment();
-
-    let paginatedList = list.slice(0, renderLimitMovements);
-
-    paginatedList.forEach(m => {
-        const tr = document.createElement('tr');
-        let pressTimer;
-        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = m.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
-        const cancelPress = () => { clearTimeout(pressTimer); };
-        const endPress = (e) => { if (e && e.preventDefault) { e.preventDefault(); } clearTimeout(pressTimer); };
-
-        tr.onmousedown = startPress; tr.onmouseup = endPress; tr.onmouseleave = cancelPress;
-        tr.ontouchstart = startPress; tr.ontouchend = endPress;
-
-        let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
-        let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
-        
-        let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
-        let typeStr = typeLabels[m.type] || 'حركة خزينة';
-        let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
-        let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
-
-        tr.innerHTML = `
-            <td style="text-align: right;">
-                <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}</div>
-                <div style="font-size:15px; color:#ffffff;">${m.notes}</div>
-                <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
-                <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
-            </td>
-            <td class="total-add">${(m.amountAdd || 0).toFixed(2)}</td>
-            <td class="total-deduct">${(m.amountDeduct || 0).toFixed(2)}</td>
-        `;
-        fragment.appendChild(tr);
-    });
-
-    // إضافة زر "عرض المزيد" إذا كانت القائمة أكبر من الحد الأقصى
-    if (list.length > renderLimitMovements) {
-        const moreTr = document.createElement('tr');
-        moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
-        moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
-        fragment.appendChild(moreTr);
-    }
-
-    tbody.appendChild(fragment); // حقن مرة واحدة فقط (Single DOM Injection)
-}
-
-// ==========================================
-// 2. دالة عرض المصروفات
-// ==========================================
-function renderExpensesList() {
-    if (typeof DB !== 'undefined') {
-        treasuryMovements = DB.getTreasuryMoves(true) || [];
-    }
-
-    const container = document.getElementById('expensesListContainer');
-    if(!container) return;
-
-    let expenses = treasuryMovements.filter(m => m.type === 'expenses');
-
-    // ترتيب المصروفات بالأحدث مطلقاً
-    const calcTime = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? window.Utils.getSafeTime : getSafeTime;
-    expenses.sort((a, b) => {
-        let timeA = calcTime(a.timestamp || a.date);
-        let timeB = calcTime(b.timestamp || b.date);
-        if (timeB !== timeA) return timeB - timeA;
-        return (Number(b.id) || 0) - (Number(a.id) || 0);
-    });
-
-    let selectedVault = document.getElementById('expVaultFilter');
-    if(selectedVault && selectedVault.value !== 'all') {
-        expenses = expenses.filter(e => (e.vault || 'main') === selectedVault.value);
-    }
-
-    let searchMode = document.querySelector('input[name="expSearchType"]:checked').value;
-    let query = document.getElementById('expenseSearchInput').value.trim().toLowerCase();
-
-    if(query) {
-        expenses = expenses.filter(e => {
-            if(searchMode === 'date') return getLocalDateStr(e.date) === query;
-            else return e.notes.toLowerCase().includes(query);
-        });
-    }
-
-    const now = new Date();
-    const todayStr = getLocalDateStr(now);
-    let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
-    const yestStr = getLocalDateStr(yestDate);
-
-    expenses = expenses.filter(m => {
-        let itemTime = getSafeTime(m.date || m.timestamp);
-        let itemDateStr = getLocalDateStr(itemTime);
-
-        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
-        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
-        if(currentDurationFilter === '7days') { 
-            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime(); 
-        }
-        if(currentDurationFilter === 'thisMonth') {
-            let d = new Date(itemTime);
-            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        }
-        if(currentDurationFilter === '30days') {
-            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
-            return itemTime >= d.getTime();
-        }
-        if(currentDurationFilter === 'lastMonth') {
-            let d = new Date(itemTime);
-            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
-            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
-        }
-        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
-            let sTime = getSafeTime(customStartDate);
-            let eTime = getSafeTime(customEndDate) + 86399999;
-            return itemTime >= sTime && itemTime <= eTime;
-        }
-        return true;
-    });
-
-    container.innerHTML = '';
-    if(expenses.length === 0) {
-        container.innerHTML = `<div style="text-align:center; padding:30px; background:var(--card-bg); border-radius:16px; border:2px solid var(--neon-border);">لا توجد مصروفات مطابقة للبحث</div>`;
-        return;
-    }
-
-    const fragment = document.createDocumentFragment();
-
-    let paginatedExpenses = expenses.slice(0, renderLimitExpenses);
-
-    paginatedExpenses.forEach(exp => {
-        const card = document.createElement('div');
-        card.style.cssText = "background:var(--card-bg); border:2px solid var(--neon-border); border-radius:16px; padding:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2);";
-        
-        let deviceName = exp._device || exp.device || exp.addedBy || exp.cashier || exp.userName || exp.user_name || 'غير مسجل';
-        let editTag = (exp._lastModifiedBy && exp._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:5px;">✏️ ${exp._lastModifiedBy}</span>` : '';
-
-        card.innerHTML = `
-            <div>
-                <div style="font-size:17px; font-weight:bold;">${exp.notes}</div>
-                <div style="font-size:13px; opacity:0.85; margin-top:4px;">⌚ ${exp.date} - (${exp.vault || 'main'})</div>
-                <div style="font-size:12px; color:#38bdf8; margin-top:6px;">📱 ${deviceName} ${editTag}</div>
-            </div>
-            <div style="font-size:20px; font-weight:bold; color:#ff1a40;">${(exp.amountDeduct || 0).toFixed(2)} جنيه</div>
-        `;
-        
-        let pressTimer;
-        const startPress = () => { pressTimer = setTimeout(() => { selectedMovementId = exp.id; document.getElementById('actionSheetModal').style.display = 'flex'; }, 600); };
-        const cancelPress = () => { clearTimeout(pressTimer); };
-        card.onmousedown = startPress; card.onmouseup = cancelPress; card.onmouseleave = cancelPress;
-        card.ontouchstart = startPress; card.ontouchend = cancelPress;
-
-        fragment.appendChild(card);
-    });
-
-    if (expenses.length > renderLimitExpenses) {
-        const moreBtn = document.createElement('div');
-        moreBtn.style.cssText = "text-align:center; padding:15px; margin-top:10px; color:#a855f7; font-weight:bold; background:rgba(168, 85, 247, 0.1); border-radius:12px; cursor:pointer;";
-        moreBtn.innerHTML = `⏬ عرض 50 مصروف أقدم... (${expenses.length - renderLimitExpenses} متبقي)`;
-        moreBtn.onclick = () => { renderLimitExpenses += 50; renderExpensesList(); };
-        fragment.appendChild(moreBtn);
-    }
-
-    container.appendChild(fragment); // حقن مرة واحدة فقط
-}
 
 
         function openEditMovementModal() {
