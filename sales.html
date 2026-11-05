@@ -1,1631 +1,1659 @@
+
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>فاتورة بيع - سراج كاشير</title>
-<link rel="stylesheet" href="style.css">
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#070913">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة الخزينة والمصروفات - سراج LED</title>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#070913">
+    <script src="print_manager.js"></script>
+    <!-- ربط ملف التصميم الخارجي كما طلبت -->
+    <link rel="stylesheet" href="style.css">
+
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        /* ========================================================= */
+        /* 🚀 أكواد كسر التجميد وإصلاح تعارضات التمرير */
+        /* ========================================================= */
+        html, body { 
+            overflow: auto !important; 
+            overflow-y: auto !important; 
+            overflow-x: hidden !important;
+            height: auto !important; 
+            min-height: 100vh;
+            touch-action: auto !important;
+            overscroll-behavior-y: auto !important;
+            padding-bottom: 0 !important;
+        }
+
+        .view-section {
+            padding-bottom: 180px !important; /* ضمان عدم اختفاء أي محتوى تحت الشريط السفلي */
+        }
+
+        .filter-dropdown-box .dropdown-menu {
+            top: 100% !important; /* إجبار القوائم أن تفتح للأسفل */
+            bottom: auto !important;
+            margin-top: 8px !important;
+        }
+
+        .table-wrapper {
+            max-height: none !important; /* جعل التمرير لكامل الصفحة وليس داخل الجدول فقط لسهولة الاستخدام */
+            overflow: visible !important;
+        }
+
+        /* ========================================================= */
+        /* التنسيقات المتوافقة مع ألوان النظام المركزي (Solid V2) */
+        /* ========================================================= */
+        
+        body { 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background-color: var(--bg-dark-solid); /* تم ربطها بخلفية النظام */
+            color: var(--text-white); 
+            margin: 0; 
+            padding: 0; 
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .view-section { display: none; }
+        .active-view { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .header { 
+            background-color: var(--bg-dark-2); 
+            color: var(--text-white); 
+            padding: 15px 20px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 22px; 
+            font-weight: bold; 
+            position: sticky; 
+            top: 0; 
+            z-index: 50; 
+            border-bottom: 2px solid var(--neon-border);
+            box-shadow: 0 4px 10px var(--neon-glow); 
+        }
+        .header-title-left { position: absolute; right: 20px; }
+
+        .header-action-btn {
+            background-color: var(--btn-nav-bg);
+            color: var(--text-white);
+            border: 2px solid var(--btn-nav-border);
+            border-radius: 10px;
+            padding: 8px 14px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 15px var(--btn-nav-glow);
+            position: absolute;
+            left: 20px;
+        }
+
+        .treasury-container, .expense-form-container, .expenses-list-container, .movements-container { 
+            max-width: 800px; margin: auto; padding: 15px;
+        }
+
+        .vault-cards-row { display: flex; gap: 8px; margin-bottom: 15px; }
+        .vault-mini-card { background-color: var(--card-bg-alt); border: 2px solid var(--neon-border); border-radius: 12px; padding: 12px 8px; flex: 1; text-align: center; cursor: pointer; transition: background-color 0.15s, border-color 0.15s; box-shadow: 0 2px 5px var(--shadow-dark); }
+        .vault-mini-card.active-vault { border-color: var(--accent-green); background-color: var(--bg-dark-solid); box-shadow: 0 0 10px var(--btn-save-glow); transform: translateY(-2px); }
+        .vault-mini-card .v-title { font-size: 13px; color: var(--text-white); font-weight: bold; }
+        .vault-mini-card .v-val { font-size: 16px; color: var(--accent-green); font-weight: bold; margin-top: 5px; text-shadow: 0 0 8px var(--btn-save-glow); direction: ltr;}
+
+        .treasury-card { background-color: var(--card-bg-alt); border: 2px solid var(--neon-border); border-radius: 16px; padding: 20px; box-shadow: 0 2px 10px var(--shadow-dark); margin-bottom: 15px;}
+        .treasury-label { font-size: 13px; color: var(--text-white); font-weight: bold; margin-bottom: 10px; text-align: center; line-height: 1.4; }
+        
+        .balance-box { background-color: var(--bg-dark-solid); border: 2px solid var(--neon-border); border-radius: 12px; text-align: center; padding: 15px; margin-bottom: 20px; box-shadow: 0 0 12px var(--neon-glow);}
+        .balance-title { font-size: 14px; color: var(--text-white); font-weight: bold; }
+        .balance-value { font-size: 28px; color: var(--accent-green); font-weight: bold; margin-top: 5px; text-shadow: 0 0 12px var(--btn-save-glow); direction: ltr;}
+
+        .radio-group { display: flex; flex-direction: row; justify-content: space-around; gap: 5px; margin-bottom: 15px; font-weight: bold; font-size: 15px; background-color: var(--card-bg-alt); border: 1px solid var(--neon-border); padding: 10px; border-radius: 12px;}
+        .radio-group label { display: flex; align-items: center; gap: 5px; cursor: pointer; color: var(--text-white);}
+
+        .form-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; width: 100%; box-sizing: border-box;}
+        .form-row label { flex: 0 0 28%; font-size: 13px; font-weight: bold; margin-bottom: 0; text-align: right; line-height: 1.2; word-wrap: break-word; color: var(--text-white);}
+        .form-row input, .form-row select, .form-row textarea { flex: 1; max-width: 68%; padding: 8px; font-size: 15px; text-align: center; border: 2px solid var(--neon-border); border-radius: 10px; font-weight: bold; outline: none; box-sizing: border-box; background-color: var(--bg-dark-solid); color: var(--text-white); box-shadow: 0 0 10px var(--neon-glow);}
+
+        .main-action-btn { background-color: var(--btn-save-bg); color: var(--text-white); width: 100%; padding: 15px; border: 2px solid var(--btn-save-border); border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px var(--btn-save-glow); margin-bottom: 10px;}
+        .main-action-btn:active { filter: brightness(1.2); transform: scale(0.96); }
+
+        /* أزرار الإعدادات والمصروفات الداخلية */
+        .expense-trigger-btn { background-color: var(--card-bg-solid); color: var(--accent-red); border: 2px solid var(--accent-red); width: 100%; margin: auto; display: block; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--btn-cancel-glow); margin-bottom: 10px; box-sizing: border-box;}
+        .program-settings-btn { background-color: var(--card-bg-solid); color: var(--neon-border); border: 2px solid var(--neon-border); width: 60%; margin: auto; display: block; padding: 10px; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; text-align: center; box-shadow: 0 0 15px var(--neon-glow); margin-bottom: 20px;}
+        .expense-trigger-btn:active, .program-settings-btn:active { transform: scale(0.95); }
+
+        .settings-link-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--neon-border-soft); padding-top: 15px; flex-wrap: wrap; gap: 10px; }
+        .settings-link-row a { color: var(--neon-border); text-decoration: none; font-weight: bold; font-size: 14px; cursor: pointer; }
+        .settings-link-row a.danger { color: var(--accent-red); }
+
+        .filter-top-bar { display: flex; gap: 10px; margin-bottom: 15px; position: relative; z-index: 200;}
+        .filter-dropdown-box { flex: 1; position: relative; background-color: var(--card-bg-alt); border: 2px solid var(--neon-border); border-radius: 16px; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-size: 15px; font-weight: bold; color: var(--text-white); box-sizing: border-box; box-shadow: 0 0 12px var(--neon-glow);}
+
+        .dropdown-menu { position: absolute; top: 100%; right: 0; background-color: var(--bg-dark-1); border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px var(--shadow-dark); display: none; z-index: 9999; margin-top: 8px; overflow: hidden; width: 220px; text-align: right;}
+        .dropdown-item { padding: 14px; border-bottom: 1px solid var(--neon-border-soft); cursor: pointer; font-weight: bold; font-size: 15px; color: var(--text-white);}
+        .dropdown-item:active { background-color: var(--row-active-bg); }
+
+        table { width: 100%; border-collapse: collapse; background-color: var(--card-bg-solid); border-radius: 16px; overflow: hidden; box-shadow: 0 0 20px var(--neon-glow); border: 2px solid var(--neon-border); margin-bottom: 20px;}
+        table th { background-color: var(--table-header-bg); color: var(--text-white); padding: 14px 10px; font-size: 17px; text-align: center; white-space: nowrap; border-bottom: 2px solid var(--neon-border);}
+        table td { padding: 14px 10px; border-bottom: 1px solid var(--neon-border-soft); text-align: center; font-size: 16px; font-weight: bold; color: var(--text-white); cursor: pointer;}
+        table tr:active { background-color: var(--row-active-bg); }
+        table td:first-child { text-align: right; }
+
+        .totals-summary-bar { background-color: var(--card-bg-alt); border: 2px solid var(--neon-border); border-radius: 16px; padding: 15px; display: flex; flex-direction: column; gap: 8px; align-items: center; font-weight: bold; font-size: 16px; margin-bottom: 15px; box-shadow: 0 0 20px var(--neon-glow); color: var(--text-white);}
+        .total-add { color: var(--accent-green) !important; text-shadow: 0 0 8px var(--btn-save-glow); }
+        .total-deduct { color: var(--accent-red) !important; text-shadow: 0 0 8px var(--btn-cancel-glow); }
+
+        .unified-bottom-bar { 
+            position: fixed; bottom: 0; left: 0; right: 0; 
+            background-color: var(--bg-dark-2); 
+            border-top: 2px solid var(--neon-border); 
+            display: flex; padding: 10px 15px; gap: 8px; z-index: 80; 
+            box-shadow: 0 -2px 15px var(--shadow-dark);
+            align-items: center;
+        }
+
+        table tr, .expenses-list-container > div {
+            content-visibility: auto;
+            contain-intrinsic-size: 80px;
+        }
+
+        .header-back-btn {
+            background-color: var(--btn-nav-bg); border: 2px solid var(--btn-nav-border); border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px var(--btn-nav-glow); transition: all 0.2s; flex-shrink: 0;
+        }
+        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
+        .header-back-btn .arrow { color: var(--text-white); font-size: 15px; line-height: 1; }
+        .header-back-btn .text { color: var(--text-white); font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
+
+        .bottom-bar-dropdown { 
+            flex: 1; background-color: var(--card-bg-solid); border: 1px solid var(--neon-border); 
+            border-radius: 12px; padding: 0 12px; height: 45px; display: flex; 
+            justify-content: space-between; align-items: center; font-size: 14px; 
+            font-weight: bold; color: var(--text-white); cursor: pointer; position: relative;
+            box-shadow: 0 0 10px var(--neon-glow);
+        }
+        
+        .bottom-bar-btn { 
+            flex: 1; background-color: var(--card-bg-solid); color: var(--text-white); 
+            border: 1px solid var(--neon-border); border-radius: 12px; height: 45px; 
+            font-size: 14px; font-weight: bold; display: flex; justify-content: center; 
+            align-items: center; gap: 5px; cursor: pointer;
+            box-shadow: 0 0 10px var(--neon-glow);
+        }
+
+        /* النوافذ والمدالات */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0,0,0,0.85); display: none; justify-content: center; align-items: center; z-index: 1500; }
+        .compact-modal { background-color: var(--bg-dark-2); padding: 25px; border-radius: 20px; width: 92%; max-width: 440px; box-shadow: 0 0 45px var(--neon-glow); max-height: 90vh; overflow-y: auto; border: 2px solid var(--neon-border); color: var(--text-white);}
+        .compact-header { border-bottom: 2px solid var(--neon-border-soft); padding-bottom: 15px; margin-bottom: 20px; text-align: center;}
+        .compact-header h3 { margin: 0; font-size: 20px; color: var(--text-white); text-shadow: 0 0 10px var(--text-glow); }
+
+        .btn-group { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid var(--neon-border-soft); padding-top: 20px;}
+        .btn-group button { flex: 1; padding: 14px; border-radius: 16px; cursor: pointer; font-size: 18px; font-weight: bold; transition: all 0.2s;}
+        .confirm-btn { background-color: var(--btn-save-bg) !important; border: 2px solid var(--btn-save-border) !important; color: var(--text-white) !important;}
+        .cancel-btn { background-color: var(--btn-cancel-bg) !important; border: 2px solid var(--neon-border) !important; color: var(--text-white) !important;}
+        .danger-btn { background-color: var(--btn-cancel-bg) !important; border: 2px solid var(--accent-red) !important; color: var(--text-white) !important; }
+
+        .action-sheet-option { padding: 15px; text-align: center; font-size: 18px; font-weight: bold; border-bottom: 1px solid var(--neon-border-soft); cursor: pointer; color: var(--text-white); }
+        .action-sheet-option:hover { background-color: var(--row-active-bg); }
+
+        @media print {
+            body * { visibility: hidden; }
+            #thermalPrintArea, #thermalPrintArea * { visibility: visible; }
+            #thermalPrintArea { position: absolute; left: 0; top: 0; width: 80mm; font-family: 'Tahoma', sans-serif; font-size: 12px; color: black; background: white; padding: 5px;}
+        }
+        .thermal-receipt { display: none; }
+
+        /* ========================================================= */
+        /* 🚀 كود الحماية الصارم لإصلاح العيوب */
+        /* ========================================================= */
+        
+        /* 1. إجبار القوائم المنسدلة العلوية على الفتح لأسفل */
+        .filter-dropdown-box .dropdown-menu {
+            top: 100% !important;
+            bottom: auto !important;
+            left: 0 !important;
+            right: 0 !important;
+            margin-top: 5px !important;
+            transform: none !important;
+            width: 100% !important;
+            z-index: 9999 !important;
+            max-height: 350px !important;
+            overflow-y: auto !important;
+        }
+
+        /* 2. إجبار القوائم السفلية (المدة والطباعة) على الفتح لأعلى */
+        .unified-bottom-bar .dropdown-menu,
+        #printMenuDropdown {
+            top: auto !important;
+            bottom: 100% !important;
+            margin-bottom: 12px !important;
+            margin-top: 0 !important;
+            max-height: 50vh !important;
+            overflow-y: auto !important;
+            z-index: 9999 !important;
+            transform: none !important;
+            left: 0 !important;
+        }
+        
+        /* 3. وضع الجداول في حاوية تسمح بالتمرير الداخلي بسلاسة */
+        .table-wrapper {
+            max-height: none !important;
+            overflow: visible !important;
+        }
+    </style>
+    <!-- تم حذف كود style الداخلي بالكامل -->
+<head>
+    <!-- ... -->
+    <link rel="stylesheet" href="style.css">
+    <!-- ... -->
 </head>
+<body class="treasury-page-active">
+    <!-- ... الهيكل كما هو بدون تغيير IDs أو JavaScript ... -->
+</body></head>
+<body>
 
-<body onclick="hideFabMenu(); closeAllMenus(event);">
-
-<!-- 1. الشريط العلوي -->
-<div class="header" id="mainHeader">
-    <button type="button" class="header-camera-btn" onclick="startBarcodeScan('productSearch', true)" title="تصوير الباركود">📷</button>
-    <span id="pageTitleText">فاتورة بيع</span>
-    <button type="button" class="header-history-btn" onclick="window.location.href='history.html'"><span>📋</span> السجل</button>
-</div>
-
-<!-- 2. حاوية المبيعات ومربع البحث مباشرة أسفل الهيدر -->
-<div class="sales-container">
-    <div class="search-container">
-        <input type="text" id="productSearch" class="search-input" placeholder="ابحث بالاسم أو الباركود..." oninput="smartSearch()" onclick="event.stopPropagation()">
-        
-        <button type="button" id="aiAssistantBtn" class="mic-btn-search" onclick="event.stopPropagation(); openAiModal()" title="إضافة سريعة بالصوت">
-            <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2a3 3 0 0 1 3 3v7a3 3 0 0 1-6 0V5a3 3 0 0 1 3-3zm5 9.5A1.5 1.5 0 0 1 18.5 13a6.5 6.5 0 0 1-13 0A1.5 1.5 0 0 1 7 11.5a1.5 1.5 0 0 1 1.5 1.5 3.5 3.5 0 0 0 7 0 1.5 1.5 0 0 1 1.5-1.5zm-5 8a1.5 1.5 0 0 1 1.5 1.5V23a1.5 1.5 0 0 1-3 0v-2A1.5 1.5 0 0 1 12 19.5z"/>
-            </svg>
-        </button>
-        
-        <div id="productResults" class="dropdown-list" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></div>
-    </div>
-    
-    <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
-        <div>
-            <span>طابور الإضافة:</span><br>
-            <span id="queueStatusText" class="queue-text">--</span>
-        </div>
-        <div>
-            <button type="button" class="queue-btn-next" onclick="processNextInQueue()">التالي ⏭️</button>
-            <button type="button" class="queue-btn-clear" onclick="clearSearchQueue()">إلغاء</button>
+    <!-- نافذة أمان الخزينة -->
+    <div class="modal-overlay" id="pinModal" style="display: none;">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>🔒 أمان الخزينة</h3></div>
+            <div class="form-row">
+                <label>أدخل الرقم السري:</label>
+                <input type="password" id="pinInput" placeholder="****" maxlength="6" style="text-align: center; letter-spacing: 5px;">
+            </div>
+            <div class="btn-group">
+                <button class="confirm-btn" onclick="verifyPin()">دخول</button>
+                <button class="cancel-btn" onclick="window.location.href='index.html'">رجوع</button>
+            </div>
         </div>
     </div>
 
-    <div class="table-wrapper">
-        <table>
-            <thead>
-                <tr><th>الصنف</th><th>السعر</th><th>العدد</th><th>الإجمالي</th></tr>
-            </thead>
-            <tbody id="invoiceItems"></tbody>
-        </table>
+<!-- الشاشة 1: لوحة الخزينة الرئيسية -->
+<div id="treasury-main-view" class="view-section">
+    <div class="header">
+        <span>الخزينة</span>
     </div>
-</div>
 
-<!-- 3. الزر الدائري العائم (مباشرة داخل الـ body بالكلاس الموحد) -->
-<button type="button" class="seraj-btn-add-floating fab-btn" onclick="toggleFabMenu(event)">&#8801;</button>
-<div class="fab-menu" id="fabMenu" style="display: none;" onclick="event.stopPropagation()">
-    <button type="button" onclick="changeInvoiceType('sales', 'فاتورة بيع', '#ffffff')">فاتورة بيع</button>
-    <button type="button" onclick="changeInvoiceType('return', 'فاتورة مرتجع', '#ff1a40')">فاتورة مرتجع</button>
-    <button type="button" onclick="changeInvoiceType('quotation', 'عرض سعر', '#00ff66')">عرض سعر</button>
-    <button type="button" class="seraj-btn-secondary" onclick="holdCurrentInvoice()">⏳ تعليق الفاتورة</button>
-    <button type="button" class="seraj-btn-secondary" onclick="showHeldInvoicesModal()">📂 الفواتير المعلقة</button>
-</div>
+    <div class="treasury-container">
+        <div class="vault-cards-row">
+            <div class="vault-mini-card active-vault" id="cardVaultMain" onclick="selectVault('main')">
+                <div class="v-title">الرئيسية (كاش)</div>
+                <div class="v-val" id="vaultMainBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="cardVaultInsta" onclick="selectVault('insta')">
+                <div class="v-title">إنستا (InstaPay)</div>
+                <div class="v-val" id="vaultInstaBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="cardVaultWallet" onclick="selectVault('wallet')">
+                <div class="v-title">المحفظة الإلكترونية</div>
+                <div class="v-val" id="vaultWalletBal">0.00</div>
+            </div>
+        </div>
 
+        <div class="treasury-card">
+            <div class="balance-box" onclick="openMovementsWithVault(currentSelectedVault)" style="cursor: pointer;" title="اضغط لعرض حركات هذه الخزينة">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #facc15; font-weight: normal; opacity: 0.85; margin-bottom: 6px;">
+                    <span>اضغط</span>
+                    <span>للتفاصيل 📋</span>
+                </div>
+                <div class="balance-title" id="mainBalanceBoxTitle">الرصيد الحالي للرئيسية (كاش)</div>
+                <div class="balance-value" id="currentSelectedVaultBalance">0.00</div>
+            </div>
 
-<!-- 5. الشريط السفلي الرئيسي -->
-<div class="bottom-dashboard" id="bottomActionBar" onclick="event.stopPropagation()">
-    <div class="dashboard-right">
-        <button type="button" class="bottom-back-btn" onclick="handleExit()">
-            <span class="arrow">⬅</span>
-            <span class="text">BACK</span>
-        </button>
-        <button type="button" id="mainSaveBtn" class="save-btn" onclick="openSaveModal()">حفظ الفاتورة</button>
-    </div>
-    <div class="dashboard-left">
-        <div id="totalDisplayDiv" class="floating-total">
-            <span class="total-label">الإجمالي</span>
-            <span class="total-val" id="mainTotal">0.00</span>
+                <div class="radio-group">
+                    <label style="color: #00ff66; text-shadow: 0 0 8px rgba(0,255,102,0.5);"><input type="radio" name="trType" value="add" checked> ➕ إضافة مبلغ</label>
+                    <label style="color: #ff1a40; text-shadow: 0 0 8px rgba(255,26,64,0.5);"><input type="radio" name="trType" value="deduct"> ➖ خصم مبلغ</label>
+                </div>
+
+                <div class="form-row">
+                    <label>المبلغ:</label>
+                    <input type="number" id="trAmount" value="0" onclick="this.select()" placeholder="ادخل المبلغ">
+                </div>
+
+                <div class="form-row">
+                    <label>ملاحظات:</label>
+                    <input type="text" id="trNotes" placeholder="اضف ملاحظاتك...">
+                </div>
+
+                <div class="form-row">
+                    <label>التاريخ:</label>
+                    <input type="date" id="trDate">
+                </div>
+
+                <button class="main-action-btn" onclick="saveTreasuryTransaction()">حفظ المبلغ</button>
+
+                <button class="expense-trigger-btn" onclick="switchView('treasury-expense-form-view')">💸 المصروفات</button>
+
+                <button class="program-settings-btn" onclick="openProgramSettingsModal()">⚙️ إعدادات البرنامج والثيمات</button>
+
+                <div class="settings-link-row">
+                    <a onclick="openSettingsModal()">⚙️ إعدادات الخزينة الأساسية</a>
+                    <a class="danger" onclick="openFactoryResetModal()">🔄 إعادة ضبط المصنع</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="window.location.href='index.html'">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Outside')">
+                <span id="currentDurationLabelOutside">مدى العمل</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownOutside">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
+            <div class="dropdown-menu" id="printMenuDropdown" style="left:0; right:auto; width:210px;">
+                <div class="dropdown-item" onclick="printThermalStatement()">🖨️ طباعة حرارية (80mm)</div>
+                <div class="dropdown-item" onclick="handlePdfMenu()">📄 ملفات PDF</div>
+                <div class="dropdown-item" onclick="handleExcelMenu()">📊 ملفات Excel</div>
+            </div>
         </div>
     </div>
-</div>
 
-<!-- 6. النوافذ المنبثقة -->
-<!-- نافذة تعديل الصنف -->
-<div class="modal-overlay" id="editModalOverlay" onclick="closeModals()">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header"><h3 id="editItemName">تعديل الصنف</h3></div>
-        <button type="button" class="details-toggle-btn seraj-btn-secondary" onclick="toggleDetails()">+ عرض تفاصيل المخزن</button>
-        <div class="hidden-details" id="hiddenDetailsBox">
-            <div class="batches-slider" id="editBatchesSlider"></div>
-            <div>إجمالي الرصيد بالمخزن: <span id="editTotalStock">0</span></div>
-        </div>
-        <div class="compact-row"><label>الكمية بالفاتورة:</label><input type="number" id="editQty" onclick="this.select()"></div>
-        <div class="compact-row"><label>سعر البيع:</label><input type="number" id="editPrice" onclick="this.select()"></div>
-        <input type="hidden" id="editItemIndex">
-        <div class="compact-btns">
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="closeModals()">إغلاق</button>
-            <button type="button" class="btn-save-ai" onclick="saveItemEdit()">تحديث</button>
-        </div>
-    </div>
-</div>
-
-<!-- نافذة تأكيد وحفظ الفاتورة -->
-<div class="modal-overlay" id="saveModalOverlay" onclick="closeModals()">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header">
-            <h3 id="modalInvoiceTypeBadge">تأكيد حفظ الفاتورة</h3>
+    <!-- الشاشة 2: حركة الخزينة الشاملة -->
+    <div id="treasury-movements-view" class="view-section">
+        <div class="header">
+            <span>حركة الخزينة</span>
         </div>
 
-        <div class="compact-row">
-            <label>خصم الفاتورة</label>
-            <input type="number" id="modalDiscount" value="0" onclick="this.select()" oninput="calculateModalTotals()">
-        </div>
+        <div class="movements-container">
+            <div class="filter-top-bar" onclick="event.stopPropagation()">
+                <div class="filter-dropdown-box" onclick="toggleMovementFilterMenu(event)">
+                    <span id="currentMovementFilterLabel">جميع الحركات</span>
+                    <span>▼</span>
+                    <div class="dropdown-menu" id="movementFilterDropdown">
+                        <div class="dropdown-item" onclick="setMovementFilter('all')">جميع الحركات</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('sales')">فواتير البيع</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('return_sale')">فواتير المرتجع</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('purchase')">فواتير الشراء</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('customers')">سندات العملاء</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('suppliers')">سندات الموردين</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('expenses')">المصروفات</div>
+                        <div class="dropdown-item" onclick="setMovementFilter('direct')">الخزينة مباشرة</div>
+                    </div>
+                </div>
 
-        <div class="compact-row">
-            <label>الصافي المطلوب</label>
-            <input type="number" id="modalTotal" class="color-red-val" value="0" readonly>
-        </div>
-
-        <div class="compact-row">
-            <label>المبلغ المدفوع</label>
-            <input type="number" id="modalPaid" class="color-green-val" value="0" onclick="this.select()" oninput="calculateModalTotals()">
-        </div>
-
-        <div class="compact-row">
-            <label>المتبقي (الآجل)</label>
-            <input type="number" id="modalRemaining" value="0" readonly dir="ltr">
-        </div>
-
-        <div class="compact-row" style="flex-wrap: wrap; gap: 15px;">
-            <div style="flex: 1; min-width: 200px;">
-                <input type="hidden" id="modalVaultSelect" value="main">
-                <div class="treasury-select" style="position: relative; cursor: pointer; display: flex; justify-content: space-between; align-items: center; width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; font-weight: bold; background: rgba(19, 17, 44, 0.6); color: var(--text-main); border: 2px solid var(--neon-border); border-radius: 12px;" onclick="toggleCustomSelect(event, 'customVaultDropdown')">
-                    <span style="font-size: 12px; color: var(--neon-border);">▼</span>
-                    <span id="customVaultLabel">الخزينة (كاش)</span>
-                    <span></span>
-                    
-                    <div class="dropdown-list" id="customVaultDropdown" style="display: none; position: absolute; left: 0; right: 0; bottom: 100%; top: auto; margin-bottom: 8px; border-radius: 12px; width: 100%; background: #13112c; border: 2px solid var(--neon-border); box-shadow: 0 -10px 25px rgba(0,0,0,0.8); z-index: 1000; overflow: hidden;">
-                        <div class="dropdown-item" style="padding: 12px; text-align: center; border-bottom: 1px solid var(--neon-glow); color: var(--text-main); font-size: 16px;" onclick="setCustomSelect('modalVaultSelect', 'customVaultLabel', 'main', 'الخزينة (كاش)', event)">الخزينة (كاش)</div>
-                        <div class="dropdown-item" style="padding: 12px; text-align: center; border-bottom: 1px solid var(--neon-glow); color: var(--text-main); font-size: 16px;" onclick="setCustomSelect('modalVaultSelect', 'customVaultLabel', 'insta', 'إنستا (InstaPay)', event)">إنستا (InstaPay)</div>
-                        <div class="dropdown-item" style="padding: 12px; text-align: center; color: var(--text-main); font-size: 16px;" onclick="setCustomSelect('modalVaultSelect', 'customVaultLabel', 'wallet', 'المحفظة الإلكترونية', event)">المحفظة الإلكترونية</div>
+                <div class="filter-dropdown-box" onclick="toggleVaultFilterMenu(event)">
+                    <span id="currentVaultFilterLabel">كل الخزائن</span>
+                    <span>▼</span>
+                    <div class="dropdown-menu" id="vaultFilterDropdown">
+                        <div class="dropdown-item" onclick="setVaultFilter('all')">كل الخزائن</div>
+                        <div class="dropdown-item" onclick="setVaultFilter('main')">الرئيسية (كاش)</div>
+                        <div class="dropdown-item" onclick="setVaultFilter('insta')">إنستا (InstaPay)</div>
+                        <div class="dropdown-item" onclick="setVaultFilter('wallet')">المحفظة الإلكترونية</div>
                     </div>
                 </div>
             </div>
-            <div style="flex: 1; min-width: 200px;">
-                <input type="text" id="modalNotes" placeholder="ملاحظات..." style="width: 100%;">
+
+            <div class="totals-summary-bar">
+                <div style="display: flex; justify-content: space-around; width: 100%;">
+                    <div>إضافات: <span class="total-add" id="sumAddVal">0.00</span></div>
+                    <div>خصومات: <span class="total-deduct" id="sumDeductVal">0.00</span></div>
+                </div>
+                <div style="border-top: 1px dashed rgba(168,85,247,0.4); padding-top: 8px; width: 100%; text-align: center; font-size: 17px;">
+                    الصافي (الفرق): <span id="sumNetVal" style="font-weight: bold;">0.00</span>
+                </div>
+            </div>
+
+            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط ضغطتين متتاليتين على أي سطر لفتح خيارات التعديل أو الحذف</div>
+
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="text-align: right;">البيان / الملاحظات</th>
+                            <th>إضافة (+)</th>
+                            <th>خصم (-)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="movementsTableBody"></tbody>
+                </table>
             </div>
         </div>
 
-        <div class="compact-row">
-            <label>التاريخ:</label>
-            <input type="date" id="modalDate">
-        </div>
-
-        <div style="margin-bottom: 15px;">
-            <label style="display: block; font-size: 18px; font-weight: bold; color: var(--text-main); margin-bottom: 8px; text-align: right;">اسم العميل</label>
-            <div style="position: relative; width: 100%;">
-                <input type="text" id="customerSearchInput" class="customer-input-box" placeholder="ادخل اسم العميل..." oninput="handleCustomerInput()">
-                <div id="customerResults" class="dropdown-list" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="switchView('treasury-main-view')">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Inside')">
+                <span id="currentDurationLabelInside">مدى العمل</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownInside">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
             </div>
-        </div>
-        
-        <div id="liveCustomerBalance" style="text-align: center; margin-bottom: 20px; font-weight: bold; font-size: 16px; min-height: 25px; color: var(--text-main);"></div>
 
-        <div class="compact-btns">
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="closeModals()">إغلاق</button>
-            <button type="button" id="confirmSaveBtn" class="btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, confirmSave); } else { confirmSave(); }">✔ حفظ</button>
-        </div>
-    </div>
-</div>
-
-<!-- نافذة الفواتير المعلقة -->
-<div class="modal-overlay" id="heldInvoicesModal" onclick="document.getElementById('heldInvoicesModal').style.display='none'">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header">
-            <h3>📂 الفواتير المعلقة</h3>
-        </div>
-        <div id="heldInvoicesList"></div>
-        <div class="compact-btns">
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="document.getElementById('heldInvoicesModal').style.display='none'">إغلاق</button>
-        </div>
-    </div>
-</div>
-
-<!-- نافذة تكبير الصورة -->
-<div class="modal-overlay" id="fullImageModal" onclick="this.style.display='none'">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header">
-            <h3>صورة الصنف</h3>
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="document.getElementById('fullImageModal').style.display='none'">✖</button>
-        </div>
-        <img id="fullImageDisplay" src="" alt="صورة الصنف">
-    </div>
-</div>
-
-<!-- نافذة السؤال بعد الحفظ (طباعة أو إلغاء) -->
-<div class="modal-overlay" id="postSavePrintModal">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header"><h3>🖨️ تم حفظ الفاتورة بنجاح</h3></div>
-        <p>هل تريد طباعة الفاتورة الحرارية الآن؟</p>
-        <div class="compact-btns">
-            <button type="button" class="btn-save-ai" onclick="executePostSavePrint()">🖨️ طباعة</button>
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="closePostSavePrintModal()">❌ إلغاء</button>
-        </div>
-    </div>
-</div>
-
-<!-- نافذة المايك المنبثقة (SmartVoice Lite) -->
-<div class="modal-overlay" id="aiModalOverlay" onclick="closeAiModal()">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header">
-            <h3>استماع البيع الذكي</h3>
-            <span class="stock-badge">أوفلاين ⚡</span>
-        </div>
-        
-        <div class="compact-row">
-            <label>الفلترة: <span id="quickSensitivityVal">60%</span></label>
-            <input type="range" id="quickSensitivitySlider" min="10" max="100" step="5" oninput="updateQuickSensitivity(this.value)" onchange="saveQuickSensitivity(this.value)">
-        </div>
-
-        <div class="compact-row">
-            <textarea id="aiInputText" placeholder="مثال: 3 لمبة 9 وات + 2 شريط لحام..."></textarea>
-        </div>
-        
-        <div class="compact-row">
-            <button type="button" onclick="startAiMic()" id="aiMicBtn" class="details-toggle-btn seraj-btn-secondary">
-                🎤 اضغط هنا للبدء
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
             </button>
         </div>
-        
-        <div id="aiLoadingIndicator" class="hidden-details">جاري معالجة الطلبات... ⏳</div>
-        
-        <div class="compact-btns">
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="closeAiModal()">إلغاء</button>
-            <button type="button" id="sendAiBtn" class="btn-save-ai" onclick="processLocalAI()">تنفيذ الطلبات 🚀</button>
+    </div>
+
+<!-- الشاشة 3: صفحة إضافة المصروفات -->
+<div id="treasury-expense-form-view" class="view-section">
+    <div class="header">
+        <span>المصروفات</span>
+    </div>
+
+    <div class="expense-form-container">
+        <div class="vault-cards-row">
+            <div class="vault-mini-card active-vault" id="expCardMain" onclick="selectExpVault('main')">
+                <div class="v-title">الرئيسية (كاش)</div>
+                <div class="v-val" id="expVaultMainBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="expCardInsta" onclick="selectExpVault('insta')">
+                <div class="v-title">إنستا (InstaPay)</div>
+                <div class="v-val" id="expVaultInstaBal">0.00</div>
+            </div>
+            <div class="vault-mini-card" id="expCardWallet" onclick="selectExpVault('wallet')">
+                <div class="v-title">المحفظة الإلكترونية</div>
+                <div class="v-val" id="expVaultWalletBal">0.00</div>
+            </div>
+        </div>
+
+        <div class="treasury-card">
+            <div class="treasury-label" id="expActiveVaultLabel">الصرف من: الخزينة الرئيسية (كاش)</div>
+
+            <div class="balance-box" onclick="openExpensesWithVault(currentExpVault)" style="cursor: pointer;" title="اضغط لعرض مصروفات هذه الخزينة">
+                <div class="balance-title" id="expBalanceBoxTitle">الرصيد الحالي للرئيسية (كاش)</div>
+                <div class="balance-value" id="expSelectedVaultBalance">0.00</div>
+            </div>
+
+                <div class="form-row">
+                    <label>المبلغ:</label>
+                    <input type="number" id="fullExpAmount" value="0" onclick="this.select()" placeholder="ادخل المبلغ">
+                </div>
+
+                <div class="form-row">
+                    <label>جهة الصرف (إجباري):</label>
+                    <input type="text" id="fullExpDestination" placeholder="ادخل جهة الصرف...">
+                </div>
+
+                <div class="form-row">
+                    <label>التاريخ:</label>
+                    <input type="date" id="fullExpDate">
+                </div>
+
+                <button class="main-action-btn" onclick="saveFullExpense()">حفظ المصروف</button>
+            </div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="switchView('treasury-main-view')">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'Form')">
+                <span id="currentDurationLabelForm">مدى العمل</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownForm">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
         </div>
     </div>
-</div>
 
-<!-- نافذة قراءة الباركود -->
-<div class="modal-overlay" id="scannerModal">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header"><h3>📷 توجيه الكاميرا للباركود</h3></div>
-        <div id="reader"></div>
-        <div class="compact-btns">
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="stopBarcodeScan()">إغلاق الكاميرا</button>
+    <!-- الشاشة 4: عرض قائمة المصروفات -->
+    <div id="treasury-expense-list-view" class="view-section">
+        <div class="header">
+            <span>عرض المصروفات</span>
+        </div>
+
+        <div class="expenses-list-container">
+            <div class="treasury-card" style="margin-bottom: 15px; text-align: center;">
+
+                <div class="form-row" style="margin-bottom: 15px;">
+                    <select id="expVaultFilter" onchange="renderExpensesList()" style="width: 100%; max-width: 100%; padding: 10px; font-size: 15px; border: 2px solid var(--neon-border); border-radius: 12px; background: rgba(19, 17, 44, 0.6); color: var(--text-main); font-weight: bold; outline: none; box-shadow: 0 0 10px var(--neon-glow); text-align: center; cursor: pointer;">
+                        <option value="all">كل الخزائن (كاش، إنستا، محفظة)</option>
+                        <option value="main">الخزينة الرئيسية (كاش)</option>
+                        <option value="insta">إنستا (InstaPay)</option>
+                        <option value="wallet">المحفظة الإلكترونية</option>
+                    </select>
+                </div>
+
+                <div class="radio-group" style="margin-bottom: 12px; border: none; padding: 0;">
+                    <label><input type="radio" name="expSearchType" value="date" checked onclick="toggleExpSearchMode()"> تاريخ الصرف</label>
+                    <label><input type="radio" name="expSearchType" value="supplier" onclick="toggleExpSearchMode()"> جهة الصرف</label>
+                </div>
+                
+                <div class="form-row" style="display: flex; gap: 10px; margin-bottom: 0;">
+                    <input type="text" id="expenseSearchInput" placeholder="اختر التاريخ أو أدخل جهة الصرف..." oninput="handleExpRealtimeSearch()" style="flex:1;">
+                    <button class="confirm-btn" onclick="renderExpensesList()" style="padding: 0 20px; border-radius: 12px; cursor: pointer;">بحث</button>
+                </div>
+            </div> 
+
+            <div id="expensesListContainer"></div>
+        </div>
+
+        <div class="unified-bottom-bar" onclick="event.stopPropagation()">
+            <button class="header-back-btn" onclick="switchView('treasury-expense-form-view')">
+                <span class="arrow">⬅</span>
+                <span class="text">BACK</span>
+            </button>
+            <div class="bottom-bar-dropdown" onclick="toggleDurationMenu(event, 'List')">
+                <span id="currentDurationLabelList">مدى العمل</span>
+                <span>▼</span>
+                <div class="dropdown-menu" id="durationDropdownList">
+                    <div class="dropdown-item" onclick="setDurationFilter('today')">اليوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('yesterday')">أمس</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('7days')">آخر 7 أيام</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('thisMonth')">هذا الشهر</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('30days')">آخر 30 يوم</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('lastMonth')">الشهر الماضي</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('custom')">📅 تاريخ مخصص</div>
+                    <div class="dropdown-item" onclick="setDurationFilter('allTime')">مدى العمل</div>
+                </div>
+            </div>
+
+            <button class="bottom-bar-btn" onclick="togglePrintMenu(event)">
+                🖨️ طباعة
+            </button>
         </div>
     </div>
-</div>
 
-<!-- الإشعارات ومنطقة الطباعة -->
-<div id="exitToast" class="toast-msg" style="display: none;">الفاتورة مفتوحة!</div>
-<div id="stockWarningToast" class="toast-warning" style="display: none; position: fixed !important; top: 20px !important; left: 50% !important; transform: translateX(-50%) !important; background: #dc2626 !important; color: #ffffff !important; padding: 12px 24px !important; border-radius: 12px !important; font-size: 16px !important; font-weight: bold !important; text-align: center !important; width: 90% !important; max-width: 420px !important; z-index: 999999 !important; box-shadow: 0 4px 25px rgba(220, 38, 38, 0.7) !important; border: 2px solid #ef4444 !important; border-right: 6px solid #7f1d1d !important; pointer-events: none !important;"></div>
-<div id="printReceiptArea" style="display: none;"></div>
+    <!-- النوافذ المنبثقة (Modals) -->
 
-<script src="db.js"></script>
+    <div class="modal-overlay" id="programSettingsModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>🎨 إعدادات البرنامج والثيمات</h3></div>
+            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 15px; text-align: center; font-weight: bold;">اختر الثيم المفضل لديك:</div>
 
-<script>
-function applyFallbackTheme() {
-    if (typeof DB !== 'undefined' && DB.applySavedTheme) DB.applySavedTheme();
-    else {
-        let b = localStorage.getItem('seraj_theme_border');
-        let g = localStorage.getItem('seraj_theme_glow');
-        if (b && g) {
-            document.documentElement.style.setProperty('--neon-border', b);
-            document.documentElement.style.setProperty('--neon-glow', g);
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                <button onclick="setAppTheme('#a855f7', 'rgba(168, 85, 247, 0.4)', '#070913', '#120f29', 'rgba(19, 17, 44, 0.88)', '#ffffff')" style="background: #120f29; border: 2px solid #a855f7; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">💜 بنفسجي نيون</button>
+                <button onclick="setAppTheme('#06b6d4', 'rgba(6, 182, 212, 0.4)', '#020617', '#0f172a', 'rgba(15, 23, 42, 0.9)', '#ffffff')" style="background: #0f172a; border: 2px solid #06b6d4; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">💙 أزرق فضاء</button>
+                <button onclick="setAppTheme('#10b981', 'rgba(16, 185, 129, 0.4)', '#022c22', '#064e3b', 'rgba(6, 78, 59, 0.85)', '#ffffff')" style="background: #064e3b; border: 2px solid #10b981; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">💚 أخضر ليد</button>
+                <button onclick="setAppTheme('#ef4444', 'rgba(239, 68, 68, 0.4)', '#1b0404', '#3b0707', 'rgba(59, 7, 7, 0.85)', '#ffffff')" style="background: #3b0707; border: 2px solid #ef4444; color: white; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">❤️ أحمر هكر</button>
+                <button onclick="setAppTheme('#3b82f6', 'rgba(59, 130, 246, 0.4)', '#f8fafc', '#e2e8f0', 'rgba(255, 255, 255, 0.95)', '#0f172a')" style="background: #f8fafc; border: 2px solid #3b82f6; color: #0f172a; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">☀️ أبيض ناصع</button>
+                <button onclick="setAppTheme('#8b5cf6', 'rgba(139, 92, 246, 0.4)', '#f1f5f9', '#cbd5e1', 'rgba(255, 255, 255, 0.9)', '#1e293b')" style="background: #f1f5f9; border: 2px solid #8b5cf6; color: #1e293b; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">🥈 فضي أنيق</button>
+                <button onclick="setAppTheme('#d97706', 'rgba(217, 119, 6, 0.4)', '#fef3c7', '#fde68a', 'rgba(254, 243, 199, 0.95)', '#78350f')" style="background: #fef3c7; border: 2px solid #d97706; color: #78350f; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">📜 بيج لؤلؤي</button>
+                <button onclick="setAppTheme('#14b8a6', 'rgba(20, 184, 166, 0.4)', '#ecfdf5', '#ccfbf1', 'rgba(255, 255, 255, 0.95)', '#134e4a')" style="background: #ecfdf5; border: 2px solid #14b8a6; color: #134e4a; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold;">🩵 مينت فاتح</button>
+            </div>
+
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="cancel-btn" onclick="document.getElementById('programSettingsModal').style.display='none'">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="factoryResetModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>⚠️ تحذير: إعادة ضبط المصنع</h3></div>
+            <div style="font-size: 14px; color: #ff1a40; margin-bottom: 15px; text-align: center; font-weight: bold; line-height: 1.6;">
+                سيتم مسح وتصفير كافة بيانات الخزينة والحركات تماماً وإرجاع البرنامج لحالته الأصلية! أدخل الرقم السري للتأكيد:
+            </div>
+            <div class="form-row">
+                <input type="password" id="resetPinInput" placeholder="أدخل الرقم السري..." maxlength="6" style="text-align: center; letter-spacing: 5px;">
+            </div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('factoryResetModal').style.display='none'">إلغاء</button>
+                <button class="danger-btn" onclick="executeFactoryReset()">تصفير البرنامج</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="actionSheetModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>خيارات الحركة</h3></div>
+            <div class="action-sheet-option" onclick="openEditMovementModal()" style="color: #c084fc;">✏️ تعديل الحركة</div>
+            <div class="action-sheet-option" onclick="confirmDeleteMovement()" style="color: #ff1a40;">🗑️ حذف الحركة</div>
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="cancel-btn" onclick="document.getElementById('actionSheetModal').style.display='none'">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="editMovementModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>تعديل حركة الخزينة</h3></div>
+            <div class="radio-group">
+                <label style="color: #00ff66;"><input type="radio" name="editTrType" value="add" id="editTypeAdd"> ➕ إضافة</label>
+                <label style="color: #ff1a40;"><input type="radio" name="editTrType" value="deduct" id="editTypeDeduct"> ➖ خصم</label>
+            </div>
+            <div class="form-row">
+                <label>المبلغ:</label>
+                <input type="number" id="editTrAmount" value="0" onclick="this.select()">
+            </div>
+            <div class="form-row">
+                <label>الملاحظات / البيان:</label>
+                <input type="text" id="editTrNotes">
+            </div>
+            <div class="form-row">
+                <label>التاريخ:</label>
+                <input type="date" id="editTrDate">
+            </div>
+            <input type="hidden" id="editTrId">
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('editMovementModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="saveEditedMovement()">حفظ التعديل</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="settingsModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>⚙️ إعدادات الخزينة</h3></div>
+            <div class="form-row"><label><input type="checkbox" id="setSalesAuto" checked> ربط فواتير البيع تلقائياً</label></div>
+            <div class="form-row"><label><input type="checkbox" id="setPurchAuto" checked> ربط فواتير الشراء تلقائياً</label></div>
+            <div class="form-row"><label><input type="checkbox" id="setCustAuto" checked> ربط سندات العملاء والموردين</label></div>
+            <div class="form-row"><label>تغيير الرقم السري (PIN):</label><input type="text" id="setNewPin" placeholder="أدخل رقم سري جديد..." maxlength="6"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('settingsModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="saveTreasurySettings()">حفظ الإعدادات</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="custom-date-modal modal-overlay" id="customDateModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>تحديد فترة مخصصة</h3></div>
+            <div class="form-row"><label>من تاريخ:</label><input type="date" id="startDateInput"></div>
+            <div class="form-row"><label>إلى تاريخ:</label><input type="date" id="endDateInput"></div>
+            <div class="btn-group">
+                <button class="cancel-btn" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn" onclick="applyCustomDateRange()">تطبيق البحث</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="ioModal" onclick="this.style.display='none'">
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3 id="ioModalTitle">خيارات الملفات</h3></div>
+            <div style="display: flex; gap: 15px; margin-top: 20px;">
+                <button class="confirm-btn" id="ioExportBtn" style="padding: 15px; flex:1; font-size:18px;">📤 تصدير</button>
+            </div>
+            <div class="btn-group" style="margin-top: 15px;">
+                <button class="cancel-btn" onclick="document.getElementById('ioModal').style.display='none'">إغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- قالب الطباعة الحرارية المخفي -->
+    <div id="thermalPrintArea" class="thermal-receipt">
+        <div style="text-align: center; font-weight: bold; font-size: 16px; margin-bottom: 5px;">سراج LED</div>
+        <div style="text-align: center; font-size: 13px; margin-bottom: 10px;">تقرير حركة الخزينة والمصروفات</div>
+        <div style="border-bottom: 1px dashed black; margin-bottom: 5px;"></div>
+        <div id="printDate" style="font-size: 11px; margin-bottom: 10px;"></div>
+        <div style="border-bottom: 1px dashed black; margin-bottom: 5px;"></div>
+        <div id="printItemsContainer" style="font-size: 12px; line-height: 1.6; text-align: right;"></div>
+        <div style="border-bottom: 1px dashed black; margin-top: 5px; margin-bottom: 5px;"></div>
+        <div id="printTotalBalance" style="font-weight: bold; text-align: left; font-size: 14px;"></div>
+        <div style="text-align: center; margin-top: 15px; font-size: 11px;">نظام الإدارة - سراج LED</div>
+    </div>
+
+    <!-- استدعاء ملف الربط السحابي -->
+    <script src="db.js"></script>
+
+    <!-- أكواد الجافا سكريبت الخاصة بالمنطق والحسابات والشاشة -->
+    <script>
+        // المتغيرات العامة الأساسية
+// المتغيرات العامة الأساسية
+let vaultsDB = {};
+        let treasuryMovements = [];
+        let treasurySettings = JSON.parse(localStorage.getItem('seraj_treasury_settings')) || { sales: true, purchase: true, cust: true, pin: '1234' };
+
+        let currentSelectedVault = 'main';
+        let currentExpVault = 'main';
+        let currentMovementFilter = 'all';
+        let currentVaultFilter = 'all';
+        let currentDurationFilter = 'allTime';
+        let customStartDate = '';
+        let customEndDate = '';
+        let selectedMovementId = null;
+
+        // متغيرات الأداء الجديدة (Optimization)
+        let renderLimitMovements = 50; 
+        let renderLimitExpenses = 50;
+        let searchDebounceTimeout;
+
+// ==========================================
+// دالة الحماية للتواريخ (المحسنة للتوافق مع db.js المركزية وتجنب فروق التوقيت)
+// ==========================================
+function getSafeTime(dateVal) {
+    if (window.Utils && typeof window.Utils.getSafeTime === 'function') {
+        return window.Utils.getSafeTime(dateVal);
+    }
+    if (!dateVal) return 0;
+    if (typeof dateVal === 'number') {
+        return dateVal < 10000000000 ? dateVal * 1000 : dateVal;
+    }
+    let s = String(dateVal).trim();
+    if (/^\d+$/.test(s)) {
+        let num = Number(s);
+        return num < 10000000000 ? num * 1000 : num;
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+        let p = s.split('-');
+        return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12, 0, 0).getTime();
+    }
+    let parts = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (parts) {
+        return new Date(Number(parts[3]), Number(parts[2]) - 1, Number(parts[1]), 12, 0, 0).getTime();
+    }
+    let d = new Date(s);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function getLocalDateStr(dateVal) {
+    let t = getSafeTime(dateVal);
+    if (!t) return "";
+    let d = new Date(t);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+ 
+
+// إغلاق أي قائمة مفتوحة وتحديث البيانات لحظياً
+document.addEventListener('click', function(e) {
+            closeAllMenus();
+        });
+
+        function closeAllMenus() {
+            let menus = [
+                'durationDropdownOutside', 'durationDropdownInside', 'durationDropdownList', 
+                'durationDropdownForm', 'printMenuDropdown', 'movementFilterDropdown', 'vaultFilterDropdown'
+            ];
+            menus.forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.style.display = 'none';
+            });
         }
-    }
-}
 
-let productsDB = [];
-let customersDB = [];
-let invoicesDB = [];
-
-function loadDB() {
-    if (typeof DB !== 'undefined') {
-        productsDB = DB.getProducts() || [];
-        customersDB = DB.getCustomers() || [];
-        invoicesDB = DB.getSalesInvoices() || [];
-    }
-}
-
-let invoice = JSON.parse(localStorage.getItem('seraj_draft_invoice')) || [];
-let currentInvoiceType = 'all';
-let lastSavedInvoice = null;
-
-function saveDraft() {
-    localStorage.setItem('seraj_draft_invoice', JSON.stringify(invoice));
-}
-
-window.onload = () => {
-    applyFallbackTheme();
-    loadDB();
-    let draft = JSON.parse(localStorage.getItem('seraj_draft_invoice')) || [];
-    invoice = Array.isArray(draft) ? draft : [];
-    renderTable();
-};
-
-function handleExit() { window.location.href = 'index.html'; }
-function toggleFabMenu(e) { e.stopPropagation(); const menu = document.getElementById('fabMenu'); menu.style.display = menu.style.display === 'flex' ? 'none' : 'flex'; }
-function hideFabMenu() { const menu = document.getElementById('fabMenu'); if (menu) menu.style.display = 'none'; }
-
-function changeInvoiceType(type, title, headerColor) {
-    currentInvoiceType = type === 'sales' ? 'all' : type;
-    let titleEl = document.getElementById('pageTitleText');
-    if (titleEl) {
-        titleEl.innerText = title;
-        titleEl.style.color = headerColor;
-    }
-    let badgeEl = document.getElementById('modalInvoiceTypeBadge');
-    if (badgeEl) {
-        badgeEl.innerText = title;
-        badgeEl.style.color = headerColor;
-    }
-    hideFabMenu();
-}
-
-let stockWarningTimer;
-function showStockWarning(name, stock) {
-    const toast = document.getElementById('stockWarningToast');
-    if (!toast) return;
-    toast.innerText = `⚠️ تنبيه: "${name}" رصيده (${stock}) غير كافٍ! سيتم البيع بالسالب.`;
-    toast.style.display = 'block';
-    clearTimeout(stockWarningTimer);
-    stockWarningTimer = setTimeout(() => { toast.style.display = 'none'; }, 3000);
-}
-
-// ================= نظام البحث والطابور الذكي =================
-let searchQueue = [];
-let currentQueueQty = 1;
-
-function normalizeText(text) {
-    if (!text) return '';
-    let txt = (typeof window.cleanExcelText === 'function') 
-        ? window.cleanExcelText(text).toLowerCase() 
-        : text.toString().normalize('NFKC').replace(/_x000d_/gi, ' ').toLowerCase();
-
-    const engNumbers = ['0','1','2','3','4','5','6','7','8','9'];
-    const arNumbers = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
-    txt = txt.split('').map(c => engNumbers.includes(c) ? arNumbers[engNumbers.indexOf(c)] : c).join('');
-    txt = txt.replace(/[أإآ]/g, 'ا');
-    txt = txt.replace(/[ةت]/g, 'ه');
-    txt = txt.replace(/[ىي]/g, 'ي');
-    txt = txt.replace(/\b(مللي|ملي|م ل ل ي)\b/g, 'مم');
-    txt = txt.replace(/[^a-zA-Z0-9\u0600-\u06FF\s]/g, ' ');
-    txt = txt.replace(/\s+/g, ' ').trim();
-    return txt;
-}
-
-let searchTimer;
-function smartSearch() {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { searchProducts(); }, 150);
-}
-
-function searchProducts() {
-    loadDB();
-    const rawQuery = document.getElementById('productSearch').value.trim();
-    if (!rawQuery) {
-        document.getElementById('productResults').style.display = 'none';
-        return;
-    }
-
-    const cleanQuery = normalizeText(rawQuery);
-    const searchWords = cleanQuery.split(' ').filter(word => word.length > 0);
-
-    const resultsDiv = document.getElementById('productResults');
-    resultsDiv.innerHTML = '';
-    resultsDiv.scrollTop = 0;
-
-    let filtered = productsDB.map(p => {
-        let pNameNorm = normalizeText(p.name);
-        let pBarcode = String(p.barcode || '');
-        let score = 0;
-
-        if (pBarcode.includes(rawQuery)) score += 100;
-
-        let matchedWordsCount = 0;
-        searchWords.forEach(searchWord => {
-            if (pNameNorm.includes(searchWord)) {
-                score += 10;
-                matchedWordsCount++;
-                if (pNameNorm.startsWith(searchWord)) score += 5;
+        // الاستماع للتحديثات المركزية من السحابة أو الصفحات الأخرى
+        window.addEventListener('seraj:updated', (e) => {
+            if (window.DB && typeof window.DB.getTreasuryMoves === 'function') {
+                treasuryMovements = window.DB.getTreasuryMoves(true) || [];
+            }
+            updateTreasuryUI();
+            if (e && e.detail && e.detail.collection === 'treasury_moves') {
+                renderMovementsTable();
+            }
+            let activeView = document.querySelector('.active-view');
+            if(activeView) {
+                if(activeView.id === 'treasury-movements-view') renderMovementsTable();
+                if(activeView.id === 'treasury-expense-list-view') renderExpensesList();
             }
         });
 
-        if (matchedWordsCount === searchWords.length && searchWords.length > 1) {
-            score += 50;
+        // ==========================================
+        // الدوال الحساسة للتحكم في القوائم المنسدلة
+        // ==========================================
+        function toggleMovementFilterMenu(e) {
+            e.stopPropagation(); // منع انتقال الضغطة للخلفية
+            let m = document.getElementById('movementFilterDropdown');
+            let isBlock = (m.style.display === 'block');
+            closeAllMenus();
+            if (!isBlock) m.style.display = 'block';
         }
 
-        return { product: p, score: score, matchedWords: matchedWordsCount };
-    }).filter(item => item.score > 0 && !item.product.isDeleted);
+        function toggleVaultFilterMenu(e) {
+            e.stopPropagation();
+            let m = document.getElementById('vaultFilterDropdown');
+            let isBlock = (m.style.display === 'block');
+            closeAllMenus();
+            if (!isBlock) m.style.display = 'block';
+        }
 
-    filtered.sort((a, b) => b.score - a.score);
+        function toggleDurationMenu(e, pos) {
+            e.stopPropagation();
+            let menuId = (pos === 'Inside') ? 'durationDropdownInside' : ((pos === 'List') ? 'durationDropdownList' : (pos === 'Form' ? 'durationDropdownForm' : 'durationDropdownOutside'));
+            let m = document.getElementById(menuId);
+            let isBlock = m && (m.style.display === 'block');
+            closeAllMenus();
+            if (m && !isBlock) m.style.display = 'block';
+        }
 
-    if (filtered.length > 0) {
-        resultsDiv.style.display = 'block';
-        filtered.forEach(item => {
-            let p = item.product;
-            let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
-            let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
+        function togglePrintMenu(e) {
+            e.stopPropagation();
+            let m = document.getElementById('printMenuDropdown');
+            let isBlock = (m.style.display === 'block');
+            closeAllMenus();
+            if (!isBlock) m.style.display = 'block';
+        }
 
-            const div = document.createElement('div');
-            div.className = 'dropdown-item';
+        // ==========================================
+        // التنقل بين الشاشات
+        // ==========================================
+        function switchView(viewId) {
+            document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
+            
+            let targetView = document.getElementById(viewId);
+            if (targetView) targetView.classList.add('active-view');
+            
+            if(viewId === 'treasury-main-view') {
+                updateTreasuryUI();
+            } else if(viewId === 'treasury-movements-view') {
+                renderMovementsTable();
+            } else if(viewId === 'treasury-expense-form-view') {
+                let t = new Date();
+                document.getElementById('fullExpDate').value = t.toISOString().split('T')[0];
+                document.getElementById('fullExpAmount').value = '';
+                document.getElementById('fullExpDestination').value = '';
+                updateExpenseVaultUI();
+            } else if(viewId === 'treasury-expense-list-view') {
+                renderExpensesList();
+            }
+        }
 
-            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
+        // ==========================================
+        // الحسابات الدقيقة (المحرك القديم المطابق تماماً)
+        // ==========================================
+        function recalculateVaultBalances() {
+            if (typeof DB !== 'undefined' && typeof DB.recalculateVaultBalances === 'function') {
+                vaultsDB = DB.recalculateVaultBalances() || { main: 0, insta: 0, wallet: 0 };
+            } else if (typeof DB !== 'undefined') {
+                vaultsDB = DB.getVaults() || { main: 0, insta: 0, wallet: 0 };
+            }
+        }
 
-            // 🌟 تنسيق 3 أعمدة مرنة: اسم (يمين) - سعر (منتصف) - رصيد (يسار)
-            div.innerHTML = `
-                <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
-                    ${imgHtml}
-                    <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
-                </div>
-                <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
-                    ${parseFloat(dispPrice || 0).toFixed(2)}
-                </div>
-                <div style="flex: 1; text-align: left; white-space: nowrap;">
-                    <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
-                </div>
-            `;
+function updateTreasuryUI() {
+            recalculateVaultBalances(); 
+            document.getElementById('vaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
+            document.getElementById('vaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
+            document.getElementById('vaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            selectVault(currentSelectedVault);
+            let t = new Date();
+            document.getElementById('trDate').value = t.toISOString().split('T')[0];
+        }
 
-            let isHandled = false;
-            const selectItem = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isHandled) return;
-                isHandled = true;
-                addProduct(p, currentQueueQty);
-                currentQueueQty = 1;
-                processNextInQueue();
+        function updateExpenseVaultUI() {
+            recalculateVaultBalances(); 
+            document.getElementById('expVaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
+            document.getElementById('expVaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
+            document.getElementById('expVaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
+            selectExpVault(currentExpVault);
+        }
+
+        function saveTreasuryTransaction() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let amount = parseFloat(document.getElementById('trAmount').value) || 0;
+                let notes = document.getElementById('trNotes').value.trim() || 'حركة خزينة مباشرة';
+                let date = document.getElementById('trDate').value;
+                let isAdd = document.querySelector('input[name="trType"]:checked').value === 'add';
+
+                if(amount <= 0) return await SerajAlert("برجاء إدخال مبلغ صحيح!");
+
+                let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+
+                let moveObj = {
+                    id: window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now(),
+                    type: 'direct',
+                    vault: currentSelectedVault,
+                    amountAdd: isAdd ? amount : 0,
+                    amountDeduct: isAdd ? 0 : amount,
+                    notes: notes,
+                    date: date,
+                    _device: dName
+                };
+
+                if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
+                    DB.recordTreasuryTransaction(moveObj);
+                } else {
+                    // طريقة احتياطية قديمة لو الـ DB مش جاهز
+                    treasuryMovements = DB.getTreasuryMoves() || [];
+                    treasuryMovements.push(moveObj);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                    if(isAdd) vaultsDB[currentSelectedVault] = (vaultsDB[currentSelectedVault] || 0) + amount;
+                    else vaultsDB[currentSelectedVault] = (vaultsDB[currentSelectedVault] || 0) - amount;
+                    DB.saveVaults(vaultsDB);
+                }
+
+                await SerajAlert("تم حفظ الحركة بنجاح!");
+                document.getElementById('trAmount').value = '';
+                document.getElementById('trNotes').value = '';
+                updateTreasuryUI();
+                renderMovementsTable();
+            });
+        }
+
+        function saveFullExpense() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
+                let destination = document.getElementById('fullExpDestination').value.trim();
+                let date = document.getElementById('fullExpDate').value;
+
+                if(!destination) return await SerajAlert("برجاء إدخال جهة الصرف (خانة إجبارية)!");
+                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
+
+                let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+
+                let moveObj = {
+                    id: window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now(),
+                    type: 'expenses',
+                    vault: currentExpVault,
+                    amountAdd: 0,
+                    amountDeduct: amount,
+                    notes: destination,
+                    date: date,
+                    _device: dName
+                };
+
+                if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
+                    DB.recordTreasuryTransaction(moveObj);
+                } else {
+                    treasuryMovements = DB.getTreasuryMoves() || [];
+                    treasuryMovements.push(moveObj);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                    vaultsDB[currentExpVault] = (vaultsDB[currentExpVault] || 0) - amount;
+                    DB.saveVaults(vaultsDB);
+                }
+
+                await SerajAlert("تم حفظ المصروف بنجاح!");
+                switchView('treasury-expense-list-view');
+            });
+        }
+
+// ==========================================
+        // دوال الاختيار وتغيير الخزائن
+        // ==========================================
+        function selectVault(vaultKey) {
+            currentSelectedVault = vaultKey;
+            document.querySelectorAll('#treasury-main-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
+            
+            let titleText = "الرصيد الحالي للرئيسية (كاش)";
+            if(vaultKey === 'main') {
+                document.getElementById('cardVaultMain').classList.add('active-vault');
+                titleText = "الرصيد الحالي للرئيسية (كاش)";
+            } else if(vaultKey === 'insta') {
+                document.getElementById('cardVaultInsta').classList.add('active-vault');
+                titleText = "الرصيد الحالي لإنستا باي";
+            } else if(vaultKey === 'wallet') {
+                document.getElementById('cardVaultWallet').classList.add('active-vault');
+                titleText = "الرصيد الحالي للمحفظة الإلكترونية";
+            }
+            
+            let titleEl = document.getElementById('mainBalanceBoxTitle');
+            if(titleEl) titleEl.innerText = titleText;
+            document.getElementById('currentSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
+        }
+
+        function selectExpVault(vaultKey) {
+            currentExpVault = vaultKey;
+            document.querySelectorAll('#treasury-expense-form-view .vault-mini-card').forEach(c => c.classList.remove('active-vault'));
+            
+            let labelName = "الخزينة الرئيسية (كاش)";
+            let boxTitle = "الرصيد الحالي للرئيسية (كاش)";
+            if(vaultKey === 'main') { 
+                document.getElementById('expCardMain').classList.add('active-vault'); 
+                labelName = "الخزينة الرئيسية (كاش)"; 
+                boxTitle = "الرصيد الحالي للرئيسية (كاش)";
+            } else if(vaultKey === 'insta') { 
+                document.getElementById('expCardInsta').classList.add('active-vault'); 
+                labelName = "خزينة أنستا (InstaPay)"; 
+                boxTitle = "الرصيد الحالي لإنستا باي";
+            } else if(vaultKey === 'wallet') { 
+                document.getElementById('expCardWallet').classList.add('active-vault'); 
+                labelName = "خزينة المحفظة الإلكترونية"; 
+                boxTitle = "الرصيد الحالي للمحفظة الإلكترونية";
+            }
+            
+            document.getElementById('expActiveVaultLabel').innerText = `الصرف من: ${labelName}`;
+            let expTitleEl = document.getElementById('expBalanceBoxTitle');
+            if(expTitleEl) expTitleEl.innerText = boxTitle;
+            document.getElementById('expSelectedVaultBalance').innerText = (vaultsDB[vaultKey] || 0).toFixed(2);
+        }
+
+        function openMovementsWithVault(vaultKey) {
+            currentVaultFilter = vaultKey;
+            let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
+            document.getElementById('currentVaultFilterLabel').innerText = labels[vaultKey] || 'كل الخزائن';
+            switchView('treasury-movements-view');
+        }
+
+        function openExpensesWithVault(vaultKey) {
+            let expFilterEl = document.getElementById('expVaultFilter');
+            if(expFilterEl) expFilterEl.value = vaultKey || 'all';
+            switchView('treasury-expense-list-view');
+        }
+
+        function openExpensesWithVault(vaultKey) {
+            let expFilterEl = document.getElementById('expVaultFilter');
+            if(expFilterEl) expFilterEl.value = vaultKey || 'all';
+            switchView('treasury-expense-list-view');
+        }
+
+        // ==========================================
+        // دوال الفلاتر الشاملة
+        // ==========================================
+        function setMovementFilter(mode) {
+            currentMovementFilter = mode;
+            let labels = {
+                'all': 'جميع الحركات', 'sales': 'فواتير البيع', 'return_sale': 'فواتير المرتجع',
+                'purchase': 'فواتير الشراء', 'customers': 'سندات العملاء', 'suppliers': 'سندات الموردين',
+                'expenses': 'المصروفات', 'direct': 'الخزينة مباشرة'
             };
+            document.getElementById('currentMovementFilterLabel').innerText = labels[mode];
+            renderMovementsTable();
+        }
 
-            div.onmousedown = selectItem;
-            div.onclick = selectItem;
+        function setVaultFilter(vault) {
+            currentVaultFilter = vault;
+            let labels = { 'all': 'كل الخزائن', 'main': 'الرئيسية (كاش)', 'insta': 'إنستا (InstaPay)', 'wallet': 'المحفظة الإلكترونية' };
+            document.getElementById('currentVaultFilterLabel').innerText = labels[vault];
+            renderMovementsTable();
+        }
 
-            resultsDiv.appendChild(div);
+        function setDurationFilter(duration) {
+            if(duration === 'custom') {
+                document.getElementById('customDateModal').style.display = 'flex';
+                return;
+            }
+            currentDurationFilter = duration;
+            let labels = { 'today': 'اليوم', 'yesterday': 'أمس', '7days': 'آخر 7 أيام', 'thisMonth': 'هذا الشهر', '30days': 'آخر 30 يوم', 'lastMonth': 'الشهر الماضي', 'allTime': 'مدى العمل' };
+            let txt = labels[duration];
+            ['currentDurationLabelOutside', 'currentDurationLabelInside', 'currentDurationLabelList', 'currentDurationLabelForm'].forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.innerText = txt;
+            });
+            renderMovementsTable();
+            renderExpensesList();
+        }
 
-            if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
-        });
-        setTimeout(function() { resultsDiv.scrollTop = 0; }, 10);
-    } else {
-        resultsDiv.style.display = 'none';
-    }
-}
+        function applyCustomDateRange() {
+            customStartDate = document.getElementById('startDateInput').value;
+            customEndDate = document.getElementById('endDateInput').value;
+            if(!customStartDate || !customEndDate) return alert("اختر التاريخين!");
+            currentDurationFilter = 'custom';
+            let txt = `${customStartDate} إلى ${customEndDate}`;
+            ['currentDurationLabelOutside', 'currentDurationLabelInside', 'currentDurationLabelList', 'currentDurationLabelForm'].forEach(id => {
+                let el = document.getElementById(id);
+                if(el) el.innerText = txt;
+            });
+            document.getElementById('customDateModal').style.display = 'none';
+            renderMovementsTable();
+            renderExpensesList();
+        }
 
-function updateQueueUI() {
-    const qContainer = document.getElementById('queueContainer');
-    const qText = document.getElementById('queueStatusText');
-    const searchInput = document.getElementById('productSearch');
+        function toggleExpSearchMode() {
+            let mode = document.querySelector('input[name="expSearchType"]:checked').value;
+            let input = document.getElementById('expenseSearchInput');
+            if(mode === 'date') { input.type = 'date'; input.value = ''; input.placeholder = ''; } 
+            else { input.type = 'text'; input.value = ''; input.placeholder = 'ادخل جهة الصرف...'; }
+        }
 
-    if (searchQueue.length > 0) {
-        qContainer.style.display = 'flex';
-        let currentItem = searchQueue[0];
+        // بحث سريع وآمن باستخدام Debounce
+        function handleExpRealtimeSearch() {
+            clearTimeout(searchDebounceTimeout);
+            searchDebounceTimeout = setTimeout(() => {
+                renderLimitExpenses = 50; // إعادة ضبط العداد عند البحث الجديد
+                renderExpensesList();
+            }, 150);
+        }
 
-        qText.innerHTML = `(${searchQueue.length}) متبقي -- العدد ${currentItem.qty} من: ${currentItem.name}`;
-        currentQueueQty = currentItem.qty;
 
-        searchInput.value = currentItem.name;
-        searchProducts();
-    } else {
-        qContainer.style.display = 'none';
-        searchInput.value = '';
-        currentQueueQty = 1;
-        document.getElementById('productResults').style.display = 'none';
-    }
-}
 
-function processNextInQueue() {
-    if (searchQueue.length > 0) { searchQueue.shift(); updateQueueUI(); }
-}
-
-function clearSearchQueue() {
-    searchQueue = [];
-    updateQueueUI();
-    document.getElementById('productSearch').value = '';
-    document.getElementById('productResults').style.display = 'none';
-}
-
-// ================= الإضافة وفك الكراتين =================
-function checkAndRunAutoUnpackForSale(p) {
-    if (!p || !p.autoParentId) return;
-    let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
-
-    if (currentStock < 0) {
-        let parentP = productsDB.find(x => x && String(x.id) === String(p.autoParentId));
-        if (!parentP) return;
-        let rate = parseFloat(p.autoConversionRate) || 50;
-        let deficitUnits = Math.abs(currentStock);
-        let cartonsNeeded = Math.ceil(deficitUnits / rate);
-        let todayStr = new Date().toISOString().split('T')[0];
-        let parentPurchasePrice = parentP.lots && parentP.lots.length > 0 ? parseFloat(parentP.lots[parentP.lots.length - 1].purchasePrice) : 0;
-        if (isNaN(parentPurchasePrice) || parentPurchasePrice === 0) parentPurchasePrice = parseFloat(parentP.purchasePrice) || 0;
-        let unitPurchaseCost = parentPurchasePrice > 0 ? (parentPurchasePrice / rate) : (parseFloat(p.purchasePrice) || 0);
-        let currentSell = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (parseFloat(p.price) || 0);
-
-        if (!Array.isArray(parentP.lots)) parentP.lots = [];
-        parentP.lots.push({
-            supplier: `سحب تلقائي (فك كرتونة) لصالح : ${p.name}`,
-            stock: -cartonsNeeded,
-            purchasePrice: parentPurchasePrice,
-            price: parentP.lots.length > 0 ? parentP.lots[parentP.lots.length - 1].price : 0,
-            date: todayStr
-        });
-        parentP.stock = parentP.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
-        parentP._lastModified = Date.now();
-
-        let unitsAdded = cartonsNeeded * rate;
-        if (!Array.isArray(p.lots)) p.lots = [];
-        p.lots.unshift({
-            supplier: `سحب تلقائي من : ${parentP.name}`,
-            stock: unitsAdded,
-            purchasePrice: unitPurchaseCost,
-            price: currentSell,
-            date: todayStr
-        });
-        p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
-        p._lastModified = Date.now();
-    }
-}
-
-function addProduct(product, qtyOverride = 1) {
-    if (!Array.isArray(invoice)) invoice = [];
-    const existingIndex = invoice.findIndex(item => item && String(item.id) === String(product.id));
-    let totalStock = (product.lots && product.lots.length > 0) ? product.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(product.stock) || 0);
-    let dispPrice = (product.lots && product.lots.length > 0) ? product.lots[product.lots.length - 1].price : (product.price || 0);
-
-    let newQty = existingIndex > -1 ? (parseFloat(invoice[existingIndex].qty) || 0) + qtyOverride : qtyOverride;
-    if (newQty > totalStock) showStockWarning(product.name, totalStock);
-
-    if (existingIndex > -1) {
-        let updatedItem = invoice.splice(existingIndex, 1)[0];
-        updatedItem.qty = newQty;
-        updatedItem.total = updatedItem.price * newQty;
-        invoice.unshift(updatedItem);
-    } else {
-        invoice.unshift({
-            id: product.id,
-            name: product.name,
-            barcode: product.barcode || '',
-            price: dispPrice,
-            purchasePrice: product.purchasePrice || 0,
-            qty: qtyOverride,
-            total: dispPrice * qtyOverride,
-            hasImage: product.hasImage
-        });
+// ==========================================
+// 1. دالة عرض حركات الخزينة الشاملة
+// ==========================================
+function renderMovementsTable() {
+    // فك تجميد القراءة لضمان سحب الحركات الجديدة
+    if (typeof DB !== 'undefined') {
+        treasuryMovements = (typeof DB.getTreasuryMoves === 'function') ? (DB.getTreasuryMoves(true) || []) : (treasuryMovements || []);
+        vaultsDB = (typeof DB.recalculateVaultBalances === 'function') ? (DB.recalculateVaultBalances(true) || {}) : (DB.getVaults() || {});
     }
 
-    let printBarEl = document.getElementById('bottomPrintBar');
-    if (printBarEl) printBarEl.style.display = 'none';
+    const tbody = document.getElementById('movementsTableBody');
+    if(!tbody) return;
 
-    document.getElementById('productSearch').value = '';
-    document.getElementById('productResults').style.display = 'none';
-    renderTable();
+    let list = [...treasuryMovements];
 
-    try {
-        saveDraft();
-    } catch (e) {
-        console.warn("تنبيه: ذاكرة المسودة ممتلئة", e);
+    // الترتيب الزمني الدقيق (بالأحدث مطلقاً)
+    list.sort((a, b) => {
+        let timeA = getSafeTime(a.timestamp || a.date);
+        let timeB = getSafeTime(b.timestamp || b.date);
+        if (timeB !== timeA) return timeB - timeA;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
+
+    if(currentMovementFilter !== 'all') {
+        if(currentMovementFilter === 'customers') {
+            list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+        } else if (currentMovementFilter === 'suppliers') {
+            list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+        } else if (currentMovementFilter === 'purchase') {
+            list = list.filter(m => m.type === 'purchase' || m.type === 'purchases' || m.type === 'purchase_return');
+        } else {
+            list = list.filter(m => m.type === currentMovementFilter);
+        }
     }
-}
 
-// ================= رسم جدول الفاتورة =================
-function renderTable() {
-    const tbody = document.getElementById('invoiceItems');
+    if(currentVaultFilter !== 'all') {
+        list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+    }
+
+    // إعداد تواريخ المقارنة الآمنة (اليوم وأمس) لمنع التصفير بسبب الساعات
+    const now = new Date();
+    const todayStr = now.toDateString();
+    let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yestStr = yestDate.toDateString();
+
+    list = list.filter(m => {
+        let itemTime = getSafeTime(m.date || m.timestamp);
+        let itemDateStr = new Date(itemTime).toDateString();
+
+        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+        if(currentDurationFilter === '7days') { 
+            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime(); 
+        }
+        if(currentDurationFilter === 'thisMonth') {
+            let d = new Date(itemTime);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        if(currentDurationFilter === '30days') {
+            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime();
+        }
+        if(currentDurationFilter === 'lastMonth') {
+            let d = new Date(itemTime);
+            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+        }
+        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+            let sTime = getSafeTime(customStartDate);
+            let eTime = getSafeTime(customEndDate) + 86399999; // لتشمل نهاية اليوم المختار
+            return itemTime >= sTime && itemTime <= eTime;
+        }
+        return true;
+    });
+
+    let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
+    let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
+
+    document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+    document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+    let net = totalAdd - totalDeduct;
+    let netEl = document.getElementById('sumNetVal');
+    netEl.innerText = net.toFixed(2);
+    netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+
     tbody.innerHTML = '';
-    let subTotal = 0;
+    if(list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
+        return;
+    }
 
-    invoice.forEach((item, index) => {
-        let itemPrice = parseFloat(item.price) || 0;
-        let itemQty = parseFloat(item.qty) || 0;
-        let itemTot = itemPrice * itemQty;
-        subTotal += itemTot;
+    const fragment = document.createDocumentFragment();
+    let paginatedList = list.slice(0, renderLimitMovements);
 
+    paginatedList.forEach(m => {
         const tr = document.createElement('tr');
-        tr.className = 'swipe-row';
-
-        let startX = 0; let currentX = 0; let isDragging = false; let pressTimer = null; let lastClickTime = 0; let isLongPress = false;
-
-        const onStart = (clientX) => { startX = clientX; currentX = startX; isDragging = true; isLongPress = false; pressTimer = setTimeout(() => { if (isDragging && Math.abs(currentX - startX) < 10) { isDragging = false; isLongPress = true; openEditModal(index); } }, 600); };
-        const onMove = (clientX) => { if (!isDragging) return; currentX = clientX; let diff = currentX - startX; if (Math.abs(diff) > 15) { clearTimeout(pressTimer); tr.style.transform = `translateX(${diff}px)`; tr.style.opacity = `${1 - Math.abs(diff) / 300}`; } };
-        const onEnd = () => { if (!isDragging) return; isDragging = false; clearTimeout(pressTimer); let diff = currentX - startX; if (Math.abs(diff) > 90) { tr.style.transition = 'transform 0.25s ease, opacity 0.25s ease'; tr.style.transform = `translateX(${diff > 0 ? 100 : -100}%)`; tr.style.opacity = '0'; setTimeout(() => { invoice.splice(index, 1); saveDraft(); renderTable(); }, 250); } else { tr.style.transition = 'transform 0.2s ease, opacity 0.2s ease'; tr.style.transform = 'translateX(0)'; tr.style.opacity = '1'; } };
-
-        tr.onmousedown = (e) => { onStart(e.clientX); }; tr.onmousemove = (e) => { onMove(e.clientX); }; tr.onmouseup = (e) => { onEnd(); }; tr.onmouseleave = (e) => { if(isDragging) onEnd(); };
-        tr.ontouchstart = (e) => { onStart(e.touches[0].clientX); }; tr.ontouchmove = (e) => { onMove(e.touches[0].clientX); }; tr.ontouchend = (e) => { onEnd(); };
-
-        tr.onclick = (e) => {
-            let now = Date.now(); if (now - lastClickTime < 400) { e.preventDefault(); return; } lastClickTime = now;
-            if (Math.abs(currentX - startX) < 10 && !isLongPress) {
-                let p = productsDB.find(x => x.id === item.id);
-                let totalStock = (p && p.lots) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? p.stock : 0);
-                if (p && invoice[index].qty + 1 > totalStock) { showStockWarning(item.name, totalStock); }
-                invoice[index].qty += 1; invoice[index].total = invoice[index].price * invoice[index].qty; saveDraft(); renderTable();
+        let lastTap = 0;
+        tr.onclick = () => {
+            let tapNow = Date.now();
+            if (tapNow - lastTap < 350) {
+                selectedMovementId = m.id;
+                document.getElementById('actionSheetModal').style.display = 'flex';
+                lastTap = 0;
+            } else {
+                lastTap = tapNow;
             }
         };
 
-        let imgHtml = item.hasImage ? `<img id="inv_img_${item.id}" src="" width="30" height="30" onclick="showFullImage(event, '${item.id}')">` : '';
+        let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
+        let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
+
+        let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
+        let typeStr = typeLabels[m.type] || 'حركة خزينة';
+        let invoiceNum = m.invoiceNo || m.purchaseId || m.billId || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+        let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
 
         tr.innerHTML = `
-            <td>${imgHtml} <strong>${item.name}</strong></td>
-            <td class="color-green-val">${parseFloat(itemPrice || item.sellPrice || item.price || 0).toFixed(2)}</td>
-            <td>${parseFloat(itemQty || item.qty || 1)}</td>
-            <td class="color-red-val">${parseFloat(itemTot || 0).toFixed(2)}</td>
+            <td style="text-align: right;">
+                <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}</div>
+                <div style="font-size:15px; color:#ffffff;">${m.notes}</div>
+                <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
+                <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
+            </td>
+            <td class="total-add">${(parseFloat(m.amountAdd) || 0).toFixed(2)}</td>
+            <td class="total-deduct">${(parseFloat(m.amountDeduct) || 0).toFixed(2)}</td>
         `;
-
-        tbody.appendChild(tr);
-
-        if (item.hasImage && window.ImagesDB) window.ImagesDB.getImage(item.id, `inv_img_${item.id}`);
+        fragment.appendChild(tr);
     });
 
-    document.getElementById('mainTotal').innerText = subTotal.toFixed(2);
-    let totalDiv = document.getElementById('totalDisplayDiv');
-    let saveBtn = document.getElementById('mainSaveBtn');
-    if (invoice.length === 0) {
-        totalDiv.style.display = 'none';
-        saveBtn.style.display = 'none';
-    } else {
-        totalDiv.style.display = 'flex';
-        saveBtn.style.display = 'flex';
+    if (list.length > renderLimitMovements) {
+        const moreTr = document.createElement('tr');
+        moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
+        moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
+        fragment.appendChild(moreTr);
     }
+
+    tbody.appendChild(fragment);
 }
 
-function showFullImage(e, productId) {
-    e.stopPropagation();
-    history.pushState({ modalOpen: true }, '');
-    let modal = document.getElementById('fullImageModal');
-    document.getElementById('fullImageDisplay').src = '';
-    if (window.ImagesDB) window.ImagesDB.getImage(productId, 'fullImageDisplay');
-    modal.style.display = 'flex';
-}
+// ==========================================
+// 2. دالة عرض المصروفات
+// ==========================================
+function renderExpensesList() {
+    if (typeof DB !== 'undefined') {
+        treasuryMovements = DB.getTreasuryMoves(true) || [];
+    }
 
-function toggleDetails() {
-    const box = document.getElementById('hiddenDetailsBox');
-    box.style.display = box.style.display === 'block' ? 'none' : 'block';
-}
+    const container = document.getElementById('expensesListContainer');
+    if(!container) return;
 
-function openEditModal(index) {
-    history.pushState({ modalOpen: true }, '');
-    document.getElementById('editItemName').innerText = invoice[index].name;
-    document.getElementById('editPrice').value = invoice[index].price;
-    document.getElementById('editQty').value = invoice[index].qty;
-    document.getElementById('editItemIndex').value = index;
+    let expenses = treasuryMovements.filter(m => m.type === 'expenses');
 
-    let p = productsDB.find(x => x.id === invoice[index].id);
-    let slider = document.getElementById('editBatchesSlider');
-    slider.innerHTML = '';
-    let totalStock = 0;
+    // ترتيب المصروفات بالأحدث مطلقاً
+    const calcTime = (window.Utils && typeof window.Utils.getSafeTime === 'function') ? window.Utils.getSafeTime : getSafeTime;
+    expenses.sort((a, b) => {
+        let timeA = calcTime(a.timestamp || a.date);
+        let timeB = calcTime(b.timestamp || b.date);
+        if (timeB !== timeA) return timeB - timeA;
+        return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
 
-    if (p && p.lots && p.lots.length > 0) {
-        p.lots.forEach(b => {
-            totalStock += (parseFloat(b.stock) || 0);
-            slider.innerHTML += `<div class="batch-card"><div>مورد: ${b.supplier}</div><div>شراء: <span class="color-red-val">${b.purchasePrice}</span> ج</div><div>بيع: <span class="color-green-val">${b.price}</span> ج</div><div>تاريخ: ${b.date}</div><div>كمية: <span class="color-green-val">${b.stock}</span></div></div>`;
+    let selectedVault = document.getElementById('expVaultFilter');
+    if(selectedVault && selectedVault.value !== 'all') {
+        expenses = expenses.filter(e => (e.vault || 'main') === selectedVault.value);
+    }
+
+    let searchMode = document.querySelector('input[name="expSearchType"]:checked').value;
+    let query = document.getElementById('expenseSearchInput').value.trim().toLowerCase();
+
+    if(query) {
+        expenses = expenses.filter(e => {
+            if(searchMode === 'date') return getLocalDateStr(e.date) === query;
+            else return e.notes.toLowerCase().includes(query);
         });
-    } else if (p) {
-        totalStock = p.stock || 0;
-        slider.innerHTML = `<div class="batch-card"><div>شراء: <span class="color-red-val">${p.purchasePrice || 0}</span> ج</div><div>كمية: <span class="color-green-val">${totalStock}</span></div></div>`;
     }
 
-    document.getElementById('editTotalStock').innerText = totalStock;
-    document.getElementById('hiddenDetailsBox').style.display = 'none';
-    document.getElementById('editModalOverlay').style.display = 'flex';
-}
+    const now = new Date();
+    const todayStr = getLocalDateStr(now);
+    let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+    const yestStr = getLocalDateStr(yestDate);
 
-function saveItemEdit() {
-    let idx = document.getElementById('editItemIndex').value;
-    let newQty = parseFloat(document.getElementById('editQty').value) || 1;
-    let p = productsDB.find(x => x.id === invoice[idx].id);
-    let totalStock = (p && p.lots) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? p.stock : 0);
-    if (p && newQty > totalStock) showStockWarning(invoice[idx].name, totalStock);
+    expenses = expenses.filter(m => {
+        let itemTime = getSafeTime(m.date || m.timestamp);
+        let itemDateStr = getLocalDateStr(itemTime);
 
-    invoice[idx].price = parseFloat(document.getElementById('editPrice').value) || 0;
-    invoice[idx].qty = newQty;
-    invoice[idx].total = invoice[idx].price * newQty;
-    saveDraft();
-    closeModals();
-    renderTable();
-}
+        if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+        if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+        if(currentDurationFilter === '7days') { 
+            let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime(); 
+        }
+        if(currentDurationFilter === 'thisMonth') {
+            let d = new Date(itemTime);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }
+        if(currentDurationFilter === '30days') {
+            let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+            return itemTime >= d.getTime();
+        }
+        if(currentDurationFilter === 'lastMonth') {
+            let d = new Date(itemTime);
+            let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+            return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+        }
+        if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+            let sTime = getSafeTime(customStartDate);
+            let eTime = getSafeTime(customEndDate) + 86399999;
+            return itemTime >= sTime && itemTime <= eTime;
+        }
+        return true;
+    });
 
-function openSaveModal() {
-    if (invoice.length === 0) return SerajAlert("الفاتورة فارغة!");
-    history.pushState({ modalOpen: true }, '');
-    let sub = parseFloat(document.getElementById('mainTotal').innerText) || 0;
-    document.getElementById('modalTotal').value = sub.toFixed(2);
-    document.getElementById('modalDiscount').value = 0;
-    document.getElementById('modalNotes').value = '';
-
-    // إرجاع الخزينة للقيمة الافتراضية (كاش)
-    let vaultInput = document.getElementById('modalVaultSelect');
-    if (vaultInput) vaultInput.value = 'main';
-    let vaultLabel = document.getElementById('customVaultLabel');
-    if (vaultLabel) vaultLabel.innerText = 'الخزينة (كاش)';
-
-    let draftCust = localStorage.getItem('seraj_draft_customer') || '';
-    document.getElementById('customerSearchInput').value = draftCust;
-    handleCustomerInput();
-
-    let t = new Date();
-    document.getElementById('modalDate').value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-    document.getElementById('modalPaid').value = document.getElementById('modalTotal').value;
-    calculateModalTotals();
-    document.getElementById('saveModalOverlay').style.display = 'flex';
-}
-
-let selectedCustomerId = null;
-
-function handleCustomerInput() {
-    loadDB();
-    const rawVal = document.getElementById('customerSearchInput').value.trim();
-    const resultsDiv = document.getElementById('customerResults');
-    resultsDiv.innerHTML = '';
-    resultsDiv.scrollTop = 0;
-
-    if (rawVal.length === 0) {
-        selectedCustomerId = null;
-        resultsDiv.style.display = 'none';
-        updateLiveCustomerBalanceUI(null);
+    container.innerHTML = '';
+    if(expenses.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:30px; background:var(--card-bg); border-radius:16px; border:2px solid var(--neon-border);">لا توجد مصروفات مطابقة للبحث</div>`;
         return;
     }
 
-    const norm = (window.Utils && typeof window.Utils.normalizeName === 'function')
-        ? window.Utils.normalizeName
-        : (s) => String(s || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+    const fragment = document.createDocumentFragment();
 
-    const normQuery = norm(rawVal);
+    let paginatedExpenses = expenses.slice(0, renderLimitExpenses);
 
-    const activeCustomers = customersDB.filter(c => {
-        return c && !(c.isDeleted === true || String(c.isDeleted).toLowerCase() === 'true' || c.archived === true || String(c.archived).toLowerCase() === 'true');
-    });
-
-    const exactMatch = activeCustomers.find(c => norm(c.name) === normQuery);
-    selectedCustomerId = exactMatch ? exactMatch.id : null;
-    updateLiveCustomerBalanceUI(exactMatch);
-
-    const filtered = activeCustomers.filter(c => norm(c.name).includes(normQuery)).slice(0, 30);
-
-    if (filtered.length > 0) {
-        resultsDiv.style.display = 'block';
-        setTimeout(function() { resultsDiv.scrollTop = 0; }, 50);
-        filtered.forEach(c => {
-            const div = document.createElement('div');
-            div.className = 'dropdown-item';
-            
-            let bal = parseFloat(c.calculatedBalance !== undefined ? c.calculatedBalance : (c.balance || 0)) || 0;
-            let balHtml = '';
-            
-            // السالب = عليه (أحمر بدون إشارة سالب)
-            if (bal < 0) {
-                balHtml = `<span class="color-red-val">${Math.abs(bal).toFixed(2)} (عليه)</span>`;
-            } 
-            // الموجب = له (أخضر)
-            else if (bal > 0) {
-                balHtml = `<span class="color-green-val">${bal.toFixed(2)} (له)</span>`;
-            } 
-            // الصفر = صافي
-            else {
-                balHtml = `<span style="color: var(--text-muted, #888);">0.00 (صافي)</span>`;
-            }
-
-            div.innerHTML = `<span>${c.name}</span>${balHtml}`;
-
-            div.innerHTML = `<span>${c.name}</span>${balHtml}`;
-            div.onmousedown = (e) => {
-                e.preventDefault();
-                selectedCustomerId = c.id;
-                document.getElementById('customerSearchInput').value = c.name;
-                resultsDiv.style.display = 'none';
-                updateLiveCustomerBalanceUI(c);
-            };
-            resultsDiv.appendChild(div);
-        });
-    } else {
-        resultsDiv.style.display = 'none';
-    }
-}
-
-function updateLiveCustomerBalanceUI(customer) {
-    const balDiv = document.getElementById('liveCustomerBalance');
-    if (!balDiv) return;
-    
-    if (customer) {
-        let net = parseFloat(customer.calculatedBalance !== undefined ? customer.calculatedBalance : (customer.balance || 0)) || 0;
+    paginatedExpenses.forEach(exp => {
+        const card = document.createElement('div');
+        card.style.cssText = "background:var(--card-bg); border:2px solid var(--neon-border); border-radius:16px; padding:15px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.2);";
         
-        // السالب = مدين للمحل (عليه) بالأحمر بدون إشارة سالب
-        if (net < 0) {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${Math.abs(net).toFixed(2)} (عليه)</span>`;
-        } 
-        // الموجب = رصيد دائن للعميل (له) بالأخضر
-        else if (net > 0) {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${net.toFixed(2)} (له)</span>`;
-        } 
-        // صفر = صافي
-        else {
-            balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">0.00 (صافي)</span>`;
-        }
-    } else {
-        balDiv.innerHTML = `<span>عميل جديد - الرصيد: 0.00</span>`;
-    }
-    
-    if (typeof calculateModalTotals === 'function') {
-        calculateModalTotals();
-    }
-}
+        let deviceName = exp._device || exp.device || exp.addedBy || exp.cashier || exp.userName || exp.user_name || 'غير مسجل';
+        let editTag = (exp._lastModifiedBy && exp._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:5px;">✏️ ${exp._lastModifiedBy}</span>` : '';
 
-function calculateModalTotals() {
-    let subTotal = parseFloat(document.getElementById('mainTotal').innerText) || 0;
-    let discount = parseFloat(document.getElementById('modalDiscount').value) || 0;
-    let finalReq = subTotal - discount;
-    if (finalReq < 0) finalReq = 0;
-    document.getElementById('modalTotal').value = finalReq.toFixed(2);
-
-    let paidInput = document.getElementById('modalPaid');
-    let custName = document.getElementById('customerSearchInput').value.trim();
-
-    if (currentInvoiceType === 'return' && custName === "") {
-        paidInput.value = finalReq.toFixed(2);
-        paidInput.readOnly = true;
-    } else {
-        paidInput.readOnly = false;
-    }
-
-    let paid = parseFloat(paidInput.value) || 0;
-    document.getElementById('modalRemaining').value = (finalReq - paid).toFixed(2);
-}
-
-function getNextInvoiceNumber(dbArray) {
-    // 1. جلب الحرف الإجباري الخاص بالجهاز (لو مفيش ياخد X)
-    let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
-    
-    // 2. استخدام مصفوفة الفواتير اللحظية الخاصة بالصفحة
-    let invoices = dbArray || [];
-    let maxNum = 99; // البداية دائماً من 100
-    
-    invoices.forEach(inv => {
-        let invNo = String(inv.id || ''); 
-        // البحث عن الفواتير اللي بتبدأ بنفس الحرف فقط
-        if (invNo.startsWith(devPrefix + '-')) {
-            let numPart = parseInt(invNo.split('-')[1], 10);
-            if (!isNaN(numPart) && numPart > maxNum) {
-                maxNum = numPart;
-            }
-        }
-    });
-    
-    // النتيجة: A-100 أو B-150
-    return `${devPrefix}-${maxNum + 1}`;
-}
-
-function executePostSavePrint() {
-    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
-    if (modalEl) modalEl.style.display = 'none';
-    
-    if (typeof PrintManager !== 'undefined' && lastSavedInvoice) {
-        PrintManager.printThermalReceipt(lastSavedInvoice);
-    } else if (typeof printLastInvoice === 'function') {
-        printLastInvoice();
-    }
-    lastSavedInvoice = null;
-}
-
-function closePostSavePrintModal() {
-    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
-    if (modalEl) modalEl.style.display = 'none';
-    lastSavedInvoice = null;
-}
-
-function closePostSavePrintModal() {
-    let modalEl = document.getElementById('postSavePrintModal');
-    if (modalEl) modalEl.style.display = 'none';
-}
-
-let _isConfirmingSave = false;
-
-function confirmSave() {
-    if (_isConfirmingSave) return;
-    if (!invoice || invoice.length === 0) {
-        closeModals();
-        return;
-    }
-
-    let finalReq = parseFloat(document.getElementById('modalTotal')?.value) || 0;
-    let inputPaid = parseFloat(document.getElementById('modalPaid')?.value) || 0;
-    let discount = parseFloat(document.getElementById('modalDiscount')?.value) || 0;
-    let custInputEl = document.getElementById('customerSearchInput');
-    let custName = custInputEl ? custInputEl.value.trim() : "";
-    let vaultKey = document.getElementById('modalVaultSelect')?.value || 'main';
-    let invDate = document.getElementById('modalDate')?.value || new Date().toISOString().split('T')[0];
-    let notes = (document.getElementById('modalNotes')?.value || "").trim();
-    
-    let actualPaid = inputPaid;
-    let vaultAmount = inputPaid;
-    if (custName === "" && inputPaid > finalReq) {
-        actualPaid = finalReq;
-        vaultAmount = finalReq;
-    }
-    
-    let remaining = parseFloat((finalReq - actualPaid).toFixed(2));
-    if (remaining > 0 && custName === "" && currentInvoiceType !== 'quotation') {
-        return SerajAlert("تنبيه: الفاتورة آجل! يجب إدخال اسم العميل.", "error");
-    }
-
-    _isConfirmingSave = true;
-
-    let itemsSnapshot = invoice.map(item => ({
-        ...item,
-        total: parseFloat(((parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0)).toFixed(2))
-    }));
-    let invoiceTypeSnapshot = currentInvoiceType;
-    let customerIdSnapshot = selectedCustomerId;
-    let newInvoiceId = typeof getNextInvoiceNumber === 'function' ? getNextInvoiceNumber(invoicesDB) : window.Utils.generateInvoiceId();
-    let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
-    let invType = (invoiceTypeSnapshot === 'all' && remaining > 0) ? 'delayed' : invoiceTypeSnapshot;
-
-    lastSavedInvoice = {
-        id: newInvoiceId,
-        type: invType,
-        date: invDate,
-        customerId: customerIdSnapshot,
-        customer: custName || null,
-        total: finalReq,
-        remaining: remaining,
-        discount: discount,
-        paid: actualPaid,
-        vault: vaultKey,
-        notes: notes,
-        items: itemsSnapshot,
-        prevBalance: 0,
-        currentBalance: 0,
-        _device: dName,
-        _lastModifiedBy: dName,
-        timestamp: Date.now(),
-        _lastModified: Date.now()
-    };
-
-    localStorage.removeItem('seraj_draft_customer');
-    localStorage.removeItem('seraj_draft_invoice');
-    selectedCustomerId = null;
-    if (custInputEl) custInputEl.value = "";
-    invoice = [];
-    renderTable();
-    closeModals();
-
-    // إظهار شريط الطباعة والتصدير السفلي بـ display: flex بعد إتمام الحفظ
-
-
-    let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
-    let printModalEl = document.getElementById('postSavePrintModal');
-    if (printSetting === 'ask' && printModalEl) {
-        history.pushState({ modalOpen: true }, '');
-        printModalEl.style.display = 'flex';
-    }
-
-    setTimeout(() => {
-        try {
-            loadDB();
-            let prevBal = 0, currBal = 0;
-
-            // 1. مطابقة وحفظ العميل عبر window.Utils.normalizeName دون لمس c.transactions
-            if (custName !== "" && invoiceTypeSnapshot !== 'quotation') {
-                let c = customerIdSnapshot 
-                    ? customersDB.find(x => x && String(x.id) === String(customerIdSnapshot)) 
-                    : null;
-
-                if (!c) {
-                    let norm = (window.Utils && typeof window.Utils.normalizeName === 'function')
-                        ? window.Utils.normalizeName
-                        : (s) => String(s || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
-                    let cleanTarget = norm(custName);
-                    c = customersDB.find(x => x && !x.isDeleted && norm(x.name) === cleanTarget);
-                }
-
-                let todayStr = new Date().toISOString().split('T')[0];
-
-                if (c) {
-                    customerIdSnapshot = c.id;
-                    prevBal = parseFloat(c.calculatedBalance ?? c.balance) || 0;
-                    c.lastActivityDate = todayStr;
-                    c._lastModified = Date.now();
-                } else {
-                    let newId = Date.now();
-                    let newC = {
-                        id: newId,
-                        name: custName,
-                        balance: 0,
-                        lastActivityDate: todayStr,
-                        _lastModified: Date.now()
-                    };
-                    customersDB.push(newC);
-                    customerIdSnapshot = newId;
-                    prevBal = 0;
-                }
-
-                let isRet = (invoiceTypeSnapshot === 'return');
-                currBal = isRet ? (prevBal + remaining) : (prevBal - remaining);
-
-                if (lastSavedInvoice) {
-                    lastSavedInvoice.customerId = customerIdSnapshot;
-                    lastSavedInvoice.prevBalance = prevBal;
-                    lastSavedInvoice.currentBalance = currBal;
-                }
-                if (typeof DB !== 'undefined') DB.saveCustomers(customersDB);
-            }
-
-            // 2. خصم أو رد المخزن بنظام (FIFO) والدفعة السالبة وختم الوقت
-            if (invoiceTypeSnapshot !== 'quotation') {
-                let isReturn = (invoiceTypeSnapshot === 'return');
-                
-                itemsSnapshot.forEach(item => {
-                    let p = productsDB.find(x => x && String(x.id) === String(item.id));
-                    if (p) {
-                        let qtyToProcess = parseFloat(item.qty) || 0;
-                        if (!Array.isArray(p.lots)) p.lots = [];
-
-                        if (isReturn) {
-                            if (p.lots.length > 0) {
-                                p.lots[0].stock = (parseFloat(p.lots[0].stock) || 0) + qtyToProcess;
-                            } else {
-                                let baseStock = (parseFloat(p.stock) || 0) + qtyToProcess;
-                                p.lots.push({
-                                    supplier: 'مرتجع مبيعات',
-                                    stock: baseStock,
-                                    purchasePrice: (parseFloat(p.purchasePrice) || 0),
-                                    price: item.price,
-                                    date: invDate
-                                });
-                            }
-                            p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
-                            p._lastModified = Date.now();
-                        } else {
-                            if (p.lots.length === 0 && (parseFloat(p.stock) || 0) > 0) {
-                                p.lots.push({
-                                    supplier: 'رصيد افتتاحي',
-                                    stock: parseFloat(p.stock) || 0,
-                                    purchasePrice: parseFloat(p.purchasePrice) || 0,
-                                    price: parseFloat(p.price) || item.price,
-                                    date: invDate
-                                });
-                            }
-
-                            p.lots.sort((a, b) => window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date));
-
-                            for (let i = 0; i < p.lots.length; i++) {
-                                if (qtyToProcess <= 0) break;
-                                let currentLotStock = parseFloat(p.lots[i].stock) || 0;
-                                if (currentLotStock > 0) {
-                                    if (currentLotStock >= qtyToProcess) {
-                                        p.lots[i].stock = currentLotStock - qtyToProcess;
-                                        qtyToProcess = 0;
-                                    } else {
-                                        qtyToProcess -= currentLotStock;
-                                        p.lots[i].stock = 0;
-                                    }
-                                }
-                            }
-
-                            // حذف الدفعات الصفرية
-                            p.lots = p.lots.filter(l => (parseFloat(l.stock) || 0) !== 0);
-
-                            // إنشاء دفعة عجز بالسالب عند نفاد الرصيد
-                            if (qtyToProcess > 0) {
-                                let negLot = p.lots.find(l => l.supplier === 'سحب بالسالب (عجز)' || (parseFloat(l.stock) || 0) < 0);
-                                if (negLot) {
-                                    negLot.stock = (parseFloat(negLot.stock) || 0) - qtyToProcess;
-                                } else {
-                                    p.lots.push({
-                                        supplier: 'سحب بالسالب (عجز)',
-                                        stock: -qtyToProcess,
-                                        purchasePrice: (parseFloat(p.purchasePrice) || 0),
-                                        price: item.price,
-                                        date: invDate
-                                    });
-                                }
-                            }
-
-                            // إعادة حساب الرصيد الإجمالي وتحديث ختم الوقت إجبارياً
-                            p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
-                            p._lastModified = Date.now();
-
-                            if (typeof checkAndRunAutoUnpackForSale === 'function' && p.autoParentId && String(p.autoParentId) !== String(p.id) && (parseFloat(p.autoConversionRate) || 0) > 0) {
-                                try { checkAndRunAutoUnpackForSale(p); } catch (e) {}
-                            }
-                        }
-                    }
-                });
-
-                if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
-
-                // 3. تسجيل حركة الخزينة مركزياً
-                if (vaultAmount > 0 && typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-                    DB.recordTreasuryTransaction({
-                        id: Date.now() + Math.floor(Math.random() * 1000),
-                        type: isReturn ? 'return_sale' : 'sales',
-                        vault: vaultKey,
-                        amountAdd: isReturn ? 0 : vaultAmount,
-                        amountDeduct: isReturn ? vaultAmount : 0,
-                        date: invDate,
-                        notes: `${isReturn ? 'فاتورة مرتجع بيع' : 'فاتورة بيع'} #${typeof formatIdDisplay === 'function' ? formatIdDisplay(newInvoiceId) : newInvoiceId} - العميل: ${custName || 'نقدي'}`,
-                        customerId: customerIdSnapshot,
-                        customer: custName || null,
-                        invoiceNo: typeof formatIdDisplay === 'function' ? formatIdDisplay(newInvoiceId) : newInvoiceId,
-                        _device: dName
-                    });
-                }
-            }
-
-            // 4. الحفظ المركزي للفاتورة
-            invoicesDB.push(lastSavedInvoice);
-            if (typeof DB !== 'undefined') DB.saveSalesInvoices(invoicesDB);
-
-            if (printSetting === 'print') {
-                if (typeof PrintManager !== 'undefined') {
-                    PrintManager.printThermalReceipt(lastSavedInvoice);
-                } else if (typeof printLastInvoice === 'function') {
-                    printLastInvoice();
-                }
-            }
-        } catch (err) {
-            console.error("خطأ أثناء الحفظ في الخلفية:", err);
-        } finally {
-            _isConfirmingSave = false;
-        }
-    }, 15);
-}
-
-function toggleCustomSelect(e, dropdownId) {
-    if (e) e.stopPropagation();
-    closeAllMenus();
-    const menu = document.getElementById(dropdownId);
-    if (menu) {
-        menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
-    }
-}
-
-function setCustomSelect(hiddenInputId, labelId, value, text, e) {
-    if (e) e.stopPropagation();
-    let hiddenInput = document.getElementById(hiddenInputId);
-    if (hiddenInput) {
-        hiddenInput.value = value;
-        hiddenInput.dispatchEvent(new Event('change'));
-    }
-    let label = document.getElementById(labelId);
-    if (label) label.innerText = text;
-    
-    closeAllMenus();
-}
-
-function closeAllMenus(e) {
-    let sRes = document.getElementById('customerResults'); if (sRes) sRes.style.display = 'none';
-    let pRes = document.getElementById('productResults'); if (pRes) pRes.style.display = 'none';
-    let vDrop = document.getElementById('customVaultDropdown'); if (vDrop) vDrop.style.display = 'none';
-}
-
-function closeModals() {
-    document.getElementById('editModalOverlay').style.display = 'none';
-    document.getElementById('saveModalOverlay').style.display = 'none';
-}
-
-// ================= الفواتير المعلقة =================
-function holdCurrentInvoice() {
-    hideFabMenu();
-    if (invoice.length === 0) return SerajAlert("لا يوجد أصناف في الفاتورة لتعليقها!");
-
-    let heldInvoices = JSON.parse(localStorage.getItem('seraj_held_invoices')) || [];
-    let currentCust = document.getElementById('customerSearchInput') ? document.getElementById('customerSearchInput').value.trim() : '';
-
-    let heldInvoice = {
-        id: Date.now(),
-        time: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute:'2-digit' }),
-        type: currentInvoiceType,
-        customer: currentCust || 'عميل نقدي',
-        items: JSON.parse(JSON.stringify(invoice))
-    };
-
-    heldInvoices.push(heldInvoice);
-    localStorage.setItem('seraj_held_invoices', JSON.stringify(heldInvoices));
-
-    invoice = []; saveDraft(); renderTable();
-    SerajAlert("تم تعليق الفاتورة بنجاح. الشاشة جاهزة لعميل جديد.");
-}
-
-function showHeldInvoicesModal() {
-    hideFabMenu();
-    let heldInvoices = JSON.parse(localStorage.getItem('seraj_held_invoices')) || [];
-    let listContainer = document.getElementById('heldInvoicesList');
-    listContainer.innerHTML = '';
-
-    if (heldInvoices.length === 0) {
-        listContainer.innerHTML = `<p>لا توجد فواتير معلقة حالياً.</p>`;
-    } else {
-        heldInvoices.forEach((inv, index) => {
-            let totalItems = inv.items.reduce((sum, item) => sum + item.qty, 0);
-            listContainer.innerHTML += `
-            <div class="dropdown-item">
-                <div>
-                    <strong>${inv.customer}</strong><br>
-                    <span>العدد: ${totalItems} | الوقت: ${inv.time}</span>
-                </div>
-                <div>
-                    <button type="button" class="btn-save-ai" onclick="restoreHeldInvoice(${index})">استعادة</button>
-                    <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="deleteHeldInvoice(${index})">حذف</button>
-                </div>
+        card.innerHTML = `
+            <div>
+                <div style="font-size:17px; font-weight:bold;">${exp.notes}</div>
+                <div style="font-size:13px; opacity:0.85; margin-top:4px;">⌚ ${exp.date} - (${exp.vault || 'main'})</div>
+                <div style="font-size:12px; color:#38bdf8; margin-top:6px;">📱 ${deviceName} ${editTag}</div>
             </div>
-            `;
-        });
-    }
-    history.pushState({ modalOpen: true }, '');
-    document.getElementById('heldInvoicesModal').style.display = 'flex';
-}
-
-async function restoreHeldInvoice(index) {
-    if (invoice.length > 0) {
-        let isConfirmed = await SerajConfirm("الشاشة الحالية بها أصناف! هل تريد تعليقها أولاً قبل استعادة الفاتورة القديمة؟");
-        if (!isConfirmed) return;
-        holdCurrentInvoice();
-    }
-
-    let heldInvoices = JSON.parse(localStorage.getItem('seraj_held_invoices')) || [];
-    let invToRestore = heldInvoices.splice(index, 1)[0];
-    localStorage.setItem('seraj_held_invoices', JSON.stringify(heldInvoices));
-
-    invoice = invToRestore.items; saveDraft(); renderTable();
-    let typeName = invToRestore.type === 'return' ? 'فاتورة مرتجع' : (invToRestore.type === 'quotation' ? 'عرض سعر' : 'فاتورة بيع');
-    let color = invToRestore.type === 'return' ? '#ff1a40' : (invToRestore.type === 'quotation' ? '#00ff66' : '#ffffff');
-    changeInvoiceType(invToRestore.type, typeName, color);
-
-    if (invToRestore.customer && invToRestore.customer !== 'عميل نقدي') {
-        localStorage.setItem('seraj_draft_customer', invToRestore.customer);
-    }
-    document.getElementById('heldInvoicesModal').style.display = 'none';
-}
-
-async function deleteHeldInvoice(index) {
-    let isConfirmed = await SerajConfirm("هل أنت متأكد من حذف هذه الفاتورة المعلقة للأبد؟");
-    if (isConfirmed) {
-        let heldInvoices = JSON.parse(localStorage.getItem('seraj_held_invoices')) || [];
-        heldInvoices.splice(index, 1);
-        localStorage.setItem('seraj_held_invoices', JSON.stringify(heldInvoices));
-        showHeldInvoicesModal();
-    }
-}
-
-// ================= المساعد الصوتي الذكي (SmartVoice Lite - V4 Clean) =================
-let aiMicRecognition = null;
-let isAiMicRecording = false;
-let aiAccumulatedText = "";
-
-function openAiModal() {
-    history.pushState({ modalOpen: true }, '');
-    document.getElementById('aiModalOverlay').style.display = 'flex';
-    document.getElementById('aiInputText').value = '';
-    aiAccumulatedText = '';
-
-    let currentSens = (typeof DB !== 'undefined' && DB.getVoiceSensitivity) ? DB.getVoiceSensitivity() : 55;
-    let slider = document.getElementById('quickSensitivitySlider');
-    let valLabel = document.getElementById('quickSensitivityVal');
-    if (slider) slider.value = currentSens;
-    if (valLabel) valLabel.innerText = currentSens + '%';
-}
-
-function closeAiModal() {
-    if (isAiMicRecording && aiMicRecognition) {
-        try { aiMicRecognition.stop(); } catch (e) {}
-    }
-    stopAiMicUI();
-    document.getElementById('aiModalOverlay').style.display = 'none';
-}
-
-function updateQuickSensitivity(val) {
-    let valLabel = document.getElementById('quickSensitivityVal');
-    if (valLabel) valLabel.innerText = val + '%';
-}
-
-function saveQuickSensitivity(val) {
-    if (typeof DB !== 'undefined' && DB.saveVoiceSensitivity) {
-        DB.saveVoiceSensitivity(parseInt(val));
-    }
-}
-
-function startAiMic() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        return (typeof SerajAlert === 'function')
-            ? SerajAlert("المتصفح لا يدعم التسجيل الصوتي، يرجى استخدام Google Chrome.")
-            : alert("المتصفح لا يدعم التسجيل الصوتي.");
-    }
-
-    if (isAiMicRecording && aiMicRecognition) {
-        aiMicRecognition.stop();
-        return;
-    }
-
-    aiMicRecognition = new SpeechRecognition();
-    aiMicRecognition.lang = 'ar-EG';
-    aiMicRecognition.continuous = true;
-    aiMicRecognition.interimResults = true;
-
-    let inputBox = document.getElementById('aiInputText');
-    aiAccumulatedText = inputBox.value ? (inputBox.value.trim() + " ") : "";
-
-    aiMicRecognition.onstart = () => {
-        isAiMicRecording = true;
-        let btn = document.getElementById('aiMicBtn');
-        if (btn) {
-            btn.innerHTML = '🔴 جاري الاستماع المستمر... (اضغط للإيقاف)';
-        }
-    };
-
-    aiMicRecognition.onresult = (event) => {
-        let interimTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-                aiAccumulatedText += event.results[i][0].transcript + " ";
-            } else {
-                interimTranscript += event.results[i][0].transcript;
-            }
-        }
-        inputBox.value = aiAccumulatedText + interimTranscript;
-    };
-
-    aiMicRecognition.onerror = (e) => {
-        console.error("خطأ في المايك:", e);
-        stopAiMicUI();
-    };
-
-    aiMicRecognition.onend = () => {
-        stopAiMicUI();
-    };
-
-    try {
-        aiMicRecognition.start();
-    } catch (e) {
-        console.error("تعذر بدء المايك:", e);
-    }
-}
-
-function stopAiMicUI() {
-    isAiMicRecording = false;
-    let btn = document.getElementById('aiMicBtn');
-    if (btn) {
-        btn.innerHTML = '🎤 اضغط هنا للبدء';
-    }
-}
-
-function processLocalAI() {
-    if (isAiMicRecording && aiMicRecognition) {
-        try { aiMicRecognition.stop(); } catch (e) {}
-        stopAiMicUI();
-    }
-
-    let text = document.getElementById('aiInputText').value.trim();
-    if (!text) {
-        return (typeof SerajAlert === 'function')
-            ? SerajAlert("الرجاء التحدث أو كتابة الطلبات أولاً!")
-            : alert("الرجاء التحدث أو كتابة الطلبات أولاً!");
-    }
-
-    document.getElementById('aiLoadingIndicator').style.display = 'block';
-    document.getElementById('sendAiBtn').disabled = true;
-
-    setTimeout(() => {
-        try {
-            loadDB();
-            let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) 
-                ? productsDB 
-                : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts() : []);
-
-            let result = null;
-            if (window.SmartVoice && typeof window.SmartVoice.analyzeFullText === 'function') {
-                try {
-                    result = window.SmartVoice.analyzeFullText(text, safeProducts, 'sales');
-                } catch (e) {
-                    result = window.SmartVoice.analyzeFullText(text, safeProducts);
-                }
-            } else if (typeof SmartVoice !== 'undefined' && typeof SmartVoice.analyzeFullText === 'function') {
-                try {
-                    result = SmartVoice.analyzeFullText(text, safeProducts, 'sales');
-                } catch (e) {
-                    result = SmartVoice.analyzeFullText(text, safeProducts);
-                }
-            } else {
-                throw new Error("محرك المساعد الصوتي غير متصل.");
-            }
-
-            let queueArr = result ? (result.queue || result) : [];
-            if (Array.isArray(queueArr) && queueArr.length > 0) {
-                queueArr.forEach(item => {
-                    searchQueue.push({
-                        name: item.name,
-                        qty: item.qty || 1
-                    });
-                });
-            } else {
-                if (typeof SerajAlert === 'function') {
-                    SerajAlert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.", "error");
-                } else {
-                    alert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.");
-                }
-            }
-
-            document.getElementById('aiLoadingIndicator').style.display = 'none';
-            document.getElementById('sendAiBtn').disabled = false;
-            closeAiModal();
-
-            if (typeof updateQueueUI === 'function') updateQueueUI();
-        } catch (error) {
-            document.getElementById('aiLoadingIndicator').style.display = 'none';
-            document.getElementById('sendAiBtn').disabled = false;
-            console.error("Voice Error:", error);
-            if (typeof SerajAlert === 'function') {
-                SerajAlert("تم معالجة الطلب محلياً بنجاح.", "success");
-            }
-        }
-    }, 100);
-}
-
-// ================= الطباعة والباركود =================
-function printLastInvoice() {
-    if (!lastSavedInvoice) return;
-    
-    let sub = 0;
-    let itemsHtml = '';
-    lastSavedInvoice.items.forEach(item => {
-        sub += item.total;
-        itemsHtml += `<tr><td>${item.name}</td><td>${item.price}</td><td>${item.qty}</td><td>${item.total.toFixed(2)}</td></tr>`;
-    });
-
-    let rem = (sub - lastSavedInvoice.discount) - lastSavedInvoice.paid;
-    let accountHtml = '';
-
-    if (lastSavedInvoice.customer) {
-        let prev = lastSavedInvoice.prevBalance || 0;
-        let curr = lastSavedInvoice.currentBalance || 0;
-        let prevText = prev < 0 ? `${Math.abs(prev).toFixed(2)} (عليه)` : (prev > 0 ? `${prev.toFixed(2)} (له)` : "0.00");
-        let currText = curr < 0 ? `${Math.abs(curr).toFixed(2)} (عليه)` : (curr > 0 ? `${curr.toFixed(2)} (له)` : "0.00");
-        accountHtml = `<div><div><span class="label">حساب سابق:</span> ${prevText}</div><div><span class="label">إجمالي الحساب الجديد:</span> ${currText}</div></div>`;
-    }
-
-    let printHtml = `
-        <div class="print-header">سراج LED</div>
-        <div class="print-meta-row"><span>رقم: ${lastSavedInvoice.id}</span><span>التاريخ: ${lastSavedInvoice.date}</span></div>
-        <div class="print-customer">العميل: ${lastSavedInvoice.customer || "نقدي"}</div>
-        <table class="print-table">
-            <thead><tr><th>الصنف</th><th>السعر</th><th>العدد</th><th>الإجمالي</th></tr></thead>
-            <tbody>${itemsHtml}</tbody>
-        </table>
-        <div class="print-totals">
-            <div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>
-            ${lastSavedInvoice.discount > 0 ? `<div><span class="label">الخصم:</span> ${lastSavedInvoice.discount.toFixed(2)}</div>` : ''}
-            <div><span class="label">المدفوع:</span> ${lastSavedInvoice.paid.toFixed(2)}</div>
-            <div><span class="label">باقي الفاتورة:</span> ${rem.toFixed(2)}</div>
-            ${accountHtml}
-        </div>
-    `;
-
-    let printArea = document.getElementById('printReceiptArea');
-    if (printArea) printArea.innerHTML = printHtml;
-
-    document.body.classList.add('thermal-print-mode');
-
-    setTimeout(() => {
-        window.print();
-        setTimeout(() => {
-            document.body.classList.remove('thermal-print-mode');
-        }, 500);
-    }, 250);
-}
-
-function executePostSavePrint() {
-    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
-    if (modalEl) modalEl.style.display = 'none';
-
-    if (typeof PrintManager !== 'undefined' && typeof PrintManager.printThermalReceipt === 'function' && lastSavedInvoice) {
-        PrintManager.printThermalReceipt(lastSavedInvoice);
-    } else {
-        printLastInvoice();
-    }
-}
-
-// دالة بديلة لنفس الغرض لضمان الاستجابة مع أي مسمى زر
-function executePrintModalThermal() {
-    executePostSavePrint();
-}
-
-function closePostSavePrintModal() {
-    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
-    if (modalEl) modalEl.style.display = 'none';
-    lastSavedInvoice = null;
-}
-
-function closePrintModal() {
-    closePostSavePrintModal();
-}
-
-function exportLastInvoiceToExcel() {
-    if (!lastSavedInvoice) return;
-    let excelData = [
-        ["رقم الفاتورة", lastSavedInvoice.id, "التاريخ", lastSavedInvoice.date],
-        ["العميل", lastSavedInvoice.customer || "نقدي", "النوع", lastSavedInvoice.type],
-        ["ملاحظات", lastSavedInvoice.notes || ""],
-        [],
-        ["اسم الصنف", "السعر", "الكمية", "الإجمالي"]
-    ];
-    let sub = 0;
-    lastSavedInvoice.items.forEach(item => {
-        excelData.push([item.name, item.price, item.qty, item.total]);
-        sub += item.total;
-    });
-    excelData.push([]);
-    excelData.push(["الإجمالي", sub]);
-    excelData.push(["الخصم", lastSavedInvoice.discount]);
-    excelData.push(["الصافي", sub - lastSavedInvoice.discount]);
-    excelData.push(["المدفوع", lastSavedInvoice.paid]);
-    excelData.push(["المتبقي", (sub - lastSavedInvoice.discount) - lastSavedInvoice.paid]);
-
-    let ws = XLSX.utils.aoa_to_sheet(excelData);
-    let wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "الفاتورة");
-    XLSX.writeFile(wb, `Invoice_${lastSavedInvoice.id}.xlsx`);
-    document.getElementById('bottomPrintBar').style.display = 'none';
-}
-
-let html5QrCode = null;
-let currentBarcodeTargetId = '';
-let isDirectSearch = false;
-
-function startBarcodeScan(targetInputId, directSearch = false) {
-    currentBarcodeTargetId = targetInputId;
-    isDirectSearch = directSearch;
-    history.pushState({ modalOpen: true }, '');
-    document.getElementById('scannerModal').style.display = 'flex';
-    setTimeout(() => {
-        if (html5QrCode) {
-            html5QrCode.stop().then(() => { html5QrCode.clear(); startCamera(); }).catch(e => { startCamera(); });
-        } else {
-            html5QrCode = new Html5Qrcode("reader");
-            startCamera();
-        }
-    }, 100);
-}
-
-function startCamera() {
-    html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
-        (decodedText, decodedResult) => {
-            let beep = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU');
-            beep.play().catch(e => {});
-            stopBarcodeScan();
-            if (isDirectSearch) {
-                loadDB();
-                let p = productsDB.find(x => String(x.barcode) === decodedText || String(x.id) === decodedText);
-                if (p) { addProduct(p); } else { SerajAlert("❌ الصنف غير موجود في المخزن!"); }
-            }
-        },
-        (errorMessage) => {}
-    ).catch((err) => {
-        SerajAlert("يرجى إعطاء صلاحية الكاميرا للمتصفح.");
-        document.getElementById('scannerModal').style.display = 'none';
-    });
-}
-
-function stopBarcodeScan() {
-    if (html5QrCode) {
-        html5QrCode.stop().then(() => {
-            html5QrCode.clear();
-            html5QrCode = null;
-            document.getElementById('scannerModal').style.display = 'none';
-        }).catch(err => {
-            document.getElementById('scannerModal').style.display = 'none';
-        });
-    } else {
-        document.getElementById('scannerModal').style.display = 'none';
-    }
-}
-</script>
-
-<script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
-            .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
-    });
-}
-</script>
-
-<script>
-document.addEventListener('click', function(event) {
-    if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
-        if (typeof closeAllMenus === 'function') {
-            closeAllMenus();
-        }
-    }
-});
-</script>
-
-<script>
-window.addEventListener('popstate', function(event) {
-    if (typeof goBackSmart === 'function') {
-        goBackSmart();
-    }
-});
-</script>
-
-<script src="ai_brain.js"></script>
-
-<script>
-window.addEventListener('seraj:updated', (e) => {
-    let col = e.detail && e.detail.collection ? e.detail.collection : null;
-    if (!col || col === 'sales_invoices' || col === 'products' || col === 'customers') {
-        if (typeof DB !== 'undefined') {
-            productsDB = DB.getProducts() || [];
-            customersDB = DB.getCustomers() || [];
-            invoicesDB = DB.getSalesInvoices(true) || [];
-        }
-        renderTable();
+            <div style="font-size:20px; font-weight:bold; color:#ff1a40;">${(exp.amountDeduct || 0).toFixed(2)} جنيه</div>
+        `;
         
-        if (document.getElementById('productResults').style.display === 'block') {
-            searchProducts();
-        }
-        if (document.getElementById('saveModalOverlay').style.display === 'flex') {
-            handleCustomerInput();
-        }
+        let lastTap = 0;
+        card.onclick = () => {
+            let now = Date.now();
+            if (now - lastTap < 350) {
+                selectedMovementId = exp.id;
+                document.getElementById('actionSheetModal').style.display = 'flex';
+                lastTap = 0;
+            } else {
+                lastTap = now;
+            }
+        };
+
+        fragment.appendChild(card);
+    });
+
+    if (expenses.length > renderLimitExpenses) {
+        const moreBtn = document.createElement('div');
+        moreBtn.style.cssText = "text-align:center; padding:15px; margin-top:10px; color:#a855f7; font-weight:bold; background:rgba(168, 85, 247, 0.1); border-radius:12px; cursor:pointer;";
+        moreBtn.innerHTML = `⏬ عرض 50 مصروف أقدم... (${expenses.length - renderLimitExpenses} متبقي)`;
+        moreBtn.onclick = () => { renderLimitExpenses += 50; renderExpensesList(); };
+        fragment.appendChild(moreBtn);
     }
-});
-</script>
+
+    container.appendChild(fragment); // حقن مرة واحدة فقط
+}
+
+
+        function openEditMovementModal() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            let m = treasuryMovements.find(x => x.id === selectedMovementId);
+            if(!m) return;
+
+            document.getElementById('editTrId').value = m.id;
+            document.getElementById('editTrAmount').value = m.amountAdd > 0 ? m.amountAdd : m.amountDeduct;
+            document.getElementById('editTrNotes').value = m.notes;
+            document.getElementById('editTrDate').value = m.date || new Date().toISOString().split('T')[0];
+
+            if(m.amountAdd > 0) document.getElementById('editTypeAdd').checked = true;
+            else document.getElementById('editTypeDeduct').checked = true;
+
+            document.getElementById('editMovementModal').style.display = 'flex';
+        }
+
+        function saveEditedMovement() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let id = parseInt(document.getElementById('editTrId').value);
+                let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
+                let notes = document.getElementById('editTrNotes').value.trim() || 'بدون بيان';
+                let date = document.getElementById('editTrDate').value;
+                let isAdd = document.querySelector('input[name="editTrType"]:checked').value === 'add';
+
+                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
+
+                let index = treasuryMovements.findIndex(x => x.id === id);
+                if(index === -1) return;
+
+                let oldM = treasuryMovements[index];
+                let vaultKey = oldM.vault || 'main';
+
+                if(oldM.amountAdd > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - oldM.amountAdd;
+                else if(oldM.amountDeduct > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + oldM.amountDeduct;
+
+                if(isAdd) {
+                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + amount;
+                    oldM.amountAdd = amount; oldM.amountDeduct = 0;
+                } else {
+                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - amount;
+                    oldM.amountAdd = 0; oldM.amountDeduct = amount;
+                }
+
+                oldM.notes = notes; oldM.date = date;
+                oldM._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'غير معروف';
+
+                if (typeof DB !== 'undefined') {
+                    if (typeof DB.updateItem === 'function') {
+                        DB.updateItem('treasury_moves', id, oldM);
+                        if(typeof DB.recalculateVaultBalances === 'function') DB.recalculateVaultBalances();
+                    } else {
+                        DB.saveVaults(vaultsDB);
+                        DB.saveTreasuryMoves(treasuryMovements);
+                    }
+                }
+
+                document.getElementById('editMovementModal').style.display = 'none';
+                renderMovementsTable();
+                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                    renderExpensesList();
+                }
+                updateTreasuryUI();
+                await SerajAlert("تم تحديث وحفظ الحركة بنجاح!");
+            });
+        }
+
+        async function confirmDeleteMovement() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            
+            let isConfirmed = await SerajConfirm("هل أنت متأكد من حذف هذه الحركة؟ سيتم مسحها نهائياً من النظام والسحابة وتعديل رصيد الخزينة.");
+            if(!isConfirmed) return;
+
+            let index = treasuryMovements.findIndex(x => x.id === selectedMovementId);
+            if(index !== -1) {
+                let m = treasuryMovements[index];
+                
+                // استخدام دالة الحذف المركزي السحابي (Hard Delete)
+                if (typeof DB !== 'undefined' && typeof DB.deleteItem === 'function') {
+                    DB.deleteItem('treasury_moves', m.id, 'hard');
+                } else {
+                    // طريقة احتياطية قديمة لو الدالة غير متوفرة
+                    let vaultKey = m.vault || 'main';
+                    if(vaultsDB[vaultKey] !== undefined) {
+                        vaultsDB[vaultKey] -= (m.amountAdd || 0);
+                        vaultsDB[vaultKey] += (m.amountDeduct || 0);
+                    }
+                    treasuryMovements.splice(index, 1);
+                    DB.saveVaults(vaultsDB);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                }
+
+                renderMovementsTable();
+                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                    renderExpensesList();
+                }
+                updateTreasuryUI();
+                await SerajAlert("تم حذف الحركة بنجاح من النظام والسحابة!");
+            }
+        }
+
+        // ==========================================
+        // الإعدادات والمصنع والتلوين والطباعة
+        // ==========================================
+        function checkAdminPin() {
+            let settings = JSON.parse(localStorage.getItem('seraj_treasury_settings')) || { pin: '1234' };
+            let entered = prompt("🔒 هذه الصلاحية للمدير فقط. برجاء إدخال الرقم السري:");
+            if (entered === settings.pin) return true;
+            if (entered !== null) alert("الرقم السري غير صحيح ❌");
+            return false;
+        }
+
+        function verifyPin() {
+            let entered = document.getElementById('pinInput').value.trim();
+            let currentPin = treasurySettings.pin || '1234';
+            if(entered === currentPin) {
+                document.getElementById('pinModal').style.display = 'none';
+                switchView('treasury-main-view');
+            } else {
+                alert("الرقم السري غير صحيح!");
+                document.getElementById('pinInput').value = '';
+            }
+        }
+
+        function openProgramSettingsModal() { closeAllMenus(); document.getElementById('programSettingsModal').style.display = 'flex'; }
+        function openFactoryResetModal() { closeAllMenus(); document.getElementById('resetPinInput').value = ''; document.getElementById('factoryResetModal').style.display = 'flex'; }
+        function openSettingsModal() {
+            document.getElementById('setSalesAuto').checked = treasurySettings.sales;
+            document.getElementById('setPurchAuto').checked = treasurySettings.purchase;
+            document.getElementById('setCustAuto').checked = treasurySettings.cust;
+            document.getElementById('setNewPin').value = treasurySettings.pin || '1234';
+            document.getElementById('settingsModal').style.display = 'flex';
+        }
+
+        function saveTreasurySettings() {
+            treasurySettings.sales = document.getElementById('setSalesAuto').checked;
+            treasurySettings.purchase = document.getElementById('setPurchAuto').checked;
+            treasurySettings.cust = document.getElementById('setCustAuto').checked;
+            let newPin = document.getElementById('setNewPin').value.trim();
+            if(newPin) treasurySettings.pin = newPin;
+            localStorage.setItem('seraj_treasury_settings', JSON.stringify(treasurySettings));
+            document.getElementById('settingsModal').style.display = 'none';
+            alert("تم حفظ الإعدادات بنجاح!");
+        }
+
+        function executeFactoryReset() {
+            let enteredPin = document.getElementById('resetPinInput').value.trim();
+            if(enteredPin !== (treasurySettings.pin || '1234')) { alert("الرقم السري غير صحيح!"); return; }
+            if(confirm("تحذير أخير: سيتم مسح بيانات الخزينة بالكامل؟")) {
+                localStorage.removeItem('seraj_vaults_v2'); localStorage.removeItem('seraj_treasury_moves'); 
+                localStorage.removeItem('seraj_customers'); localStorage.removeItem('seraj_suppliers');
+                localStorage.removeItem('seraj_products'); localStorage.removeItem('seraj_sales_invoices');
+                localStorage.removeItem('seraj_purchase_invoices');
+                alert("تم التصفير!"); location.reload();
+            }
+        }
+
+        function setAppTheme(border, glow, bg1, bg2, cardBg, textColor) {
+            document.documentElement.style.setProperty('--neon-border', border);
+            document.documentElement.style.setProperty('--neon-glow', glow);
+            document.documentElement.style.setProperty('--bg-dark-1', bg1);
+            document.documentElement.style.setProperty('--bg-dark-2', bg2);
+            document.documentElement.style.setProperty('--card-bg', cardBg);
+            document.documentElement.style.setProperty('--text-main', textColor);
+            localStorage.setItem('seraj_theme_border', border); localStorage.setItem('seraj_theme_glow', glow);
+            localStorage.setItem('seraj_theme_bg1', bg1); localStorage.setItem('seraj_theme_bg2', bg2);
+            localStorage.setItem('seraj_theme_card', cardBg); localStorage.setItem('seraj_theme_text', textColor);
+            document.getElementById('programSettingsModal').style.display = 'none';
+        }
+
+        function applySavedTheme() {
+            let b = localStorage.getItem('seraj_theme_border'), g = localStorage.getItem('seraj_theme_glow');
+            if(b && g) {
+                document.documentElement.style.setProperty('--neon-border', b); document.documentElement.style.setProperty('--neon-glow', g);
+                if(localStorage.getItem('seraj_theme_bg1')) document.documentElement.style.setProperty('--bg-dark-1', localStorage.getItem('seraj_theme_bg1'));
+                if(localStorage.getItem('seraj_theme_bg2')) document.documentElement.style.setProperty('--bg-dark-2', localStorage.getItem('seraj_theme_bg2'));
+                if(localStorage.getItem('seraj_theme_card')) document.documentElement.style.setProperty('--card-bg', localStorage.getItem('seraj_theme_card'));
+                if(localStorage.getItem('seraj_theme_text')) document.documentElement.style.setProperty('--text-main', localStorage.getItem('seraj_theme_text'));
+            }
+        }
+
+                function printThermalStatement() { 
+            closeAllMenus(); 
+            let list = [...treasuryMovements], activeView = document.querySelector('.active-view').id, reportTitle = "تقرير حركة الخزينة والمصروفات";
+            
+            const now = new Date();
+            const todayStr = getLocalDateStr(now);
+            let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+            const yestStr = getLocalDateStr(yestDate);
+
+            if(activeView === 'treasury-expense-list-view' || activeView === 'treasury-expense-form-view') {
+                list = list.filter(m => m.type === 'expenses'); reportTitle = "تقرير المصروفات النثرية";
+            } else {
+                if(currentMovementFilter !== 'all') list = list.filter(m => m.type === currentMovementFilter);
+                if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+            }
+
+            list = list.filter(m => {
+                let itemTime = getSafeTime(m.date || m.timestamp);
+                let itemDateStr = getLocalDateStr(itemTime);
+
+                if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+                if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+                if(currentDurationFilter === '7days') { 
+                    let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime(); 
+                }
+                if(currentDurationFilter === 'thisMonth') {
+                    let d = new Date(itemTime);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }
+                if(currentDurationFilter === '30days') {
+                    let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime();
+                }
+                if(currentDurationFilter === 'lastMonth') {
+                    let d = new Date(itemTime);
+                    let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+                    return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+                }
+                if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+                    let sTime = getSafeTime(customStartDate);
+                    let eTime = getSafeTime(customEndDate) + 86399999;
+                    return itemTime >= sTime && itemTime <= eTime;
+                }
+                return true;
+            });
+
+            // ترتيب للطباعة: الأحدث أولاً
+            list.sort((a, b) => getSafeTime(b.date || b.timestamp) - getSafeTime(a.date || a.timestamp));
+
+            document.getElementById('printDate').innerText = `التاريخ: ${new Date().toISOString().slice(0,10)}`;
+
+            document.querySelector('#thermalPrintArea div:nth-child(2)').innerText = reportTitle;
+
+            let itemsHtml = '', tAdd = 0, tDed = 0;
+            list.forEach(m => {
+                tAdd += (m.amountAdd || 0); tDed += (m.amountDeduct || 0);
+                itemsHtml += `<div style="margin-bottom:8px; border-bottom:1px dotted #ccc; padding-bottom:4px;">
+                    <div>${m.notes}</div>
+                    <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span>إضافة: ${(m.amountAdd||0).toFixed(2)}</span>
+                        <span>خصم: ${(m.amountDeduct||0).toFixed(2)}</span>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('printItemsContainer').innerHTML = itemsHtml;
+            document.getElementById('printTotalBalance').innerHTML = `إجمالي إضافة: ${tAdd.toFixed(2)} <br> إجمالي خصم: ${tDed.toFixed(2)} <br> الصافي: ${(tAdd - tDed).toFixed(2)}`;
+            window.print(); 
+        }
+
+        function handlePdfMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات PDF"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; window.print(); }; document.getElementById('ioModal').style.display = 'flex'; }
+        function handleExcelMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات Excel"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; exportExcel(); }; document.getElementById('ioModal').style.display = 'flex'; }
+        async function exportExcel() {
+    if(treasuryMovements.length === 0) return await SerajAlert("لا توجد بيانات لتصديرها!");
+    if(typeof exportToExcel === 'function') {
+        exportToExcel(treasuryMovements, "تقرير_حركة_الخزينة");
+    } else {
+        await SerajAlert("ملف print_manager.js غير متصل أو الدالة غير موجودة!");
+    }
+}
+
+        window.onload = () => {
+            applySavedTheme();
+            updateTreasuryUI();
+            switchView('treasury-main-view'); // التشغيل المباشر كما كان بالكود الجديد
+        };
+
+        window.addEventListener('popstate', function(event) {
+            if (typeof goBackSmart === 'function') goBackSmart();
+            else window.location.href = 'index.html';
+        });
+    </script>
 
 </body>
 </html>
