@@ -825,26 +825,27 @@ function calculateModalTotals() {
     document.getElementById('modalRemaining').value = (finalReq - paid).toFixed(2);
 }
 
-function generateSmartInvoiceId(dbArray) {
-    let deviceCode = localStorage.getItem('seraj_device_code');
-    if (!deviceCode) {
-        deviceCode = Math.floor(Math.random() * 9) + 1;
-        localStorage.setItem('seraj_device_code', deviceCode);
-    }
-    let myInvoices = dbArray.filter(inv => {
-        let strId = String(inv.id);
-        return strId.startsWith(deviceCode.toString()) && strId.length >= 6;
+function getNextInvoiceNumber(dbArray) {
+    // 1. جلب الحرف الإجباري الخاص بالجهاز (لو مفيش ياخد X)
+    let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
+    
+    // 2. استخدام مصفوفة الفواتير اللحظية الخاصة بالصفحة
+    let invoices = dbArray || [];
+    let maxNum = 99; // البداية دائماً من 100
+    
+    invoices.forEach(inv => {
+        let invNo = String(inv.id || ''); 
+        // البحث عن الفواتير اللي بتبدأ بنفس الحرف فقط
+        if (invNo.startsWith(devPrefix + '-')) {
+            let numPart = parseInt(invNo.split('-')[1], 10);
+            if (!isNaN(numPart) && numPart > maxNum) {
+                maxNum = numPart;
+            }
+        }
     });
-    let nextNumber = 1;
-    if (myInvoices.length > 0) {
-        let maxNum = 0;
-        myInvoices.forEach(inv => {
-            let numPart = parseInt(String(inv.id).substring(1));
-            if (!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
-        });
-        nextNumber = maxNum + 1;
-    }
-    return parseInt(deviceCode.toString() + nextNumber.toString().padStart(5, '0'));
+    
+    // النتيجة: A-100 أو B-150
+    return `${devPrefix}-${maxNum + 1}`;
 }
 
 function executePostSavePrint() {
@@ -908,7 +909,7 @@ function confirmSave() {
     }));
     let invoiceTypeSnapshot = currentInvoiceType;
     let customerIdSnapshot = selectedCustomerId;
-    let newInvoiceId = typeof generateSmartInvoiceId === 'function' ? generateSmartInvoiceId(invoicesDB) : window.Utils.generateInvoiceId();
+    let newInvoiceId = typeof getNextInvoiceNumber === 'function' ? getNextInvoiceNumber(invoicesDB) : window.Utils.generateInvoiceId();
     let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
     let invType = (invoiceTypeSnapshot === 'all' && remaining > 0) ? 'delayed' : invoiceTypeSnapshot;
 
