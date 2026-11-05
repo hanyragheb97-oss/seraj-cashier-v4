@@ -72,29 +72,35 @@
         .panel { padding: 0; background-color: var(--bg-main); max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; border-radius: 0 0 10px 10px; margin-top: -5px; margin-bottom: 10px;}
         .panel-item { padding: 15px 25px; border-bottom: 1px dashed var(--neon-border); font-size: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;}
         
-        /* المفكرة الذكية */
-        .quick-add-btn { position: fixed; bottom: 150px; left: 20px; background: var(--bg-dark-1); color: var(--color-val-green); border: 2px solid var(--neon-border); border-radius: 50%; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 10px var(--shadow-dark); z-index: 900; }
-        .note-card { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; cursor: pointer; padding: 14px 18px !important; min-height: 90px; border: 1px solid var(--neon-border) !important; box-shadow: 0 0 10px var(--shadow-dark) !important; border-radius: 12px; margin-bottom: 8px; background: var(--bg-dark-1); }
-        .note-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg-main); z-index: 5000; display: flex; flex-direction: column; padding-top: 10px; }
-        .note-modal-footer { position: absolute; bottom: 0; left: 0; right: 0; background: var(--bg-dark-1); border-top: 1px solid var(--neon-border); display: flex; padding: 10px 15px; gap: 10px; z-index: 5002; box-shadow: 0 -4px 15px var(--shadow-dark); align-items: center; }
-        .note-inputs-container { padding: 10px 20px; text-align: center; }
-        .note-title-input { width: 100%; background: transparent; border: none; border-bottom: 2px solid var(--neon-border); color: var(--color-val-green); font-size: 22px; font-weight: bold; text-align: center; padding: 5px; margin-bottom: 10px; outline: none; }
-        .note-comment-input { width: 100%; background: transparent; border: none; border-bottom: 1px dashed var(--text-muted); color: var(--text-main); font-size: 14px; text-align: center; padding: 5px; margin-bottom: 15px; outline: none; }
-        .note-search-input { width: 100%; background: var(--bg-dark-1); border: 1px solid var(--neon-border); color: var(--text-main); border-radius: 20px; padding: 10px 15px; font-size: 15px; text-align: center; outline: none; box-shadow: 0 0 10px var(--shadow-dark); }
-        .note-search-results { position: absolute; width: 100%; left: 0; right: 0; top: 100%; background: var(--bg-main); border: 1px solid var(--neon-border); border-radius: 10px; max-height: 65vh; overflow-y: auto; z-index: 5001; box-shadow: 0 10px 25px var(--shadow-dark); margin-top: 5px; }
-        .note-search-results div { padding: 12px 15px; border-bottom: 1px solid var(--neon-border); color: var(--text-main); font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-decoration: none !important; }
-        .note-search-results div *, .note-search-results span { text-decoration: none !important; border-bottom: none !important; }
-        .note-table-wrapper { flex: 1; overflow-y: auto; padding: 10px 15px 40px 15px; margin-top: 10px; }
-        .note-table { width: 100%; border-collapse: collapse; background: var(--bg-dark-1); border-radius: 10px; overflow: hidden; border: 1px solid var(--neon-border); }
-        .note-table th, .note-table td { border: 1px solid var(--neon-border); padding: 10px 5px; text-align: center; font-size: 14px; font-weight: bold; color: var(--text-main); }
-        .note-table th { background: var(--bg-main); color: var(--text-main); border-bottom: 2px solid var(--neon-border); }
-        .note-td-input { width: 100%; background: transparent; border: 1px solid var(--text-muted); border-radius: 6px; padding: 4px; color: var(--text-main); text-align: center; font-weight: bold; font-size: 14px; outline: none; }
-        .state-badge { padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-block; min-width: 40px; font-weight: bold; }
-        .state-orange { background: var(--neon-border); color: #fff; }
-        .state-red { background: var(--color-val-red); color: #fff; }
-        .state-green { background: var(--color-val-green); color: #fff; }
+/* المفكرة الذكية */
+.quick-add-btn { position: fixed; bottom: 150px; left: 20px; background: var(--bg-dark-1, #120f29); color: var(--color-val-green, #10b981); border: 2px solid var(--neon-border, #a855f7); border-radius: 50%; width: 60px; height: 60px; font-size: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 0 10px var(--shadow-dark, rgba(0,0,0,0.5)); z-index: 900; }
+        .note-card { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; cursor: pointer; padding: 14px 18px !important; min-height: 90px; border: 1px solid var(--neon-border, #a855f7) !important; box-shadow: 0 0 10px var(--shadow-dark, rgba(0,0,0,0.3)) !important; border-radius: 12px; margin-bottom: 8px; background: var(--bg-dark-1, #19172c); }
         
-        .bottom-filter { flex: 1; background: var(--bg-dark-1); border: 1px solid var(--neon-border); border-radius: 12px; padding: 0 12px; height: 45px; display: none; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; color: var(--text-main); position: relative; margin: 0; }
+        /* === هنا التعديل الأساسي لمنع التداخل والشفافية بوضع لون صلب احتياطي وتكبير الـ z-index === */
+        .note-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: var(--bg-main, #070913); z-index: 99999; display: flex; flex-direction: column; padding-top: 15px; }
+        .note-modal-footer { position: absolute; bottom: 0; left: 0; right: 0; background: var(--bg-dark-1, #120f29); border-top: 2px solid var(--neon-border, #a855f7); display: flex; padding: 10px 15px; gap: 10px; z-index: 100000; box-shadow: 0 -4px 15px rgba(0,0,0,0.8); align-items: center; }
+        
+        .note-inputs-container { padding: 10px 20px; text-align: center; }
+        .note-title-input { width: 100%; background: transparent; border: none; border-bottom: 2px solid var(--neon-border, #a855f7); color: var(--color-val-green, #10b981); font-size: 22px; font-weight: bold; text-align: center; padding: 5px; margin-bottom: 10px; outline: none; }
+        .note-comment-input { width: 100%; background: transparent; border: none; border-bottom: 1px dashed var(--text-muted, #9ca3af); color: var(--text-main, #fff); font-size: 14px; text-align: center; padding: 5px; margin-bottom: 15px; outline: none; }
+        .note-search-input { width: 100%; background: var(--bg-dark-1, #19172c); border: 2px solid var(--neon-border, #a855f7); color: var(--text-main, #fff); border-radius: 20px; padding: 10px 15px; font-size: 15px; text-align: center; outline: none; box-shadow: 0 0 10px var(--shadow-dark, rgba(0,0,0,0.3)); }
+        
+        .note-search-results { position: absolute; width: 100%; left: 0; right: 0; top: 100%; background: var(--bg-main, #070913); border: 2px solid var(--neon-border, #a855f7); border-radius: 10px; max-height: 65vh; overflow-y: auto; z-index: 100001; box-shadow: 0 10px 25px rgba(0,0,0,0.9); margin-top: 5px; }
+        .note-search-results div { padding: 12px 15px; border-bottom: 1px solid var(--neon-border, #a855f7); color: var(--text-main, #fff); font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-decoration: none !important; }
+        .note-search-results div *, .note-search-results span { text-decoration: none !important; border-bottom: none !important; }
+        
+        .note-table-wrapper { flex: 1; overflow-y: auto; padding: 10px 15px 40px 15px; margin-top: 10px; }
+        .note-table { width: 100%; border-collapse: collapse; background: var(--bg-dark-1, #19172c); border-radius: 10px; overflow: hidden; border: 1px solid var(--neon-border, #a855f7); }
+        .note-table th, .note-table td { border: 1px solid var(--neon-border, #a855f7); padding: 10px 5px; text-align: center; font-size: 14px; font-weight: bold; color: var(--text-main, #fff); }
+        .note-table th { background: var(--bg-main, #070913); color: var(--text-main, #fff); border-bottom: 2px solid var(--neon-border, #a855f7); }
+        .note-td-input { width: 100%; background: transparent; border: 1px solid var(--text-muted, #9ca3af); border-radius: 6px; padding: 4px; color: var(--text-main, #fff); text-align: center; font-weight: bold; font-size: 14px; outline: none; }
+        
+        .state-badge { padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-block; min-width: 40px; font-weight: bold; }
+        .state-orange { background: var(--neon-border, #f59e0b); color: #fff; }
+        .state-red { background: var(--color-val-red, #ef4444); color: #fff; }
+        .state-green { background: var(--color-val-green, #10b981); color: #fff; }
+        
+        .bottom-filter { flex: 1; background: var(--bg-dark-1, #19172c); border: 1px solid var(--neon-border, #a855f7); border-radius: 12px; padding: 0 12px; height: 45px; display: none; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; color: var(--text-main, #fff); position: relative; margin: 0; }
     </style>
 </head>
  
