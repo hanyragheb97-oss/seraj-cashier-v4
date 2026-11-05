@@ -2207,30 +2207,117 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
         }
     },
     
-    getTreasuryMoves: function(includeCanceled = true) { 
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []); 
-        return includeCanceled ? moves : moves.filter(m => m && !m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted');
-    },
-    saveTreasuryMoves: function(data) { 
-        if (!Array.isArray(data)) return;
-        data.forEach(m => {
-            if (!m) return;
-            if (!m.vault && m.treasury) {
-                let v = String(m.treasury).toLowerCase();
-                m.vault = v.includes('insta') ? 'insta' : (v.includes('wallet') ? 'wallet' : 'main');
-            } else if (!m.vault) {
-                m.vault = 'main';
+// 2️⃣ دالة جلب الخزينة (مع دمج الفواتير وتوحيد التواريخ)
+getTreasuryMoves: function(aggregateAll = false) {
+    let moves = JSON.parse(localStorage.getItem('seraj_treasury_moves') || '[]');
+
+    // ⏰ توحيد التواريخ للحركات المباشرة
+    moves = moves.map(m => {
+        m.timestamp = window.Utils.getSafeTime(m.date || m.timestamp);
+        m.date = new Date(m.timestamp).toISOString().split('T')[0]; // صيغة YYYY-MM-DD الإجبارية
+        return m;
+    });
+
+    // لو الصفحة مش طالبة الفواتير، رجع حركات الخزينة بس
+    if (!aggregateAll) return moves.sort((a, b) => b.timestamp - a.timestamp);
+
+    // 🔄 دمج فواتير البيع والشراء
+    let allTransactions = [...moves];
+    let sales = this.getSalesInvoices(false);
+    let purchases = this.getPurchaseInvoices(false);
+
+    // سحب المبيعات المدفوعة
+    sales.forEach(inv => {
+        let paid = parseFloat(inv.initialPaid !== undefined ? inv.initialPaid : inv.paid) || 0;
+        if (paid > 0 && !inv.isCanceled) {
+            let ts = window.Utils.getSafeTime(inv.date || inv.timestamp);
+            let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+            allTransactions.push({
+                id: inv.id,
+                type: isReturn ? 'sales_return' : 'sale',
+                vault: inv.vault || 'main',
+                treasury: inv.vault || 'main',
+                amountAdd: isReturn ? 0 : paid,
+                amountDeduct: isReturn ? paid : 0,
+                amount: paid,
+                notes: (isReturn ? 'مرتجع مبيعات - ' : 'فاتورة مبيعات - ') + (inv.invoiceNo || ''),
+                date: new Date(ts).toISOString().split('T')[0],
+                timestamp: ts,
+                customerId: inv.customerId,
+                customer: String(inv.customer || ''),
+                invoiceNo: inv.invoiceNo,
+                _device: inv._device || 'System'
+            });
+        }
+    });
+
+    // سحب المشتريات المدفوعة
+    purchases.forEach(inv => {
+        let paid = parseFloat(inv.initialPaid !== undefined ? inv.initialPaid : inv.paid) || 0;
+        if (paid > 0 && !inv.isCanceled) {
+            let ts = window.Utils.getSafeTime(inv.date || inv.timestamp);
+            let isReturn = (inv.type === 'return' || inv.type === 'purchase_return');
+            allTransactions.push({
+                id: inv.id,
+                type: isReturn ? 'purchase_return' : 'purchase',
+                vault: inv.vault || 'main',
+                treasury: inv.vault || 'main',
+                amountAdd: isReturn ? paid : 0,
+                amountDeduct: isReturn ? 0 : paid,
+                amount: paid,
+                notes: (isReturn ? 'مرتجع مشتريات - ' : 'فاتورة مشتريات - ') + (inv.invoiceNo || ''),
+                date: new Date(ts).toISOString().split('T')[0],
+                timestamp: ts,
+                supplierId: inv.supplierId,
+                supplier: String(inv.supplier || ''),
+                invoiceNo: inv.invoiceNo,
+                _device: inv._device || 'System'
+            });
+        }
+    });
+
+    // ترتيب الجميع من الأحدث للأقدم وإرساله لصفحة الخزينة
+    return allTransactions.sort((a, b) => b.timestamp - a.timestamp);
+},
+// 1️⃣ دالة حفظ الخزينة مع الرفع المباشر للسحابة وتحديث الأجهزة
+saveTreasuryMoves: function(data) { 
+    if (!Array.isArray(data)) return;
+    
+    data.forEach(m => {
+        if (!m) return;
+        if (!m.vault && m.treasury) {
+            let v = String(m.treasury).toLowerCase();
+            m.vault = v.includes('insta') ? 'insta' : (v.includes('wallet') ? 'wallet' : 'main');
+        } else if (!m.vault) m.vault = 'main';
+    });
+
+    localStorage.setItem('seraj_treasury_moves', JSON.stringify(data)); 
+    
+    // 🚀 إطلاق حدث التحديث للأجهزة الأخرى والشاشات المحلية
+    window.dispatchEvent(new CustomEvent('seraj:updated', { detail: { type: 'treasury' } }));
+
+    // ☁️ الرفع السحابي المباشر لتخطي أي مشاكل في طابور المزامنة
+    if (window.dbCloud && navigator.onLine) {
+        let storeId = localStorage.getItem('seraj_store_id') || '9999';
+        let firebaseData = {};
+        data.forEach(item => {
+            if (item && item.id) {
+                let safeId = String(item.id).replace(/[.#$\[\]]/g, "_");
+                firebaseData[safeId] = item;
             }
         });
-        localStorage.setItem('seraj_treasury_moves', JSON.stringify(data)); 
-        saveArrayToQueueSafely('treasury_moves', data); 
-        
-        // 🚀 إجبار تحديث شاشة الخزنة فوراً بعد الحفظ لإرضاء أكواد الصفحة
-        try {
-            if (typeof renderMovementsTable === 'function') renderMovementsTable();
-            if (typeof updateTreasuryUI === 'function') updateTreasuryUI();
-        } catch(e) {}
-    },
+        window.dbCloud.ref('test_Stores/' + storeId + '/treasury_moves').update(firebaseData).catch(e => console.error(e));
+    } else {
+        // لو مفيش نت، يحطها في الطابور لحد ما النت يجي
+        if (typeof saveArrayToQueueSafely === 'function') saveArrayToQueueSafely('treasury_moves', data);
+    }
+
+    // تحديث واجهة الخزينة فوراً
+    try {
+        if (typeof renderMovementsTable === 'function') renderMovementsTable();
+        if (typeof updateTreasuryUI === 'function') updateTreasuryUI();
+    } catch(e) {}
+},
     
     getVaults: function() { 
         return safeParseJSON(localStorage.getItem('seraj_vaults_v2'), { main: 0, insta: 0, wallet: 0 }); 
@@ -2302,10 +2389,6 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
             }
         }
 
-        // 🚀 توليد جميع صيغ التاريخ الممكنة لإرضاء أي فلتر في صفحة الخزنة
-        let todayStr = new Date().toISOString().split('T')[0]; 
-        let localDateStr = new Date().toLocaleDateString('en-GB'); // صيغة DD/MM/YYYY
-        
         let moveId = moveObj.id || Date.now();
         let newMove = {
             id: moveId,
@@ -2316,8 +2399,7 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
             amountDeduct: Math.round(amountDeduct * 100) / 100,
             amount: Math.round((amountAdd || amountDeduct) * 100) / 100,
             notes: moveObj.notes || '',
-            date: moveObj.date || todayStr,
-            dateFormatted: localDateStr, // حقل إضافي يقرأه كود الخزنة لو احتاج الصيغة المائلة
+          date: moveObj.date || new Date().toISOString().split('T')[0],
             timestamp: moveObj.timestamp || Date.now(),
             invoiceNo: moveObj.invoiceNo || null,
             customerId: moveObj.customerId || null,
@@ -2423,192 +2505,17 @@ saveSmartNotes: function(data) {
     }
 },
 
-// =========================================================
-    // ☁️ محرك الأرشفة السحابية الذكي (Deep Archiving Engine)
-    // =========================================================
-    archiveSmartData: async function() {
-        if (!cloudReady || !navigator.onLine || !window.dbCloud) {
-            SerajAlert("يجب الاتصال بالإنترنت لإجراء الأرشفة السحابية!", "error");
-            return false;
-        }
-
-        return new Promise((resolve) => {
-            SerajConfirm("سيتم أرشفة الفواتير وحركات الخزينة الأقدم من 90 يوماً (والطياري الأقدم من 7 أيام) للسحابة، وتفريغ مساحة الجهاز مع الحفاظ على الأرصدة التراكمية. هل أنت متأكد؟", async (confirm) => {
-                if (!confirm) return resolve(false);
-
-                showCloudStatus("⏳ جاري أرشفة البيانات القديمة للسحابة... برجاء عدم إغلاق الصفحة.");
-
-                let now = Date.now();
-                let days7 = now - (7 * 24 * 60 * 60 * 1000);
-                let days90 = now - (90 * 24 * 60 * 60 * 1000);
-
-                let sales = this.getSalesInvoices(true);
-                let purchases = this.getPurchaseInvoices(true);
-                let moves = this.getTreasuryMoves(true);
-                let customers = this.getCustomers(true);
-                let suppliers = this.getSuppliers(true);
-
-                let archivePayload = { sales: {}, purchases: {}, treasury_moves: {} };
-                let newSales = [], newPurchases = [], newMoves = [];
-
-                // 1. فرز وأرشفة المبيعات
-                sales.forEach(inv => {
-                    let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                    let isAnonymous = (!inv.customerId && (!inv.customer || inv.customer.includes('طيار') || inv.customer.includes('نقد')));
-
-                    if (isAnonymous && t < days7) {
-                        archivePayload.sales[inv.id] = inv;
-                    } else if (t < days90) {
-                        archivePayload.sales[inv.id] = inv;
-                    } else {
-                        newSales.push(inv);
-                    }
-                });
-
-                // 2. فرز وأرشفة المشتريات
-                purchases.forEach(inv => {
-                    let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                    if (t < days90) archivePayload.purchases[inv.id] = inv;
-                    else newPurchases.push(inv);
-                });
-
-                // 3. فرز وأرشفة الخزينة
-                moves.forEach(m => {
-                    let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                    if (t < days90) archivePayload.treasury_moves[m.id] = m;
-                    else newMoves.push(m);
-                });
-
-                // 4. استخلاص المديونيات القديمة وترحيلها لرصيد العملاء التراكمي
-                customers.forEach(c => {
-                    let oldAleih = 0; let oldLeh = 0;
-                    
-                    sales.forEach(inv => {
-                        let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                        if (t < days90 && !inv.isCanceled && (String(inv.customerId) === String(c.id) || inv.customer === c.name)) {
-                            let invTot = parseFloat(inv.total) || 0;
-                            let invDisc = parseFloat(inv.discount) || 0;
-                            let req = (Math.abs(((parseFloat(inv.paid)||0) + (parseFloat(inv.remaining)||0)) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
-                            if (req < 0) req = 0;
-
-                            let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-                            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                            
-                            if (!isReturn) { oldAleih += req; oldLeh += checkoutPaid; } 
-                            else { oldLeh += req; oldAleih += checkoutPaid; }
-                        }
-                    });
-
-                    moves.forEach(m => {
-                        let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                        if (t < days90 && !m.isCanceled && (String(m.customerId) === String(c.id) || m.customer === c.name)) {
-                            let amt = parseFloat(m.amount) || 0;
-                            if (m.type === 'payment') oldAleih += amt;
-                            else if (m.type === 'receipt' || m.type === 'customer_receipt') oldLeh += amt;
-                        }
-                    });
-
-                    c.openingBalance = (parseFloat(c.openingBalance) || 0) + (oldAleih - oldLeh);
-                });
-
-                // 5. استخلاص المديونيات القديمة وترحيلها لرصيد الموردين التراكمي
-                suppliers.forEach(s => {
-                    let sTotalReq = 0; let sTotalPaid = 0;
-
-                    purchases.forEach(inv => {
-                        let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                        if (t < days90 && !inv.isCanceled && (String(inv.supplierId) === String(s.id) || inv.supplier === s.name)) {
-                            let invTot = parseFloat(inv.total) || 0;
-                            let invDisc = parseFloat(inv.discount) || 0;
-                            let req = (Math.abs(((parseFloat(inv.paid)||0) + (parseFloat(inv.remaining)||0)) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
-                            if (req < 0) req = 0;
-
-                            let isReturn = (inv.type === 'return' || inv.type === 'purchase_return');
-                            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-
-                            if (!isReturn) { sTotalReq += req; sTotalPaid += checkoutPaid; } 
-                            else { sTotalReq -= req; sTotalPaid -= checkoutPaid; }
-                        }
-                    });
-
-                    moves.forEach(m => {
-                        let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                        if (t < days90 && !m.isCanceled && (String(m.supplierId) === String(s.id) || m.supplier === s.name)) {
-                            let amt = parseFloat(m.amount) || 0;
-                            if (m.type === 'receipt' || m.type === 'supplier_receipt') sTotalReq += amt;
-                            else if (m.type === 'payment' || m.type === 'purchase_payment') sTotalPaid += amt;
-                        }
-                    });
-
-                    s.openingBalance = (parseFloat(s.openingBalance) || 0) + (sTotalReq - sTotalPaid);
-                });
-
-                // 6. رفع الأرشيف للسحابة الكبيرة ثم تفريغ مساحة الجهاز
-                try {
-                    let currentYear = new Date().getFullYear();
-                    let archiveRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/Archive_' + currentYear);
-                    await archiveRef.update(archivePayload);
-
-                    this.saveCustomers(customers);
-                    this.saveSuppliers(suppliers);
-                    
-                    localStorage.setItem('seraj_sales_invoices', JSON.stringify(newSales));
-                    saveArrayToQueueSafely('sales_invoices', newSales);
-
-                    localStorage.setItem('seraj_purchase_invoices', JSON.stringify(newPurchases));
-                    saveArrayToQueueSafely('purchase_invoices', newPurchases);
-
-                    localStorage.setItem('seraj_treasury_moves', JSON.stringify(newMoves));
-                    saveArrayToQueueSafely('treasury_moves', newMoves);
-
-                    SerajAlert("✅ تمت عملية الأرشفة العميقة بنجاح! تم رفع القديم للسحابة وتفريغ المساحة.", "success", () => {
-                        window.location.reload();
-                    });
-                    resolve(true);
-
-                } catch (e) {
-                    console.error("Archive Error:", e);
-                    SerajAlert("❌ خطأ أثناء الرفع للسحابة، لم يتم مسح الداتا المحلية لحمايتها من الضياع.", "error");
-                    resolve(false);
-                }
-            });
-        });
-    },
-
-    // دالة استدعاء الأرشيف من السحابة (لأغراض البحث والتقارير لاحقاً)
-    fetchArchivedData: async function(year = new Date().getFullYear()) {
-        if (!cloudReady || !navigator.onLine || !window.dbCloud) {
-            SerajAlert("يجب الاتصال بالإنترنت للبحث في الأرشيف!", "error");
-            return null;
-        }
-        showCloudStatus("⏳ جاري سحب الأرشيف من السحابة... برجاء الانتظار.");
-        try {
-            let snap = await window.dbCloud.ref('test_Stores/' + currentStoreId + '/Archive_' + year).once('value');
-            if (snap.exists()) {
-                showCloudStatus("✅ تم جلب الأرشيف بنجاح.");
-                return snap.val();
-            } else {
-                SerajAlert("لا توجد بيانات مؤرشفة مسجلة في هذا العام.", "error");
-                return null;
-            }
-        } catch (e) {
-            console.error(e);
-            SerajAlert("حدث خطأ أثناء جلب الأرشيف.", "error");
-            return null;
-        }
-    },
-
-    getAggregatedData: function() {
-        return {
-            sales: this.getSalesInvoices(true),
-            purchases: this.getPurchaseInvoices(true),
-            products: this.getProducts(true),
-            customers: this.getCustomers(false),
-            suppliers: this.getSuppliers(false),
-            treasuryMoves: this.getTreasuryMoves(true),
-            smartNotes: this.getSmartNotes()
-        };
-    },
+getAggregatedData: function() {
+    return {
+        sales: this.getSalesInvoices(true),
+        purchases: this.getPurchaseInvoices(true),
+        products: this.getProducts(true),
+        customers: this.getCustomers(false),
+        suppliers: this.getSuppliers(false),
+        treasuryMoves: this.getTreasuryMoves(true),
+        smartNotes: this.getSmartNotes()
+    };
+},
 
 
     
