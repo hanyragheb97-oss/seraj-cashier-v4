@@ -744,7 +744,6 @@ let vaultsDB = {};
             let s = String(dateVal).trim().replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
             if (/^\d{10,13}$/.test(s)) return parseInt(s, 10);
 
-            // إذا كان النص يحتوي على وقت بالساعة والدقيقة
             if (s.includes(':')) {
                 let dt = new Date(s);
                 if (!isNaN(dt.getTime())) return dt.getTime();
@@ -760,13 +759,11 @@ let vaultsDB = {};
             return isNaN(d.getTime()) ? 0 : d.getTime();
         }
 
-        // استخلاص التوقيت اللحظي بالمللي ثانية لضمان الترتيب الزمني الحقيقي (الأحدث فالأحدث)
         function getExactTimestamp(item) {
             if (!item) return 0;
             let rawTs = item.timestamp || item.createdAt || item.time || item._lastModified || 0;
             let numTs = typeof rawTs === 'number' ? rawTs : (/^\d{10,13}$/.test(String(rawTs).trim()) ? parseInt(rawTs, 10) : 0);
 
-            // استخراج التوقيت من رقم الحركة إذا كان يحتوي على Timestamp
             if (!numTs && item.id) {
                 let idMatch = String(item.id).match(/(1[6-9]\d{11})/);
                 if (idMatch) numTs = parseInt(idMatch[1], 10);
@@ -777,11 +774,9 @@ let vaultsDB = {};
                 if (!dateMs) return numTs;
                 let dDate = new Date(dateMs);
                 let dTs = new Date(numTs);
-                // إذا كان التاريخ المختار هو نفس يوم الـ timestamp، نعتمد الـ timestamp الدقيق بالثانية
                 if (dDate.getFullYear() === dTs.getFullYear() && dDate.getMonth() === dTs.getMonth() && dDate.getDate() === dTs.getDate()) {
                     return numTs;
                 }
-                // إذا اختار المستخدم تاريخ يوم سابق يدوياً، نحتفظ باليوم المختار مع ساعة ودقيقة الإنشاء الفعلية
                 return new Date(dDate.getFullYear(), dDate.getMonth(), dDate.getDate(), dTs.getHours(), dTs.getMinutes(), dTs.getSeconds(), dTs.getMilliseconds()).getTime();
             }
             return dateMs || numTs || Date.now();
@@ -819,7 +814,7 @@ let vaultsDB = {};
         }
 
         // ==========================================
-        // 2. محرك التجميع الشامل (سندات + فواتير + مصروفات + خزينة)
+        // 2. محرك التجميع الشامل (سندات عملاء وموردين + فواتير + مصروفات + خزينة)
         // ==========================================
         function getRawTreasuryMoves() {
             try { return JSON.parse(localStorage.getItem('seraj_treasury_moves') || '[]'); }
@@ -837,26 +832,36 @@ let vaultsDB = {};
         }
 
         function buildUnifiedTreasuryMovements() {
-            let rawMoves = getRawTreasuryMoves();
-            // جلب أي حركات إضافية يرجعها db.js لضمان عدم سقوط أي سند
+            let rawMoves = [...getRawTreasuryMoves()];
+
+            // 0. سحب أي حركات مدمجة من DB.getTreasuryMoves(true) وأي مفاتيح سندات إضافية
             if (typeof DB !== 'undefined' && typeof DB.getTreasuryMoves === 'function') {
-                let dbMoves = DB.getTreasuryMoves(false) || [];
-                let rawIds = new Set(rawMoves.map(x => String(x && x.id)));
-                dbMoves.forEach(dm => {
-                    if (dm && !rawIds.has(String(dm.id))) rawMoves.push(dm);
-                });
+                try {
+                    let dbMoves = DB.getTreasuryMoves(true) || [];
+                    let rawIds = new Set(rawMoves.map(x => String(x && x.id)));
+                    dbMoves.forEach(dm => {
+                        if (dm && !rawIds.has(String(dm.id))) rawMoves.push(dm);
+                    });
+                } catch(e) {}
             }
+
+            ['seraj_supplier_vouchers', 'seraj_suppliers_vouchers', 'seraj_supplier_moves', 'seraj_supplier_transactions', 'seraj_customer_vouchers', 'seraj_vouchers'].forEach(k => {
+                try {
+                    let extraArr = JSON.parse(localStorage.getItem(k) || '[]');
+                    if (Array.isArray(extraArr)) rawMoves.push(...extraArr);
+                } catch(e) {}
+            });
 
             let unified = [];
             let seenIds = new Set();
             let linkedInvoiceKeys = new Set();
 
-            // 1. معالجة حركات الخزينة المباشرة والسندات والمصروفات
-            rawMoves.forEach(m => {
+            // 1. معالجة حركات الخزينة المباشرة والسندات (عملاء وموردين) والمصروفات
+            rawMoves.forEach((m, idx) => {
                 if (!m || m.isCanceled) return;
-                let strId = String(m.id || '');
-                if (strId && seenIds.has(strId)) return;
-                if (strId) seenIds.add(strId);
+                let strId = String(m.id || m.moveId || m.voucherId || `tm_${idx}_${m.timestamp || m.date || ''}`);
+                if (seenIds.has(strId)) return;
+                seenIds.add(strId);
 
                 let ts = getExactTimestamp(m);
                 let dateStr = getLocalDateStr(m.date || ts);
@@ -865,49 +870,57 @@ let vaultsDB = {};
                 let addAmt = parseFloat(m.amountAdd) || 0;
                 let dedAmt = parseFloat(m.amountDeduct) || 0;
                 if (addAmt === 0 && dedAmt === 0) {
-                    let rawAmt = parseFloat(m.amount || m.paid || m.value || m.total) || 0;
-                    let rawType = String(m.type || '').toLowerCase();
-                    let isOut = (m.direction === 'out' || rawType === 'payment' || rawType === 'customer_payment' || rawType === 'supplier_payment' || rawType === 'purchase_payment' || rawType === 'expenses' || rawType === 'purchase' || rawType === 'return_sale' || rawType === 'sales_return' || rawType.includes('صرف') || rawType.includes('سداد'));
+                    let rawAmt = Math.abs(parseFloat(m.amount || m.paid || m.value || m.total || m.cash) || 0);
+                    let rawType = String(m.type || m.subType || m.operation || '').toLowerCase();
+                    let isOut = (
+                        m.direction === 'out' || m.isDeduct === true || (parseFloat(m.amount) < 0) ||
+                        rawType.includes('payment') || rawType.includes('pay') || rawType.includes('deduct') ||
+                        rawType.includes('withdraw') || rawType === 'out' || rawType === 'expenses' ||
+                        rawType === 'purchase' || rawType === 'purchases' || rawType === 'return_sale' ||
+                        rawType === 'sales_return' || rawType.includes('صرف') || rawType.includes('سداد') ||
+                        rawType.includes('سحب') || rawType.includes('خصم')
+                    );
                     if (isOut) dedAmt = rawAmt;
                     else addAmt = rawAmt;
                 }
 
-                // توحيد مسمى النوع ليشمل كافة أشكال السندات (عملاء وموردين)
                 let normType = String(m.type || 'direct').trim();
                 let lowType = normType.toLowerCase();
+                let notesStr = String(m.notes || m.description || '');
+                let hasSupplier = Boolean(m.supplierId || m.supplier || m.supplierName || lowType.includes('supplier') || lowType.includes('مورد') || notesStr.includes('مورد'));
+                let hasCustomer = Boolean(m.customerId || m.customer || m.customerName || lowType.includes('customer') || lowType.includes('عميل') || notesStr.includes('عميل'));
 
-                if (lowType === 'sale') normType = 'sales';
-                else if (lowType === 'sales_return' || lowType === 'return') normType = 'return_sale';
-                else if (lowType === 'purchases') normType = 'purchase';
-                else if (lowType === 'receipt' || lowType === 'payment' || lowType === 'voucher' || lowType === 'collection' || lowType === 'installment' || lowType === 'customers' || lowType === 'customer' || lowType === 'suppliers' || lowType === 'supplier' || lowType.includes('سند') || lowType.includes('تحصيل') || lowType.includes('دفعة')) {
-                    if (m.supplierId || m.supplier || m.supplierName || lowType.includes('supplier') || lowType.includes('purchase') || lowType.includes('مورد')) {
-                        normType = (addAmt > 0) ? 'supplier_receipt' : 'supplier_payment';
-                    } else if (m.customerId || m.customer || m.customerName || lowType.includes('customer') || lowType.includes('عميل') || lowType === 'receipt' || lowType === 'collection' || lowType === 'installment') {
-                        normType = (dedAmt > 0 && addAmt === 0) ? 'customer_payment' : 'customer_receipt';
-                    }
+                if (lowType === 'sale' || lowType === 'sales') normType = 'sales';
+                else if (lowType === 'sales_return' || lowType === 'return' || lowType === 'return_sale') normType = 'return_sale';
+                else if ((lowType === 'purchase' || lowType === 'purchases') && !notesStr.includes('سند') && !notesStr.includes('دفعة')) normType = 'purchase';
+                else if (lowType === 'expenses' || lowType === 'expense') normType = 'expenses';
+                else if (hasSupplier || lowType === 'purchase_payment' || lowType === 'purchase_receipt') {
+                    normType = (addAmt > 0 && dedAmt === 0) ? 'supplier_receipt' : 'supplier_payment';
+                } else if (hasCustomer || lowType === 'receipt' || lowType === 'payment' || lowType === 'voucher' || lowType === 'collection' || lowType === 'installment' || lowType.includes('سند') || lowType.includes('تحصيل') || lowType.includes('دفعة')) {
+                    normType = (dedAmt > 0 && addAmt === 0) ? 'customer_payment' : 'customer_receipt';
                 }
 
                 if (m.invoiceNo) linkedInvoiceKeys.add(String(m.invoiceNo));
                 if (m.refId) linkedInvoiceKeys.add(String(m.refId));
                 linkedInvoiceKeys.add(strId);
 
-                let partyName = m.customer || m.customerName || m.supplier || m.supplierName || '';
-                let defaultNote = normType.includes('customer') ? `سند عميل: ${partyName}` : (normType.includes('supplier') ? `سند مورد: ${partyName}` : 'حركة خزينة');
+                let partyName = m.supplier || m.supplierName || m.customer || m.customerName || '';
+                let defaultNote = normType.includes('supplier') ? `سند مورد: ${partyName}` : (normType.includes('customer') ? `سند عميل: ${partyName}` : 'حركة خزينة');
 
                 unified.push({
                     ...m,
-                    id: m.id,
+                    id: m.id || strId,
                     type: normType,
                     vault: vKey,
                     amountAdd: addAmt,
                     amountDeduct: dedAmt,
                     date: dateStr,
                     timestamp: ts,
-                    notes: m.notes || m.description || defaultNote
+                    notes: notesStr || defaultNote
                 });
             });
 
-            // 2. فحص سجل المبيعات (لدمج الفواتير + السندات المحفوظة داخل المبيعات + دفعات التسديد الآجل)
+            // 2. فحص سجل المبيعات (فواتير + سندات عملاء + دفعات داخلية)
             if (treasurySettings.sales !== false) {
                 let sales = (typeof DB !== 'undefined' && typeof DB.getSalesInvoices === 'function')
                     ? DB.getSalesInvoices()
@@ -920,16 +933,26 @@ let vaultsDB = {};
                     let lowInvType = String(inv.type || '').toLowerCase();
                     let cName = inv.customer || inv.customerName || 'عميل نقدي';
                     let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
+                    let hasItems = Array.isArray(inv.items) && inv.items.length > 0;
 
-                    // أ) إذا كان السجل عبارة عن "سند قبض / دفعة عميل" محفوظ داخل جدول المبيعات
-                    let isVoucherRecord = (lowInvType === 'receipt' || lowInvType === 'payment' || lowInvType === 'voucher' || lowInvType === 'customer_receipt' || lowInvType === 'customer_payment' || lowInvType === 'collection' || lowInvType === 'pay' || lowInvType === 'customers' || inv.isVoucher === true || String(inv.notes || '').includes('سند'));
+                    let isVoucherRecord = (
+                        lowInvType === 'receipt' || lowInvType === 'payment' || lowInvType === 'voucher' ||
+                        lowInvType === 'customer_receipt' || lowInvType === 'customer_payment' ||
+                        lowInvType === 'collection' || lowInvType === 'pay' || lowInvType === 'customers' ||
+                        lowInvType === 'add' || lowInvType === 'deduct' || lowInvType === 'withdraw' || lowInvType === 'deposit' ||
+                        inv.isVoucher === true || String(inv.notes || '').includes('سند') ||
+                        (!hasItems && lowInvType !== 'sale' && lowInvType !== 'sales' && lowInvType !== 'return' && lowInvType !== 'return_sale' && lowInvType !== 'sales_return')
+                    );
+
                     if (isVoucherRecord) {
                         if (seenIds.has(invIdStr) || linkedInvoiceKeys.has(invKey)) return;
-                        let vAmt = parseFloat(inv.amount || inv.paid || inv.total || inv.amountAdd || inv.amountDeduct) || 0;
+                        let addA = parseFloat(inv.amountAdd) || 0;
+                        let dedA = parseFloat(inv.amountDeduct) || 0;
+                        let vAmt = Math.abs(parseFloat(inv.amount || inv.paid || inv.total || addA || dedA) || 0);
                         if (vAmt <= 0) return;
                         seenIds.add(invIdStr);
                         let ts = getExactTimestamp(inv);
-                        let isOut = (lowInvType === 'payment' || lowInvType === 'customer_payment');
+                        let isOut = (dedA > 0 || lowInvType === 'payment' || lowInvType === 'customer_payment' || lowInvType === 'deduct' || lowInvType === 'withdraw' || lowInvType === 'out' || inv.direction === 'out');
                         unified.push({
                             id: inv.id,
                             type: isOut ? 'customer_payment' : 'customer_receipt',
@@ -946,13 +969,12 @@ let vaultsDB = {};
                         return;
                     }
 
-                    // ب) إذا كانت الفاتورة تحتوي على مصفوفة دفعات داخلية (payments / installments)
-                    let embeddedPayments = inv.payments || inv.installments || inv.vouchers;
+                    let embeddedPayments = inv.payments || inv.installments || inv.vouchers || inv.transactions;
                     let sumEmbedded = 0;
                     if (Array.isArray(embeddedPayments)) {
                         embeddedPayments.forEach((pay, idx) => {
                             let pId = String(pay.id || `${inv.id}_pay_${idx}`);
-                            let pAmt = parseFloat(pay.amount || pay.paid || pay.value) || 0;
+                            let pAmt = Math.abs(parseFloat(pay.amount || pay.paid || pay.value) || 0);
                             if (pAmt > 0 && !seenIds.has(pId)) {
                                 seenIds.add(pId);
                                 sumEmbedded += pAmt;
@@ -974,7 +996,6 @@ let vaultsDB = {};
                         });
                     }
 
-                    // ج) معالجة الفاتورة نفسها + أي دفعة تسديد تمت عليها من شاشة العملاء
                     if (seenIds.has(invIdStr) || (inv.invoiceNo && linkedInvoiceKeys.has(String(inv.invoiceNo)))) return;
 
                     let totalPaidOnInv = parseFloat(inv.paid) || 0;
@@ -999,7 +1020,6 @@ let vaultsDB = {};
                         });
                     }
 
-                    // إذا قام العميل بتسديد دفعة لاحقة على الفاتورة (تزيد عن initialPaid) ولم تُسجل في حركات الخزينة
                     let extraPaid = Math.round((totalPaidOnInv - initPaid - sumEmbedded) * 100) / 100;
                     if (extraPaid > 0.01) {
                         let payTs = getSafeTime(inv.lastPaymentDate || inv._lastModified) || (ts + 1000);
@@ -1020,7 +1040,7 @@ let vaultsDB = {};
                 });
             }
 
-            // 3. فحص سجل المشتريات (لدمج الفواتير + سندات الموردين)
+            // 3. فحص سجل المشتريات (فواتير + سندات الموردين بكافة أنواعها + الدفعات الداخلية)
             if (treasurySettings.purchase !== false) {
                 let purchases = (typeof DB !== 'undefined' && typeof DB.getPurchaseInvoices === 'function')
                     ? DB.getPurchaseInvoices()
@@ -1033,22 +1053,36 @@ let vaultsDB = {};
                     let lowInvType = String(inv.type || '').toLowerCase();
                     let sName = inv.supplier || inv.supplierName || 'مورد';
                     let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
+                    let hasItems = Array.isArray(inv.items) && inv.items.length > 0;
 
-                    let isVoucherRecord = (lowInvType === 'receipt' || lowInvType === 'payment' || lowInvType === 'voucher' || lowInvType === 'supplier_receipt' || lowInvType === 'supplier_payment' || lowInvType === 'purchase_payment' || lowInvType === 'suppliers' || inv.isVoucher === true || String(inv.notes || '').includes('سند'));
+                    let isVoucherRecord = (
+                        lowInvType === 'receipt' || lowInvType === 'payment' || lowInvType === 'voucher' ||
+                        lowInvType === 'supplier_receipt' || lowInvType === 'supplier_payment' ||
+                        lowInvType === 'purchase_payment' || lowInvType === 'purchase_receipt' ||
+                        lowInvType === 'suppliers' || lowInvType === 'supplier' || lowInvType === 'pay' ||
+                        lowInvType === 'collection' || lowInvType === 'add' || lowInvType === 'deduct' ||
+                        lowInvType === 'withdraw' || lowInvType === 'deposit' || lowInvType === 'in' ||
+                        lowInvType === 'out' || lowInvType === 'settlement' || inv.isVoucher === true ||
+                        String(inv.notes || '').includes('سند') || String(inv.notes || '').includes('دفعة') ||
+                        (!hasItems && lowInvType !== 'purchase' && lowInvType !== 'purchases' && lowInvType !== 'return' && lowInvType !== 'purchase_return')
+                    );
+
                     if (isVoucherRecord) {
                         if (seenIds.has(invIdStr) || linkedInvoiceKeys.has(invKey)) return;
-                        let vAmt = parseFloat(inv.amount || inv.paid || inv.total || inv.amountAdd || inv.amountDeduct) || 0;
+                        let addA = parseFloat(inv.amountAdd) || 0;
+                        let dedA = parseFloat(inv.amountDeduct) || 0;
+                        let vAmt = Math.abs(parseFloat(inv.amount || inv.paid || inv.total || addA || dedA) || 0);
                         if (vAmt <= 0) return;
                         seenIds.add(invIdStr);
                         let ts = getExactTimestamp(inv);
-                        let isIn = (lowInvType === 'receipt' || lowInvType === 'supplier_receipt');
+                        let isIn = (addA > 0 || lowInvType === 'receipt' || lowInvType === 'supplier_receipt' || lowInvType === 'purchase_receipt' || lowInvType === 'add' || lowInvType === 'deposit' || lowInvType === 'in' || inv.direction === 'in' || String(inv.notes || '').includes('قبض') || String(inv.notes || '').includes('إضافة'));
                         unified.push({
                             id: inv.id,
                             type: isIn ? 'supplier_receipt' : 'supplier_payment',
                             vault: vKey,
                             amountAdd: isIn ? vAmt : 0,
                             amountDeduct: isIn ? 0 : vAmt,
-                            notes: inv.notes || `${isIn ? 'سند قبض مورد' : 'سند صرف لمورد'} - ${sName}`,
+                            notes: inv.notes || `${isIn ? 'سند قبض من مورد' : 'سند صرف لمورد'} - ${sName}`,
                             date: getLocalDateStr(inv.date || ts),
                             timestamp: ts,
                             invoiceNo: invKey,
@@ -1056,6 +1090,36 @@ let vaultsDB = {};
                             _isInvoice: true
                         });
                         return;
+                    }
+
+                    // فحص الدفعات والسندات المدمجة داخل فاتورة المشتريات
+                    let embeddedPayments = inv.payments || inv.installments || inv.vouchers || inv.transactions;
+                    let sumEmbedded = 0;
+                    if (Array.isArray(embeddedPayments)) {
+                        embeddedPayments.forEach((pay, idx) => {
+                            let pId = String(pay.id || `${inv.id}_spay_${idx}`);
+                            let pAmt = Math.abs(parseFloat(pay.amount || pay.paid || pay.value) || 0);
+                            if (pAmt > 0 && !seenIds.has(pId)) {
+                                seenIds.add(pId);
+                                sumEmbedded += pAmt;
+                                let pTs = getExactTimestamp(pay) || getExactTimestamp(inv);
+                                let pType = String(pay.type || '').toLowerCase();
+                                let isIn = (pType === 'receipt' || pType === 'supplier_receipt' || pType === 'in' || pType === 'add' || pay.direction === 'in');
+                                unified.push({
+                                    id: pId,
+                                    type: isIn ? 'supplier_receipt' : 'supplier_payment',
+                                    vault: normalizeVaultKey(pay.vault || pay.treasury || vKey),
+                                    amountAdd: isIn ? pAmt : 0,
+                                    amountDeduct: isIn ? 0 : pAmt,
+                                    notes: pay.notes || `${isIn ? 'سند قبض مورد' : 'سند سداد مورد'} - ${sName} (فاتورة #${invKey})`,
+                                    date: getLocalDateStr(pay.date || pTs),
+                                    timestamp: pTs,
+                                    invoiceNo: invKey,
+                                    _device: pay._device || inv._device || 'حسابات الموردين',
+                                    _isInvoice: true
+                                });
+                            }
+                        });
                     }
 
                     if (seenIds.has(invIdStr) || (inv.invoiceNo && linkedInvoiceKeys.has(String(inv.invoiceNo)))) return;
@@ -1082,7 +1146,7 @@ let vaultsDB = {};
                         });
                     }
 
-                    let extraPaid = Math.round((totalPaidOnInv - initPaid) * 100) / 100;
+                    let extraPaid = Math.round((totalPaidOnInv - initPaid - sumEmbedded) * 100) / 100;
                     if (extraPaid > 0.01) {
                         let payTs = getSafeTime(inv.lastPaymentDate || inv._lastModified) || (ts + 1000);
                         unified.push({
@@ -1102,40 +1166,89 @@ let vaultsDB = {};
                 });
             }
 
-            // 4. فحص السندات المحفوظة مباشرة داخل كائنات العملاء أو الموردين (إن وجدت)
-            try {
-                let customers = JSON.parse(localStorage.getItem('seraj_customers') || '[]');
-                customers.forEach(c => {
-                    let cLogs = c.transactions || c.vouchers || c.payments || c.history;
-                    if (Array.isArray(cLogs)) {
-                        cLogs.forEach((log, idx) => {
-                            if (!log || log.isCanceled) return;
-                            let lId = String(log.id || `cust_${c.id}_${idx}`);
-                            if (seenIds.has(lId) || linkedInvoiceKeys.has(lId)) return;
-                            let lType = String(log.type || '').toLowerCase();
-                            if (lType === 'sale' || lType === 'invoice') return;
-                            let amt = parseFloat(log.amount || log.paid || log.value) || 0;
-                            if (amt <= 0) return;
-                            seenIds.add(lId);
-                            let ts = getExactTimestamp(log);
-                            let isOut = (lType === 'payment' || lType === 'out' || lType === 'customer_payment');
-                            unified.push({
-                                id: lId,
-                                type: isOut ? 'customer_payment' : 'customer_receipt',
-                                vault: normalizeVaultKey(log.vault || log.treasury || log.paymentMethod),
-                                amountAdd: isOut ? 0 : amt,
-                                amountDeduct: isOut ? amt : 0,
-                                notes: log.notes || `${isOut ? 'سند صرف عميل' : 'سند تحصيل عميل'} - ${c.name}`,
-                                date: getLocalDateStr(log.date || ts),
-                                timestamp: ts,
-                                invoiceNo: log.invoiceNo || log.receiptNo || '',
-                                _device: log._device || 'حسابات العملاء',
-                                _isInvoice: true
+            // 4. فحص السندات والحركات المحفوظة داخل كائنات العملاء (seraj_customers) والموردين (seraj_suppliers)
+            const extractPartyLogs = (storageKey, isSupplierParty) => {
+                try {
+                    let parties = JSON.parse(localStorage.getItem(storageKey) || '[]');
+                    parties.forEach(p => {
+                        if (!p) return;
+                        // جمع كافة المصفوفات الداخلية المحتملة داخل كائن العميل أو المورد
+                        let logArrays = [];
+                        ['transactions', 'vouchers', 'payments', 'history', 'movements', 'logs', 'ledger', 'statement', 'records'].forEach(k => {
+                            if (Array.isArray(p[k])) logArrays.push(p[k]);
+                        });
+                        Object.keys(p).forEach(k => {
+                            if (Array.isArray(p[k]) && !logArrays.includes(p[k])) logArrays.push(p[k]);
+                        });
+
+                        logArrays.forEach(arr => {
+                            arr.forEach((log, idx) => {
+                                if (!log || typeof log !== 'object' || log.isCanceled) return;
+                                let lId = String(log.id || log.moveId || log.voucherId || `${isSupplierParty ? 'sup' : 'cust'}_${p.id}_${idx}_${log.timestamp || log.date || ''}`);
+                                if (seenIds.has(lId) || linkedInvoiceKeys.has(lId)) return;
+                                if (log.invoiceNo && linkedInvoiceKeys.has(String(log.invoiceNo))) return;
+
+                                let lType = String(log.type || log.subType || log.operation || '').toLowerCase();
+                                if (lType === 'sale' || lType === 'sales' || lType === 'purchase' || lType === 'purchases' || lType === 'invoice') return;
+
+                                let addA = parseFloat(log.amountAdd) || 0;
+                                let dedA = parseFloat(log.amountDeduct) || 0;
+                                let amt = Math.abs(parseFloat(log.amount || log.paid || log.value || log.total || addA || dedA) || 0);
+                                if (amt <= 0) return;
+
+                                seenIds.add(lId);
+                                let ts = getExactTimestamp(log) || getExactTimestamp(p);
+                                let vKey = normalizeVaultKey(log.vault || log.treasury || log.paymentMethod);
+                                let noteText = String(log.notes || log.description || log.statement || '');
+
+                                if (isSupplierParty) {
+                                    // في حسابات الموردين: القبض/الإضافة للخزينة (in) والصرف/السداد من الخزينة (out)
+                                    let isIn = (
+                                        addA > 0 || lType === 'receipt' || lType === 'supplier_receipt' ||
+                                        lType === 'in' || lType === 'deposit' || log.direction === 'in' ||
+                                        noteText.includes('قبض') || noteText.includes('استلام')
+                                    );
+                                    unified.push({
+                                        id: lId,
+                                        type: isIn ? 'supplier_receipt' : 'supplier_payment',
+                                        vault: vKey,
+                                        amountAdd: isIn ? amt : 0,
+                                        amountDeduct: isIn ? 0 : amt,
+                                        notes: noteText || `${isIn ? 'سند قبض من مورد' : 'سند صرف لمورد'} - ${p.name}`,
+                                        date: getLocalDateStr(log.date || ts),
+                                        timestamp: ts,
+                                        invoiceNo: log.invoiceNo || log.receiptNo || '',
+                                        _device: log._device || p._lastModifiedBy || 'حسابات الموردين',
+                                        _isInvoice: true
+                                    });
+                                } else {
+                                    let isOut = (
+                                        dedA > 0 || lType === 'payment' || lType === 'customer_payment' ||
+                                        lType === 'out' || lType === 'withdraw' || lType === 'deduct' ||
+                                        log.direction === 'out' || noteText.includes('صرف') || noteText.includes('سحب')
+                                    );
+                                    unified.push({
+                                        id: lId,
+                                        type: isOut ? 'customer_payment' : 'customer_receipt',
+                                        vault: vKey,
+                                        amountAdd: isOut ? 0 : amt,
+                                        amountDeduct: isOut ? amt : 0,
+                                        notes: noteText || `${isOut ? 'سند صرف عميل' : 'سند تحصيل عميل'} - ${p.name}`,
+                                        date: getLocalDateStr(log.date || ts),
+                                        timestamp: ts,
+                                        invoiceNo: log.invoiceNo || log.receiptNo || '',
+                                        _device: log._device || p._lastModifiedBy || 'حسابات العملاء',
+                                        _isInvoice: true
+                                    });
+                                }
                             });
                         });
-                    }
-                });
-            } catch (e) {}
+                    });
+                } catch (e) {}
+            };
+
+            extractPartyLogs('seraj_customers', false);
+            extractPartyLogs('seraj_suppliers', true);
 
             // ترتيب القائمة النهائية زمنياً من الأحدث للأقدم بالثانية والمللي ثانية
             unified.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
@@ -1216,15 +1329,18 @@ let vaultsDB = {};
                             let localArr = [];
                             try { localArr = JSON.parse(localStorage.getItem('seraj_' + col) || '[]'); } catch(e) {}
 
-                            // دمج العناصر المحلية مع السحابية لمنع ضياع أي سند سُجل للتو
                             let mergedMap = new Map();
-                            cloudArr.forEach(item => { if (item && item.id !== undefined) mergedMap.set(String(item.id), item); });
-                            localArr.forEach(localItem => {
-                                if (localItem && localItem.id !== undefined) {
-                                    let k = String(localItem.id);
+                            cloudArr.forEach((item, idx) => {
+                                if (item) {
+                                    let k = String(item.id !== undefined ? item.id : `c_${idx}`);
+                                    mergedMap.set(k, item);
+                                }
+                            });
+                            localArr.forEach((localItem, idx) => {
+                                if (localItem) {
+                                    let k = String(localItem.id !== undefined ? localItem.id : `l_${idx}_${localItem.timestamp || ''}`);
                                     if (!mergedMap.has(k)) {
                                         mergedMap.set(k, localItem);
-                                        // رفع السند المحلي للسحابة فوراً إذا لم يكن قد رُفع بعد
                                         if (col === 'treasury_moves' && navigator.onLine) {
                                             let safeId = k.replace(/[.#$\[\]]/g, "_");
                                             window.dbCloud.ref('test_Stores/' + sId + '/treasury_moves/' + safeId).set(localItem).catch(()=>{});
@@ -1233,7 +1349,7 @@ let vaultsDB = {};
                                         let cItem = mergedMap.get(k);
                                         let lTime = localItem._lastModified || localItem.timestamp || 0;
                                         let cTime = cItem._lastModified || cItem.timestamp || 0;
-                                        if (lTime > cTime || (parseFloat(localItem.paid) || 0) > (parseFloat(cItem.paid) || 0)) {
+                                        if (lTime >= cTime || (parseFloat(localItem.paid) || 0) > (parseFloat(cItem.paid) || 0)) {
                                             mergedMap.set(k, localItem);
                                         }
                                     }
