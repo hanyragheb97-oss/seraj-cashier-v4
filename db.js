@@ -1,5 +1,5 @@
-// 🌟 محرك سراج كاشير المركزي (النسخة المعمارية الموحدة النهائية - V3 Final)
-// العمود الفقري الشامل لربط صفحات: المخزن، المبيعات، سجل المبيعات، المشتريات، سجل المشتريات، العملاء، الموردين، الخزينة، الصور، والمساعد الصوتي.
+// 🌟 محرك سراج كاشير المركزي (النسخة المعمارية الموحدة النهائية - V4 Final)
+// العمود الفقري الشامل لربط صفحات: المخزن، المبيعات، سجل المبيعات، المشتريات، سجل المشتريات، العملاء، الموردين، الخزينة، المحاسب الذكي، والصور.
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -23,24 +23,25 @@ let myDeviceName = localStorage.getItem('seraj_device_name');
 let myDevicePrefix = localStorage.getItem('seraj_device_prefix');
 
 if (!myDeviceName || !myDevicePrefix) {
-    // 1. إجبار إدخال اسم المستخدم
     while (!myDeviceName || myDeviceName.trim() === "") {
-        myDeviceName = prompt("مرحباً بك في (سراج كاشير) 🛠️\n🛑 إجباري: أدخل اسم هذا المستخدم/الجهاز (مثال: هاني أو كاشير 1):");
+        myDeviceName = prompt("مرحباً بك في (سراج كاشير V4) 🛠️\n🛑 إجباري: أدخل اسم هذا المستخدم/الجهاز (مثال: كاشير 1):");
+        if (myDeviceName === null) myDeviceName = "كاشير 1";
     }
-    
-    // 2. إجبار إدخال حرف مميز بالإنجليزية
     while (!myDevicePrefix || !/^[a-zA-Z]$/.test(myDevicePrefix)) {
         myDevicePrefix = prompt("🛑 إجباري: أدخل حرف إنجليزي واحد مميز ليكون بادئة فواتير هذا الجهاز (مثال: A أو B أو C):");
+        if (myDevicePrefix === null) myDevicePrefix = "A";
     }
-    
     myDeviceName = myDeviceName.trim();
     myDevicePrefix = myDevicePrefix.toUpperCase();
-    
     localStorage.setItem('seraj_device_name', myDeviceName);
     localStorage.setItem('seraj_device_prefix', myDevicePrefix);
 }
 
+// توحيد معرف المتجر في الذاكرة المحلية لمنع تضارب المسار السحابي بين الصفحات (مثل treasury.html)
 let currentStoreId = localStorage.getItem('seraj_store_id') || 'DemoStore';
+if (!localStorage.getItem('seraj_store_id')) {
+    localStorage.setItem('seraj_store_id', currentStoreId);
+}
 
 function initCloud() {
     const startRealtimeDB = () => {
@@ -50,9 +51,8 @@ function initCloud() {
         window.dbCloud = firebase.database();
         cloudReady = true;
         showCloudStatus('⚡ متصل بالسحابي: ' + currentStoreId);
-        processDeleteQueue();
-        processSyncQueue();
-        startSmartRadars(); 
+        scheduleSyncQueue(15000); // مزامنة هادئة بعد استقرار الاتصال بـ 15 ثانية عند فتح البرنامج
+        startSmartRadars();
         checkAndRunAutoCloudBackup();
     };
 
@@ -67,7 +67,6 @@ function initCloud() {
         }
     };
 
-    // فحص ذكي: إذا كانت الصفحة قد حمّلت firebase-app مسبقاً، لا نحمله مرة ثانية لمنع التحذير الأصفر
     if (typeof window.firebase !== 'undefined') {
         loadDatabaseSDK();
     } else {
@@ -94,9 +93,39 @@ function showCloudStatus(msg) {
 }
 
 // ---------------------------------------------------------
-// 1. Utilities (دوال المساعدة المركزية وبوابات الحماية)
+// 1. Utilities (دوال المساعدة المركزية، البحث السريع، التواريخ المحلية لمصر، وبوابات الحماية)
 // ---------------------------------------------------------
 const _buttonLocks = new WeakSet();
+
+function safeParseJSON(str, fallback = []) {
+    if (!str) return fallback;
+    try {
+        let parsed = JSON.parse(str);
+        return parsed !== null && parsed !== undefined ? parsed : fallback;
+    } catch (e) {
+        console.error("JSON Parse Error:", e);
+        return fallback;
+    }
+}
+
+// دالة مساعدة لتجريد الكائن من الحقول المحسوبة المؤقتة قبل مقارنة التغييرات لمنع تضخم طابور المزامنة
+function _stripComputedFieldsForDiff(obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    let copy = { ...obj };
+    delete copy.computedRemaining;
+    delete copy.calculatedRemaining;
+    delete copy._lastModified;
+    delete copy.balance;
+    delete copy.calculatedBalance;
+    delete copy.netBalanceVal;
+    delete copy.isNetDebt;
+    delete copy.deferredInvoicesTotal;
+    delete copy.displayCurrentBalance;
+    delete copy.isCurrentBalDebt;
+    delete copy.isZeroCustomer;
+    delete copy.isIdleZero;
+    return copy;
+}
 
 window.Utils = {
     formatCurrency: function(amount) {
@@ -105,11 +134,24 @@ window.Utils = {
         return num.toFixed(2);
     },
 
+    // دالة Debounce مركزية لتخفيف الضغط أثناء البحث والفلترة
+    debounce: function(fn, delay = 250) {
+        let timer = null;
+        return function(...args) {
+            const context = this;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(() => {
+                fn.apply(context, args);
+            }, delay);
+        };
+    },
+
     // دالة توحيد الأسماء العربية (توحيد الهمزات والتاء المربوطة والياء والمسافات لمنع التكرار)
     normalizeName: function(str) {
         if (!str) return "";
         return String(str)
             .replace(/[\u200B-\u200F\u202A-\u202E\u061C\uFEFF]/g, '')
+            .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
             .trim()
             .replace(/\s+/g, ' ')
             .replace(/[أإآ]/g, 'ا')
@@ -117,10 +159,54 @@ window.Utils = {
             .replace(/ى/g, 'ي')
             .toLowerCase();
     },
-    
+
+    // محرك البحث والفلترة السريعة في الجداول والقوائم (بجانب الـ debounce)
+    fastSearch: function(list, query, keys = ['name', 'phone', 'id', 'barcode', 'code', 'customer', 'supplier', 'notes'], limit = 0) {
+        if (!Array.isArray(list)) return [];
+        let normQ = this.normalizeName(query);
+        if (!normQ) return limit > 0 ? list.slice(0, limit) : list;
+
+        let tokens = normQ.split(' ').filter(Boolean);
+        let results = [];
+
+        for (let i = 0; i < list.length; i++) {
+            let item = list[i];
+            if (!item) continue;
+
+            let hay = item._searchIndex;
+            if (!hay || item._searchIndexMod !== item._lastModified) {
+                let parts = [];
+                for (let k = 0; k < keys.length; k++) {
+                    let val = item[keys[k]];
+                    if (val !== undefined && val !== null && val !== '') {
+                        parts.push(this.normalizeName(val));
+                    }
+                }
+                hay = parts.join(' ');
+                try {
+                    Object.defineProperty(item, '_searchIndex', { value: hay, writable: true, configurable: true, enumerable: false });
+                    Object.defineProperty(item, '_searchIndexMod', { value: item._lastModified, writable: true, configurable: true, enumerable: false });
+                } catch (e) {}
+            }
+
+            let matched = true;
+            for (let t = 0; t < tokens.length; t++) {
+                if (!hay.includes(tokens[t])) {
+                    matched = false;
+                    break;
+                }
+            }
+            if (matched) {
+                results.push(item);
+                if (limit > 0 && results.length >= limit) break;
+            }
+        }
+        return results;
+    },
+
     sanitizeHTML: function(str) {
         if (typeof str !== 'string') return str;
-        return str.replace(/[&<>'"]/g, 
+        return str.replace(/[&<>'"]/g,
             tag => ({
                 '&': '&amp;',
                 '<': '&lt;',
@@ -131,6 +217,87 @@ window.Utils = {
         );
     },
 
+    // استخراج التاريخ المحلي القياسي لمصر بصيغة YYYY-MM-DD (وليس UTC)
+    getLocalDateString: function(dateInput = null) {
+        let d;
+        if (dateInput instanceof Date) {
+            d = dateInput;
+        } else if (typeof dateInput === 'number' && dateInput > 0) {
+            d = new Date(dateInput);
+        } else if (typeof dateInput === 'string' && dateInput.trim() !== '') {
+            let ms = this.getSafeTime(dateInput);
+            d = ms > 0 ? new Date(ms) : new Date();
+        } else {
+            d = new Date();
+        }
+        if (isNaN(d.getTime())) d = new Date();
+        let y = d.getFullYear();
+        let m = String(d.getMonth() + 1).padStart(2, '0');
+        let day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    },
+
+    // تطبيع أي حقل تاريخ إلى صيغة YYYY-MM-DD المحلية القياسية
+    normalizeDateStr: function(dateVal, fallbackTs = null) {
+        if (dateVal) {
+            let clean = String(dateVal)
+                .replace(/[\u200B-\u200F\u202A-\u202E\u061C\uFEFF]/g, '')
+                .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+                .trim();
+            let isoMatch = clean.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+            if (isoMatch) {
+                let y = isoMatch[1];
+                let m = String(parseInt(isoMatch[2], 10)).padStart(2, '0');
+                let d = String(parseInt(isoMatch[3], 10)).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            }
+            let dmyMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+            if (dmyMatch) {
+                let d = String(parseInt(dmyMatch[1], 10)).padStart(2, '0');
+                let m = String(parseInt(dmyMatch[2], 10)).padStart(2, '0');
+                let y = dmyMatch[3];
+                return `${y}-${m}-${d}`;
+            }
+            let ms = this.getSafeTime(clean);
+            if (ms > 0) return this.getLocalDateString(ms);
+        }
+        if (fallbackTs) {
+            let ms = this.getSafeTime(fallbackTs);
+            if (ms > 0) return this.getLocalDateString(ms);
+        }
+        return this.getLocalDateString();
+    },
+
+    // مزامنة timestamp ليتوافق زمنياً مع اليوم المختار في حقل date
+    alignTimestampWithDate: function(dateStr, currentTs = null) {
+        let now = Date.now();
+        let rawTs = Number(currentTs);
+        let baseTs = (!isNaN(rawTs) && rawTs > 0) ? rawTs : now;
+        let normalizedDate = this.normalizeDateStr(dateStr, baseTs);
+        let baseDateStr = this.getLocalDateString(baseTs);
+
+        if (normalizedDate === baseDateStr) {
+            return baseTs;
+        }
+
+        let parts = normalizedDate.split('-');
+        if (parts.length === 3) {
+            let refDate = new Date(baseTs);
+            if (isNaN(refDate.getTime())) refDate = new Date(now);
+            let aligned = new Date(
+                parseInt(parts[0], 10),
+                parseInt(parts[1], 10) - 1,
+                parseInt(parts[2], 10),
+                refDate.getHours(),
+                refDate.getMinutes(),
+                refDate.getSeconds(),
+                refDate.getMilliseconds()
+            ).getTime();
+            if (!isNaN(aligned) && aligned > 0) return aligned;
+        }
+        return baseTs;
+    },
+
     getSafeTime: function(dateVal) {
         if (!dateVal) return 0;
         if (typeof dateVal === 'number') return dateVal;
@@ -138,17 +305,29 @@ window.Utils = {
             .replace(/[\u200B-\u200F\u202A-\u202E\u061C\uFEFF]/g, '')
             .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
             .trim();
+
+        let ymdOnly = clean.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (ymdOnly) {
+            return new Date(parseInt(ymdOnly[1], 10), parseInt(ymdOnly[2], 10) - 1, parseInt(ymdOnly[3], 10), 12, 0, 0).getTime() || 0;
+        }
+
+        let dmyOnly = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (dmyOnly) {
+            return new Date(parseInt(dmyOnly[3], 10), parseInt(dmyOnly[2], 10) - 1, parseInt(dmyOnly[1], 10), 12, 0, 0).getTime() || 0;
+        }
+
         let parsed = Date.parse(clean);
         if (!isNaN(parsed)) return parsed;
+
         let parts = clean.match(/(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})/);
         if (parts) {
-            let p1 = parseInt(parts[1]), p2 = parseInt(parts[2]), p3 = parseInt(parts[3]);
+            let p1 = parseInt(parts[1], 10), p2 = parseInt(parts[2], 10), p3 = parseInt(parts[3], 10);
             if (p1 > 1000) return new Date(p1, p2 - 1, p3, 12, 0, 0).getTime() || 0;
             if (p3 > 1000) return new Date(p3, p2 - 1, p1, 12, 0, 0).getTime() || 0;
         }
         return 0;
     },
-    
+
     formatDate: function(timestamp) {
         if (!timestamp) return "";
         let time = this.getSafeTime(timestamp) || timestamp;
@@ -157,26 +336,51 @@ window.Utils = {
         return d.toLocaleDateString('ar-EG') + ' ' + d.toLocaleTimeString('ar-EG');
     },
 
+    // استخراج الرقم التسلسلي للفاتورة أو العنصر حتى لو كان يحمل بادئة جهاز مثل A-105
+    extractSerialNum: function(idVal) {
+        if (idVal === undefined || idVal === null) return 0;
+        if (typeof idVal === 'number') return isNaN(idVal) ? 0 : idVal;
+        let str = String(idVal).trim();
+        let n = Number(str);
+        if (!isNaN(n)) return n;
+        let parts = str.split('-');
+        if (parts.length > 1) {
+            let tail = parseInt(parts[parts.length - 1].replace(/\D/g, ''), 10);
+            if (!isNaN(tail)) return tail;
+        }
+        let digits = parseInt(str.replace(/\D/g, ''), 10);
+        return isNaN(digits) ? 0 : digits;
+    },
+
+    // تنظيف المعرفات العشرية (Float IDs الناتجة من Date.now() + Math.random() عند استيراد الإكسيل)
+    sanitizeEntityId: function(rawId) {
+        if (rawId === undefined || rawId === null || rawId === '') {
+            return this.generateUniqueId();
+        }
+        let str = String(rawId).trim();
+        if (str.includes('.')) {
+            return str.replace(/\./g, '');
+        }
+        return str;
+    },
+
     generateInvoiceId: function(type = 'sales') {
         let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
-        
         let invoices = [];
         try {
-            invoices = type === 'sales' 
+            invoices = type === 'sales'
                 ? safeParseJSON(localStorage.getItem('seraj_sales_invoices'), [])
                 : safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
         } catch (e) {
             invoices = [];
         }
 
-        // البحث عن الفواتير التي تبدأ بنفس حرف هذا الجهاز فقط
         let deviceInvoices = invoices.filter(inv => {
-            let invNo = String(inv.invoiceNo || inv.id || '');
+            let invNo = String(inv?.invoiceNo || inv?.id || '');
             return invNo.startsWith(devPrefix + '-');
         });
 
-        let maxNum = 99; // البداية دائماً من 100 (99 + 1)
-        
+        let maxNum = 99;
         if (deviceInvoices.length > 0) {
             deviceInvoices.forEach(inv => {
                 let invNo = String(inv.invoiceNo || inv.id || '');
@@ -198,7 +402,6 @@ window.Utils = {
         let lastSeq = parseInt(localStorage.getItem('seraj_short_seq_id') || '1000', 10);
         if (isNaN(lastSeq) || lastSeq < 1000) lastSeq = 1000;
 
-        // فحص جميع الجداول لضمان أن الرقم الجديد أكبر من أي رقم قصير مسجل مسبقاً على أي جهاز
         try {
             const checkMax = (arr) => {
                 if (!Array.isArray(arr)) return;
@@ -218,6 +421,7 @@ window.Utils = {
                     }
                 });
             };
+            checkMax(safeParseJSON(localStorage.getItem('seraj_products'), []));
             checkMax(safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []));
             checkMax(safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []));
             checkMax(safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []));
@@ -227,16 +431,87 @@ window.Utils = {
 
         let nextSeq = lastSeq + 1;
         localStorage.setItem('seraj_short_seq_id', String(nextSeq));
-        return String(nextSeq);
+        return prefix ? `${prefix}${nextSeq}` : String(nextSeq);
     },
 
-preventDoubleClick: function(btnOrEvent, actionFn = null, cooldownMs = 1500) {
-        let btn = btnOrEvent && (btnOrEvent.currentTarget || btnOrEvent.target) 
-            ? (btnOrEvent.currentTarget || btnOrEvent.target) 
+    // دالة تصدير PDF حقيقية مركزية تدعم html2pdf والطباعة المباشرة كبديل أوفلاين
+    downloadRealPDF: function(htmlOrElement, fileName = 'seraj_report.pdf') {
+        return new Promise((resolve) => {
+            let cleanFileName = String(fileName || 'seraj_report.pdf');
+            if (!cleanFileName.toLowerCase().endsWith('.pdf')) cleanFileName += '.pdf';
+
+            const runExport = () => {
+                let container = null;
+                let targetEl = null;
+
+                if (typeof htmlOrElement === 'string') {
+                    container = document.createElement('div');
+                    container.style.cssText = 'position:fixed; left:-9999px; top:0; width:210mm; background:#fff; color:#000; padding:15px; direction:rtl; font-family:Cairo, sans-serif; z-index:-1;';
+                    container.innerHTML = htmlOrElement;
+                    document.body.appendChild(container);
+                    targetEl = container;
+                } else if (htmlOrElement instanceof Element) {
+                    targetEl = htmlOrElement;
+                } else {
+                    targetEl = document.body;
+                }
+
+                if (typeof window.html2pdf === 'function') {
+                    let opt = {
+                        margin: [8, 8, 8, 8],
+                        filename: cleanFileName,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, useCORS: true, logging: false },
+                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                    };
+                    window.html2pdf().set(opt).from(targetEl).save().then(() => {
+                        if (container && container.parentNode) container.parentNode.removeChild(container);
+                        resolve(true);
+                    }).catch(err => {
+                        console.error("PDF Export Error:", err);
+                        if (container && container.parentNode) container.parentNode.removeChild(container);
+                        resolve(false);
+                    });
+                } else {
+                    try {
+                        let printWin = window.open('', '_blank', 'width=900,height=700');
+                        if (printWin) {
+                            let contentHtml = typeof htmlOrElement === 'string' ? htmlOrElement : targetEl.outerHTML;
+                            printWin.document.open();
+                            printWin.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${cleanFileName}</title><style>body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:20px;color:#000;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #333;padding:8px;text-align:center;}</style></head><body>${contentHtml}</body></html>`);
+                            printWin.document.close();
+                            setTimeout(() => {
+                                printWin.focus();
+                                printWin.print();
+                                printWin.close();
+                            }, 350);
+                        }
+                    } catch (e) {
+                        console.error("Print Fallback Error:", e);
+                    }
+                    if (container && container.parentNode) container.parentNode.removeChild(container);
+                    resolve(true);
+                }
+            };
+
+            if (typeof window.html2pdf === 'function' || !navigator.onLine) {
+                runExport();
+            } else {
+                let script = document.createElement('script');
+                script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+                script.onload = runExport;
+                script.onerror = runExport;
+                document.head.appendChild(script);
+            }
+        });
+    },
+
+    preventDoubleClick: function(btnOrEvent, actionFn = null, cooldownMs = 1500) {
+        let btn = btnOrEvent && (btnOrEvent.currentTarget || btnOrEvent.target)
+            ? (btnOrEvent.currentTarget || btnOrEvent.target)
             : btnOrEvent;
 
         if (btn && btn instanceof Element) {
-            // إذا كان الزر قيد التنفيذ اللحظي حالياً (تم استدعاؤه من HTML ثم من داخل الدالة)، اسمح للدالة الداخلية بالمرور
             if (btn._isExecutingSync) {
                 return typeof actionFn === 'function' ? actionFn() : true;
             }
@@ -246,7 +521,7 @@ preventDoubleClick: function(btnOrEvent, actionFn = null, cooldownMs = 1500) {
             btn._isExecutingSync = true;
             let originalPointer = btn.style.pointerEvents;
             btn.style.pointerEvents = 'none';
-            
+
             const unlock = () => {
                 setTimeout(() => {
                     _buttonLocks.delete(btn);
@@ -284,14 +559,47 @@ preventDoubleClick: function(btnOrEvent, actionFn = null, cooldownMs = 1500) {
 
 window.getSafeTime = function(d) { return window.Utils.getSafeTime(d); };
 window.generateUniqueId = function(p) { return window.Utils.generateUniqueId(p); };
+window.getLocalDateStr = function(d) { return window.Utils.getLocalDateString(d); };
+window.debounce = window.Utils.debounce;
+window.fastSearch = function(list, query, keys, limit) { return window.Utils.fastSearch(list, query, keys, limit); };
 
-// جسر حماية ذكي: يمنع توقف الصفحات إذا استدعت .split() أو .trim() أو .includes() على رقم التاريخ الناتج من getSafeTime
+if (typeof window.exportToPDF !== 'function') {
+    window.exportToPDF = function(targetElOrHtml, fileName = 'seraj_export.pdf') {
+        let el = targetElOrHtml || document.querySelector('table') || document.body;
+        return window.Utils.downloadRealPDF(el, fileName);
+    };
+}
+if (typeof window.exportToExcel !== 'function') {
+    window.exportToExcel = function(tableIdOrEl, fileName = 'seraj_export.xls') {
+        try {
+            let tableEl = typeof tableIdOrEl === 'string' ? document.getElementById(tableIdOrEl) : (tableIdOrEl || document.querySelector('table'));
+            if (!tableEl) return false;
+            let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" dir="rtl"><head><meta charset="UTF-8"></head><body>${tableEl.outerHTML}</body></html>`;
+            let blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = String(fileName).endsWith('.xls') || String(fileName).endsWith('.xlsx') ? fileName : (fileName + '.xls');
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            return true;
+        } catch (e) {
+            console.error("Excel Export Error:", e);
+            return false;
+        }
+    };
+}
+
+// جسر حماية ذكي: يُرجع التاريخ المحلي لمصر YYYY-MM-DD بدلاً من UTC عند استدعاء window.Utils.getSafeTime().split('T')[0]
 if (!Number.prototype.split) {
     Object.defineProperty(Number.prototype, 'split', {
         value: function(sep, limit) {
             let ms = Number(this);
             let d = ms > 0 ? new Date(ms) : new Date();
-            let str = (sep === 'T' || sep === '-') ? d.toISOString() : d.toLocaleString('ar-EG');
+            let localDate = window.Utils.getLocalDateString(d);
+            let localTime = d.toTimeString().split(' ')[0] || '12:00:00';
+            let str = (sep === 'T') ? `${localDate}T${localTime}` : ((sep === '-') ? localDate : d.toLocaleString('ar-EG'));
             return String(str).split(sep, limit);
         },
         configurable: true,
@@ -324,20 +632,20 @@ window.SerajAlert = function(message, type = 'info', callback = null) {
     return new Promise((resolve) => {
         let modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,10,10,0.92); z-index:100000; display:flex; justify-content:center; align-items:center;';
-        
+
         let box = document.createElement('div');
         let borderColor = type === 'error' ? 'var(--danger-color, #ff3333)' : (type === 'success' ? 'var(--success-color, #00ff66)' : 'var(--neon-border, #00e5ff)');
         box.style.cssText = `background:var(--card-bg, #1a1a1a); padding:30px; border-radius:10px; border:2px solid ${borderColor}; color:var(--text-main, #ffffff); text-align:center; min-width:300px; max-width:85%; box-shadow: 0 0 20px rgba(0,0,0,0.8);`;
-        
+
         box.innerHTML = `
             <h3 style="margin-top:0; color:${borderColor};">${type === 'error' ? '⚠️ تنبيه هام' : '✅ رسالة النظام'}</h3>
             <p style="font-size:18px; margin:20px 0; line-height:1.6;">${window.Utils.sanitizeHTML(String(message))}</p>
             <button id="alert-ok-btn" style="background:${borderColor}; color:#000; border:none; padding:10px 30px; font-weight:bold; border-radius:5px; cursor:pointer; font-size:16px;">موافق</button>
         `;
-        
+
         modal.appendChild(box);
         document.body.appendChild(modal);
-        
+
         let okBtn = modal.querySelector('#alert-ok-btn');
         if (okBtn) {
             okBtn.focus();
@@ -356,11 +664,11 @@ window.SerajConfirm = function(message, callback = null) {
     return new Promise((resolve) => {
         let modal = document.createElement('div');
         modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,10,10,0.92); z-index:100000; display:flex; justify-content:center; align-items:center;';
-        
+
         let box = document.createElement('div');
         let warnColor = 'var(--warning-color, #ffcc00)';
         box.style.cssText = `background:var(--card-bg, #1a1a1a); padding:30px; border-radius:10px; border:2px solid ${warnColor}; color:var(--text-main, #ffffff); text-align:center; min-width:300px; max-width:85%; box-shadow: 0 0 20px rgba(0,0,0,0.8);`;
-        
+
         box.innerHTML = `
             <h3 style="margin-top:0; color:${warnColor};">❓ تأكيد إجراء</h3>
             <p style="font-size:18px; margin:20px 0; line-height:1.6;">${window.Utils.sanitizeHTML(String(message))}</p>
@@ -369,10 +677,10 @@ window.SerajConfirm = function(message, callback = null) {
                 <button id="confirm-no-btn" style="background:var(--danger-color, #ff3333); color:#fff; border:none; padding:10px 25px; font-weight:bold; border-radius:5px; cursor:pointer; font-size:15px;">إلغاء</button>
             </div>
         `;
-        
+
         modal.appendChild(box);
         document.body.appendChild(modal);
-        
+
         let yesBtn = modal.querySelector('#confirm-yes-btn');
         let noBtn = modal.querySelector('#confirm-no-btn');
         if (yesBtn) {
@@ -395,7 +703,7 @@ window.SerajConfirm = function(message, callback = null) {
 window.SerajSerajConfirm = window.SerajConfirm;
 
 // ---------------------------------------------------------
-// 2.5. Central ImagesDB (محرك الصور المركزي الذكي - يدعم Blob و Base64 والـ ID الرقمي والنصي)
+// 2.5. Central ImagesDB (محرك الصور المركزي الذكي - يدعم targetImgElementId مباشرة لشاشة المبيعات)
 // ---------------------------------------------------------
 const _nativeCreateObjectURL = URL.createObjectURL.bind(URL);
 URL.createObjectURL = function(obj) {
@@ -435,6 +743,20 @@ window.ImagesDB = {
         return rawImg;
     },
 
+    _applyImageToDom: function(targetImgElementId, preparedImg) {
+        if (!targetImgElementId || !preparedImg) return;
+        try {
+            let el = typeof targetImgElementId === 'string'
+                ? document.getElementById(targetImgElementId)
+                : targetImgElementId;
+            if (el) {
+                let srcUrl = (preparedImg instanceof Blob) ? String(preparedImg) : preparedImg;
+                el.src = srcUrl;
+                el.style.display = '';
+            }
+        } catch (e) {}
+    },
+
     saveImage: function(productId, blobOrBase64) {
         return this.open().then(db => {
             return new Promise((resolve) => {
@@ -450,25 +772,29 @@ window.ImagesDB = {
         }).catch(() => false);
     },
 
-    getImage: function(productId) {
+    getImage: function(productId, targetImgElementId = null) {
         return this.open().then(db => {
             return new Promise((resolve) => {
                 try {
                     let sName = db.objectStoreNames.contains(this.storeName) ? this.storeName : db.objectStoreNames[0];
                     let tx = db.transaction([sName], 'readonly');
                     let store = tx.objectStore(sName);
-                    
+
                     let reqStr = store.get(String(productId));
                     reqStr.onsuccess = (e) => {
                         let rec = e.target.result;
                         if (rec && (rec.imageBlob || rec.image)) {
-                            resolve(this._prepareOutput(rec.imageBlob || rec.image));
+                            let out = this._prepareOutput(rec.imageBlob || rec.image);
+                            this._applyImageToDom(targetImgElementId, out);
+                            resolve(out);
                         } else if (!isNaN(productId)) {
                             let reqNum = store.get(Number(productId));
                             reqNum.onsuccess = (ev) => {
                                 let recNum = ev.target.result;
                                 if (recNum && (recNum.imageBlob || recNum.image)) {
-                                    resolve(this._prepareOutput(recNum.imageBlob || recNum.image));
+                                    let outNum = this._prepareOutput(recNum.imageBlob || recNum.image);
+                                    this._applyImageToDom(targetImgElementId, outNum);
+                                    resolve(outNum);
                                 } else {
                                     resolve(null);
                                 }
@@ -503,19 +829,8 @@ window.ImagesDB = {
 window.ImagesDB.open().catch(() => {});
 
 // ---------------------------------------------------------
-// 3. Sync Queue, Delete Queue & Smart Radars (نسخة التزامن اللحظي الكاملة)
+// 3. Sync Queue, Delete Queue & Smart Radars (Offline-First Calm Sync Engine)
 // ---------------------------------------------------------
-function safeParseJSON(str, fallback = []) {
-    if (!str) return fallback;
-    try {
-        let parsed = JSON.parse(str);
-        return parsed !== null && parsed !== undefined ? parsed : fallback;
-    } catch (e) {
-        console.error("JSON Parse Error:", e);
-        return fallback;
-    }
-}
-
 let _emitTimeouts = {};
 function emitSerajUpdate(collectionName, source = 'local') {
     try {
@@ -532,37 +847,72 @@ function emitSerajUpdate(collectionName, source = 'local') {
 
 let _syncTimer = null;
 let _inFlightSyncKeys = new Set();
+const CALM_SYNC_DELAY_MS = 180000; // مؤقت هادئ للمزامنة الخلفية (3 دقائق بعد استقرار التعديلات)
 
-function scheduleSyncQueue() {
+function scheduleSyncQueue(customDelayMs = CALM_SYNC_DELAY_MS) {
     if (_syncTimer) clearTimeout(_syncTimer);
     _syncTimer = setTimeout(() => {
+        _syncTimer = null;
+        processDeleteQueue();
         processSyncQueue();
-    }, 100);
+    }, customDelayMs);
 }
 
-function addToSyncQueue(colName, itemData) {
+// إزالة أي عنصر من طابور الحذف فور إضافته أو تعديله في طابور المزامنة (منع Race Condition عند تعديل السندات)
+function removeFromDeleteQueue(colName, idStr) {
+    let rawDel = localStorage.getItem('seraj_delete_queue');
+    if (!rawDel) return;
+    let delQueue = safeParseJSON(rawDel, []);
+    let filtered = delQueue.filter(q => !(q.col === colName && String(q.id) === String(idStr)));
+    if (filtered.length !== delQueue.length) {
+        _internalSetItem('seraj_delete_queue', JSON.stringify(filtered));
+    }
+}
+
+function addToSyncQueue(colName, itemData, immediate = false) {
     if (!itemData || itemData.id === undefined || itemData.id === null) return;
-    let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
     let idStr = String(itemData.id);
-    queue = queue.filter(q => !(q.col === colName && String(q.data.id) === idStr)); 
+    removeFromDeleteQueue(colName, idStr);
+
+    let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
+    queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
     queue.push({ col: colName, data: itemData });
-    localStorage.setItem('seraj_sync_queue', JSON.stringify(queue));
-    scheduleSyncQueue();
+    _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
+    if (immediate) {
+        processSyncQueue();
+    } else {
+        scheduleSyncQueue();
+    }
 }
 
-function addToDeleteQueue(colName, itemId) {
+function addToDeleteQueue(colName, itemId, immediate = false) {
     if (itemId === undefined || itemId === null) return;
     let delQueue = safeParseJSON(localStorage.getItem('seraj_delete_queue'), []);
     let idStr = String(itemId);
     if (!delQueue.some(q => q.col === colName && String(q.id) === idStr)) {
         delQueue.push({ col: colName, id: idStr });
-        localStorage.setItem('seraj_delete_queue', JSON.stringify(delQueue));
+        _internalSetItem('seraj_delete_queue', JSON.stringify(delQueue));
     }
     let syncQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
-    syncQueue = syncQueue.filter(q => !(q.col === colName && String(q.data.id) === idStr));
-    localStorage.setItem('seraj_sync_queue', JSON.stringify(syncQueue));
-    processDeleteQueue();
+    syncQueue = syncQueue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
+    _internalSetItem('seraj_sync_queue', JSON.stringify(syncQueue));
+    if (immediate) {
+        processDeleteQueue();
+    } else {
+        scheduleSyncQueue();
+    }
 }
+
+// Polyfill آمن لصفحة الموردين (suppliers.html) لمنع ReferenceError عند استدعاء saveActionToQueueSafely
+window.saveActionToQueueSafely = function(actionObj) {
+    try {
+        if (actionObj && actionObj.col && actionObj.data && actionObj.data.id !== undefined) {
+            addToSyncQueue(actionObj.col, actionObj.data);
+        } else {
+            scheduleSyncQueue();
+        }
+    } catch (e) {}
+};
 
 function processDeleteQueue() {
     if (!cloudReady || !navigator.onLine || !window.dbCloud) return;
@@ -577,7 +927,7 @@ function processDeleteQueue() {
             .then(() => {
                 let currentDelQueue = safeParseJSON(localStorage.getItem('seraj_delete_queue'), []);
                 currentDelQueue = currentDelQueue.filter(item => !(item.col === q.col && String(item.id) === String(q.id)));
-                localStorage.setItem('seraj_delete_queue', JSON.stringify(currentDelQueue));
+                _internalSetItem('seraj_delete_queue', JSON.stringify(currentDelQueue));
             }).catch(e => console.error("Delete Sync Error:", e));
     });
 }
@@ -599,14 +949,16 @@ function processSyncQueue() {
 
         let safeId = String(q.data.id).replace(/[.#$\[\]]/g, "_");
         let cloudRefName = 'test_Stores/' + activeStoreId + '/' + q.col + '/' + safeId;
-        
+
         window.dbCloud.ref(cloudRefName).set(q.data)
             .then(() => {
                 _inFlightSyncKeys.delete(lockKey);
                 let currentQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
-                currentQueue = currentQueue.filter(item => !(item.col === q.col && String(item.data.id) === String(q.data.id)));
-                localStorage.setItem('seraj_sync_queue', JSON.stringify(currentQueue));
-                if (currentQueue.length > 0) scheduleSyncQueue();
+                currentQueue = currentQueue.filter(item => !(item.col === q.col && String(item.data?.id) === String(q.data.id)));
+                _internalSetItem('seraj_sync_queue', JSON.stringify(currentQueue));
+                if (currentQueue.length > 0) {
+                    setTimeout(() => processSyncQueue(), 250);
+                }
             }).catch(e => {
                 _inFlightSyncKeys.delete(lockKey);
                 console.error("Sync Error", e);
@@ -615,30 +967,25 @@ function processSyncQueue() {
 }
 
 window.addEventListener('online', () => {
-    showCloudStatus("🌐 عاد الاتصال بالإنترنت! جاري المزامنة...");
+    showCloudStatus("🌐 عاد الاتصال بالإنترنت! ستتم المزامنة الهادئة...");
     if (cloudReady) {
         _inFlightSyncKeys.clear();
-        processDeleteQueue();
-        scheduleSyncQueue();
+        scheduleSyncQueue(5000); // مزامنة هادئة بعد 5 ثوانٍ من استقرار الشبكة
     }
 });
 
-// 🌟 إنعاش تلقائي للسحابة والطابور فور فتح شاشة التليفون أو العودة للمتصفح بعد خمول 🌟
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine && cloudReady && window.dbCloud) {
         _inFlightSyncKeys.clear();
         try {
             window.dbCloud.goOnline();
         } catch (e) {}
-        processDeleteQueue();
-        scheduleSyncQueue();
+        scheduleSyncQueue(10000);
     }
 });
 
 let localCollectionsCache = {};
 let renderTimers = {};
-let _bgSaveTimers = {};
-
 
 function saveArrayToQueueSafely(colName, newArray) {
     if (!Array.isArray(newArray)) newArray = [];
@@ -646,11 +993,20 @@ function saveArrayToQueueSafely(colName, newArray) {
 
     try {
         let rawOldCache = localStorage.getItem('seraj_cloud_cache_' + colName);
-        
+
+        // إلغاء سقف الـ 25 عنصراً عند التزامن الأول لرفع جميع الأصناف عند استيراد إكسيل كامل أو تعديل شامل للأسعار
         if (!rawOldCache) {
-            localStorage.setItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
-            let newest = [...newArray].slice(0, 25);
-            newest.forEach(item => addToSyncQueue(colName, item));
+            _internalSetItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
+            let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
+            newArray.forEach(item => {
+                if (!item || item.id === undefined || item.id === null) return;
+                let idStr = String(item.id);
+                removeFromDeleteQueue(colName, idStr);
+                queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
+                queue.push({ col: colName, data: item });
+            });
+            _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
+            scheduleSyncQueue();
             emitSerajUpdate(colName, 'local');
             return;
         }
@@ -659,25 +1015,26 @@ function saveArrayToQueueSafely(colName, newArray) {
         let oldMap = new Map(oldArray.map(i => [String(i?.id), i]));
         let newMap = new Map(newArray.map(i => [String(i?.id), i]));
         let changedItems = [];
-        
+
+        // استبعاد الحقول المحسوبة المؤقتة (computedRemaining و calculatedRemaining) عند مقارنة التغيير لمنع تضخم طابور المزامنة
         newArray.forEach(newItem => {
             if (!newItem || newItem.id === undefined) return;
             let id = String(newItem.id);
             let oldItem = oldMap.get(id);
-            if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(newItem)) {
+            if (!oldItem || JSON.stringify(_stripComputedFieldsForDiff(oldItem)) !== JSON.stringify(_stripComputedFieldsForDiff(newItem))) {
                 changedItems.push(newItem);
             }
         });
 
-        // رفع جميع العناصر المتغيرة بدون إسقاط أي فاتورة بسبب حاجز الـ 30
         if (changedItems.length > 0) {
             let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
             changedItems.forEach(item => {
                 let idStr = String(item.id);
-                queue = queue.filter(q => !(q.col === colName && String(q.data.id) === idStr));
+                removeFromDeleteQueue(colName, idStr);
+                queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
                 queue.push({ col: colName, data: item });
             });
-            localStorage.setItem('seraj_sync_queue', JSON.stringify(queue));
+            _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
             scheduleSyncQueue();
         }
 
@@ -691,7 +1048,7 @@ function saveArrayToQueueSafely(colName, newArray) {
             });
         }
 
-        localStorage.setItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
+        _internalSetItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
         emitSerajUpdate(colName, 'local');
     } catch (e) {
         console.error("Queue Sync Error:", e);
@@ -702,10 +1059,10 @@ function startSmartRadars() {
     if (!cloudReady || !window.dbCloud) return;
     currentStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
     const collections = ['products', 'customers', 'sales_invoices', 'suppliers', 'purchase_invoices', 'treasury_moves', 'smart_notes'];
-    
+
     collections.forEach(col => {
         let ref = window.dbCloud.ref('test_Stores/' + currentStoreId + '/' + col);
-        ref.off(); // منع تكرار المستمعات عند إعادة التهيئة
+        ref.off();
         ref.on('child_added', snap => updateLocalSingleItem(col, snap.val()));
         ref.on('child_changed', snap => updateLocalSingleItem(col, snap.val()));
         ref.on('child_removed', snap => removeLocalSingleItem(col, snap.key));
@@ -718,7 +1075,7 @@ function startSmartRadars() {
             let incomingStr = JSON.stringify(snapshot.val());
             let currentStr = localStorage.getItem('seraj_vaults_v2');
             if (incomingStr === currentStr) return;
-            localStorage.setItem('seraj_vaults_v2', incomingStr);
+            _internalSetItem('seraj_vaults_v2', incomingStr);
             emitSerajUpdate('vaults_v2', 'cloud');
             if (typeof updateTreasuryUI === 'function' && !window.DB._isSavingVaults) {
                 window.DB._isSavingVaults = true;
@@ -727,42 +1084,16 @@ function startSmartRadars() {
             }
         }
     });
-
-    let voiceRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/voice_studio_v4');
-    voiceRef.off();
-    voiceRef.on('value', snapshot => {
-        if (snapshot.exists()) {
-            let vCfg = snapshot.val();
-            if (vCfg.sales) {
-                if (vCfg.sales.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'sales'), JSON.stringify(vCfg.sales.settings));
-                if (vCfg.sales.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'sales'), JSON.stringify(vCfg.sales.pipeline));
-            }
-            if (vCfg.purchases) {
-                if (vCfg.purchases.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'purchases'), JSON.stringify(vCfg.purchases.settings));
-                if (vCfg.purchases.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'purchases'), JSON.stringify(vCfg.purchases.pipeline));
-            }
-            if (vCfg.inventory) {
-                if (vCfg.inventory.settings) localStorage.setItem(window.DB._getVoiceStorageKey('settings', 'inventory'), JSON.stringify(vCfg.inventory.settings));
-                if (vCfg.inventory.pipeline) localStorage.setItem(window.DB._getVoiceStorageKey('pipeline', 'inventory'), JSON.stringify(vCfg.inventory.pipeline));
-            }
-            if (vCfg.units) localStorage.setItem(window.DB._getVoiceStorageKey('units'), JSON.stringify(vCfg.units));
-            if (vCfg.dictionary) localStorage.setItem(window.DB._getVoiceStorageKey('dict'), JSON.stringify(vCfg.dictionary));
-            if (typeof SmartVoice !== 'undefined') SmartVoice._invalidateShadowCache();
-            emitSerajUpdate('voice_config', 'cloud');
-        }
-    });
 }
 
 let _notifiedSmartNotes = {};
 
-// بصمة فريدة لكل جهاز/متصفح لا تتأثر باستيراد النسخة الاحتياطية لضمان عمل الإشعار بين الأجهزة
 let myDeviceUid = sessionStorage.getItem('seraj_device_uid');
 if (!myDeviceUid) {
     myDeviceUid = 'uid_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
     sessionStorage.setItem('seraj_device_uid', myDeviceUid);
 }
 
-// طلب إذن الإشعارات وتجهيز الصوت تلقائياً مع أول لمسة للمستخدم على الشاشة
 window.addEventListener('click', function _initNotePerms() {
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
@@ -789,8 +1120,8 @@ function playSmartNoteTone() {
             osc.stop(startTime + duration);
         };
         let now = ctx.currentTime;
-        playBeep(587.33, now, 0.16);        // النغمة الأولى
-        playBeep(880.00, now + 0.18, 0.30); // النغمة الثانية
+        playBeep(587.33, now, 0.16);
+        playBeep(880.00, now + 0.18, 0.30);
     } catch (e) {
         console.warn("Audio Tone Error:", e);
     }
@@ -830,12 +1161,22 @@ function triggerSmartNoteNotification(data) {
 
 function updateLocalSingleItem(col, data) {
     if (!data || data.id === undefined) return;
+    // منع دخول أي كائنات خزينة مدمجة أو وهمية من السحابة إلى seraj_treasury_moves
+    if (col === 'treasury_moves') {
+        let mId = String(data.id || '');
+        if (data._isInvoice === true || data._isMergedInvoice === true || mId.endsWith('_vouch') || mId.endsWith('_cash')) {
+            return;
+        }
+    }
+    if (col === 'smart_notes') {
+        data.id = String(data.id);
+    }
+
     let docId = String(data.id);
 
     let delQueue = safeParseJSON(localStorage.getItem('seraj_delete_queue'), []);
     if (delQueue.some(q => q.col === col && String(q.id) === docId)) return;
 
-    // حماية التعديلات المحلية التي لم تترفع بعد من أن تدهسها نسخة قديمة من السحابة
     let syncQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
     if (syncQueue.some(q => q.col === col && q.data && String(q.data.id) === docId)) return;
 
@@ -844,14 +1185,14 @@ function updateLocalSingleItem(col, data) {
     }
     let arr = localCollectionsCache[col];
     let existingIndex = arr.findIndex(item => String(item.id) === docId);
-    
+
     let isChangedOrNew = false;
     if (existingIndex > -1) {
         let localItem = arr[existingIndex];
         let localMod = Number(localItem?._lastModified || 0);
         let cloudMod = Number(data?._lastModified || 0);
         if (localMod > 0 && cloudMod > 0 && localMod > cloudMod) return;
-        if (JSON.stringify(localItem) === JSON.stringify(data)) return;
+        if (JSON.stringify(_stripComputedFieldsForDiff(localItem)) === JSON.stringify(_stripComputedFieldsForDiff(data))) return;
         arr[existingIndex] = data;
         isChangedOrNew = true;
     } else {
@@ -869,7 +1210,7 @@ function updateLocalSingleItem(col, data) {
             triggerSmartNoteNotification(data);
         }
     }
-    
+
     if (renderTimers[col]) clearTimeout(renderTimers[col]);
     renderTimers[col] = setTimeout(() => saveAndRenderLocal(col, localCollectionsCache[col]), 200);
 }
@@ -879,28 +1220,63 @@ function removeLocalSingleItem(col, docId) {
         localCollectionsCache[col] = safeParseJSON(localStorage.getItem('seraj_' + col), []);
     }
     localCollectionsCache[col] = localCollectionsCache[col].filter(item => String(item.id) !== String(docId));
-    
+
     if (renderTimers[col]) clearTimeout(renderTimers[col]);
     renderTimers[col] = setTimeout(() => saveAndRenderLocal(col, localCollectionsCache[col]), 250);
 }
 
 function saveAndRenderLocal(col, localArray) {
     if (col.includes('invoices') || col === 'treasury_moves') {
-        localArray.sort((a, b) => window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date) || (Number(b.id) || 0) - (Number(a.id) || 0));
+        localArray.sort((a, b) => {
+            let timeDiff = window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date);
+            if (timeDiff !== 0) return timeDiff;
+            return window.Utils.extractSerialNum(b.id) - window.Utils.extractSerialNum(a.id);
+        });
     }
-    localStorage.setItem('seraj_' + col, JSON.stringify(localArray));
-    localStorage.setItem('seraj_cloud_cache_' + col, JSON.stringify(localArray)); 
-    
+    _internalSetItem('seraj_' + col, JSON.stringify(localArray));
+    _internalSetItem('seraj_cloud_cache_' + col, JSON.stringify(localArray));
+
+    let isEditingLocked = (typeof isEditingNow !== 'undefined' && Boolean(isEditingNow));
+
     emitSerajUpdate(col, 'cloud');
 
     try {
-        if (col === 'products' && typeof renderInventoryTable === 'function') renderInventoryTable();
-        if (col === 'sales_invoices' && typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
-        if (col === 'customers' && typeof renderCustomersList === 'function') renderCustomersList();
-        if (col === 'suppliers' && typeof renderSuppliersList === 'function') renderSuppliersList();
-        if (col === 'purchase_invoices' && typeof renderPurchasesHistory === 'function') renderPurchasesHistory();
+        if (!isEditingLocked) {
+            if (col === 'products' && typeof renderInventoryTable === 'function') renderInventoryTable();
+            if (col === 'sales_invoices' && typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
+            if (col === 'purchase_invoices') {
+                if (typeof renderPurchasesHistory === 'function') renderPurchasesHistory();
+                else if (typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
+            }
+        }
+
+        if (col === 'customers') {
+            if (typeof renderCustomersList === 'function') renderCustomersList();
+            if (typeof currentActiveCustomerId !== 'undefined' && currentActiveCustomerId) {
+                try {
+                    if (typeof updateAccountSummary === 'function') updateAccountSummary();
+                    if (typeof renderAccountTransactions === 'function') renderAccountTransactions();
+                    if (typeof renderStatementTable === 'function') renderStatementTable();
+                } catch (e) {}
+            }
+        }
+
+        if (col === 'suppliers') {
+            if (typeof renderSuppliersList === 'function') renderSuppliersList();
+            if (typeof currentActiveSupplierId !== 'undefined' && currentActiveSupplierId) {
+                try {
+                    if (typeof openSupplierAccount === 'function') openSupplierAccount(currentActiveSupplierId);
+                } catch (e) {}
+            }
+            if (typeof populateSuppliers === 'function') populateSuppliers();
+        }
+
         if (col === 'smart_notes' && typeof renderNotesList === 'function') renderNotesList();
+
         if (col === 'treasury_moves') {
+            if (window.DB && typeof window.DB.recalculateVaultBalances === 'function') {
+                window.DB.recalculateVaultBalances(true);
+            }
             if (typeof renderMovementsTable === 'function') renderMovementsTable();
             if (typeof updateTreasuryUI === 'function' && !window.DB._isSavingVaults) {
                 window.DB._isSavingVaults = true;
@@ -908,62 +1284,95 @@ function saveAndRenderLocal(col, localArray) {
                 setTimeout(() => { window.DB._isSavingVaults = false; }, 200);
             }
         }
+
         if (typeof calculateCollectedData === 'function') calculateCollectedData();
+        if (typeof calculateOverviewStats === 'function') calculateOverviewStats();
+        if (typeof runSmartInventory === 'function') {
+            try {
+                runSmartInventory('shortages');
+                runSmartInventory('suppliers');
+            } catch (e) {}
+        }
     } catch (e) {}
 }
+
 // ---------------------------------------------------------
 // 4. DB Master Object (العمود الفقري للعمليات والحسابات)
 // ---------------------------------------------------------
 window.DB = {
+    _isCalculatingBalances: false,
+    _hideZeroCustomersByDefault: false,
+
+    // دالة المزامنة الفورية اليدوية DB.syncNow() حسب الدستور المعماري
+    syncNow: function() {
+        return new Promise((resolve) => {
+            if (_syncTimer) {
+                clearTimeout(_syncTimer);
+                _syncTimer = null;
+            }
+            if (!cloudReady || !navigator.onLine || !window.dbCloud) {
+                showCloudStatus("⚠️ الجهاز يعمل محلياً (أوفلاين) - سيتم الرفع فور توفر الإنترنت");
+                return resolve(false);
+            }
+            _inFlightSyncKeys.clear();
+            processDeleteQueue();
+            processSyncQueue();
+            showCloudStatus("⚡ جاري تنفيذ المزامنة الفورية مع السحابة...");
+            resolve(true);
+        });
+    },
+
     // 🚀 دالة السحب الشامل لتهيئة تليفون جديد أو متصفح خفي
     syncFromCloud: function() {
         if (!cloudReady || !navigator.onLine || !window.dbCloud) {
             SerajAlert("يجب الاتصال بالإنترنت لسحب بيانات المحل من السحابة!", "error");
             return Promise.resolve(false);
         }
-        
+
         return new Promise((resolve) => {
             SerajConfirm("سيتم مسح الذاكرة الحالية لهذا الجهاز وتحميل الداتا الموحدة من السحابة بالكامل. هل أنت متأكد؟", (confirm) => {
                 if (!confirm) return resolve(false);
 
                 showCloudStatus("⏳ جاري تحميل داتا المحل بالكامل من السحابة... برجاء الانتظار.");
-                
+
                 window.dbCloud.ref('test_Stores/' + currentStoreId).once('value').then(snapshot => {
                     if (snapshot.exists()) {
                         let data = snapshot.val();
-                        
-                        // تحويل كائنات الفايربيز إلى مصفوفات ليفهمها البرنامج
                         let safeArray = (obj) => obj ? Object.values(obj) : [];
 
-                        // 1. صب البيانات في الذاكرة المحلية (بدون ما نبعتها للطابور عشان مفيش تكرار)
-                        localStorage.setItem('seraj_products', JSON.stringify(safeArray(data.products)));
-                        localStorage.setItem('seraj_cloud_cache_products', JSON.stringify(safeArray(data.products)));
+                        _internalSetItem('seraj_products', JSON.stringify(safeArray(data.products)));
+                        _internalSetItem('seraj_cloud_cache_products', JSON.stringify(safeArray(data.products)));
 
-                        localStorage.setItem('seraj_customers', JSON.stringify(safeArray(data.customers)));
-                        localStorage.setItem('seraj_cloud_cache_customers', JSON.stringify(safeArray(data.customers)));
+                        _internalSetItem('seraj_customers', JSON.stringify(safeArray(data.customers)));
+                        _internalSetItem('seraj_cloud_cache_customers', JSON.stringify(safeArray(data.customers)));
 
-                        localStorage.setItem('seraj_suppliers', JSON.stringify(safeArray(data.suppliers)));
-                        localStorage.setItem('seraj_cloud_cache_suppliers', JSON.stringify(safeArray(data.suppliers)));
+                        _internalSetItem('seraj_suppliers', JSON.stringify(safeArray(data.suppliers)));
+                        _internalSetItem('seraj_cloud_cache_suppliers', JSON.stringify(safeArray(data.suppliers)));
 
-                        localStorage.setItem('seraj_sales_invoices', JSON.stringify(safeArray(data.sales_invoices)));
-                        localStorage.setItem('seraj_cloud_cache_sales_invoices', JSON.stringify(safeArray(data.sales_invoices)));
+                        _internalSetItem('seraj_sales_invoices', JSON.stringify(safeArray(data.sales_invoices)));
+                        _internalSetItem('seraj_cloud_cache_sales_invoices', JSON.stringify(safeArray(data.sales_invoices)));
 
-                        localStorage.setItem('seraj_purchase_invoices', JSON.stringify(safeArray(data.purchase_invoices)));
-                        localStorage.setItem('seraj_cloud_cache_purchase_invoices', JSON.stringify(safeArray(data.purchase_invoices)));
+                        _internalSetItem('seraj_purchase_invoices', JSON.stringify(safeArray(data.purchase_invoices)));
+                        _internalSetItem('seraj_cloud_cache_purchase_invoices', JSON.stringify(safeArray(data.purchase_invoices)));
 
-                        localStorage.setItem('seraj_treasury_moves', JSON.stringify(safeArray(data.treasury_moves)));
-                        localStorage.setItem('seraj_cloud_cache_treasury_moves', JSON.stringify(safeArray(data.treasury_moves)));
+                        let cleanCloudMoves = safeArray(data.treasury_moves).filter(m => {
+                            if (!m) return false;
+                            let mId = String(m.id || '');
+                            return !(m._isInvoice === true || m._isMergedInvoice === true || mId.endsWith('_vouch') || mId.endsWith('_cash'));
+                        });
+                        _internalSetItem('seraj_treasury_moves', JSON.stringify(cleanCloudMoves));
+                        _internalSetItem('seraj_cloud_cache_treasury_moves', JSON.stringify(cleanCloudMoves));
 
-                        localStorage.setItem('seraj_smart_notes', JSON.stringify(safeArray(data.smart_notes)));
-                        localStorage.setItem('seraj_cloud_cache_smart_notes', JSON.stringify(safeArray(data.smart_notes)));
+                        let cleanCloudNotes = safeArray(data.smart_notes).map(n => n ? ({ ...n, id: String(n.id) }) : null).filter(Boolean);
+                        _internalSetItem('seraj_smart_notes', JSON.stringify(cleanCloudNotes));
+                        _internalSetItem('seraj_cloud_cache_smart_notes', JSON.stringify(cleanCloudNotes));
 
                         if (data.vaults_v2) {
-                            localStorage.setItem('seraj_vaults_v2', JSON.stringify(data.vaults_v2));
+                            _internalSetItem('seraj_vaults_v2', JSON.stringify(data.vaults_v2));
                         }
 
-                        // 2. تنظيف طابور المزامنة القديم
-                        localStorage.setItem('seraj_sync_queue', '[]');
-                        localStorage.setItem('seraj_delete_queue', '[]');
+                        _internalSetItem('seraj_sync_queue', '[]');
+                        _internalSetItem('seraj_delete_queue', '[]');
 
                         SerajAlert("✅ تم تحميل بيانات المحل وتوحيدها بنجاح! سيتم إعادة تحديث الصفحة.", "success", () => {
                             window.location.reload();
@@ -990,12 +1399,57 @@ window.DB = {
     saveCollection: function(colName, data, syncToCloud = true) {
         let cleanCol = colName.replace(/^seraj_/, '');
         let key = 'seraj_' + cleanCol;
-        localStorage.setItem(key, JSON.stringify(data));
+        _internalSetItem(key, JSON.stringify(data));
         if (syncToCloud && Array.isArray(data)) {
             saveArrayToQueueSafely(cleanCol, data);
         } else {
             emitSerajUpdate(cleanCol, 'local');
         }
+    },
+
+    // دالة تحديث عنصر مفرد (مطلوبة لصفحة treasury.html لمنع دخولها في مسار else وحفظ المصفوفة المدمجة)
+    updateItem: function(colName, id, updatedItem) {
+        if (!updatedItem) return false;
+        let cleanCol = colName.replace(/^seraj_/, '');
+        let targetId = String(id ?? updatedItem.id);
+
+        if (cleanCol === 'treasury_moves') {
+            if (updatedItem._isInvoice === true || updatedItem._isMergedInvoice === true || targetId.endsWith('_vouch') || targetId.endsWith('_cash')) {
+                return false;
+            }
+            let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            let idx = rawMoves.findIndex(m => m && String(m.id) === targetId);
+            let cleanMove = { ...updatedItem };
+            delete cleanMove._isInvoice;
+            delete cleanMove._isMergedInvoice;
+            cleanMove.id = cleanMove.id ?? id;
+            cleanMove.date = window.Utils.normalizeDateStr(cleanMove.date, cleanMove.timestamp);
+            cleanMove.timestamp = window.Utils.alignTimestampWithDate(cleanMove.date, cleanMove.timestamp);
+            cleanMove._lastModified = Date.now();
+            cleanMove._lastModifiedBy = myDeviceName;
+
+            if (idx > -1) {
+                rawMoves[idx] = cleanMove;
+            } else {
+                rawMoves.unshift(cleanMove);
+            }
+            this.saveTreasuryMoves(rawMoves);
+            return true;
+        }
+
+        let list = this.getCollection(cleanCol, []);
+        let idx = list.findIndex(item => item && String(item.id) === targetId);
+        updatedItem.id = updatedItem.id ?? id;
+        updatedItem._lastModified = Date.now();
+        updatedItem._lastModifiedBy = myDeviceName;
+
+        if (idx > -1) {
+            list[idx] = updatedItem;
+        } else {
+            list.push(updatedItem);
+        }
+        this.saveCollection(cleanCol, list, true);
+        return true;
     },
 
     deleteItem: function(colName, id, mode = 'soft') {
@@ -1004,20 +1458,79 @@ window.DB = {
         let targetId = String(id);
 
         if (mode === 'hard' || cleanCol === 'treasury_moves') {
-            let filtered = list.filter(item => String(item.id) !== targetId);
-            localStorage.setItem('seraj_' + cleanCol, JSON.stringify(filtered));
-            localStorage.setItem('seraj_cloud_cache_' + cleanCol, JSON.stringify(filtered));
+            let deletedMove = null;
+            if (cleanCol === 'treasury_moves') {
+                deletedMove = list.find(item => item && String(item.id) === targetId) || null;
+            }
+
+            let filtered = list.filter(item => item && String(item.id) !== targetId);
+            _internalSetItem('seraj_' + cleanCol, JSON.stringify(filtered));
+            _internalSetItem('seraj_cloud_cache_' + cleanCol, JSON.stringify(filtered));
             localCollectionsCache[cleanCol] = filtered;
             addToDeleteQueue(cleanCol, targetId);
-            if (cleanCol === 'treasury_moves') this.recalculateVaultBalances();
+
+            // الحذف التبادلي للسندات: عند مسح سند من الخزينة يُمسح من معاملات العميل/المورد المرتبطة به
+            if (cleanCol === 'treasury_moves') {
+                let voucherLinkedIds = new Set([targetId]);
+                if (deletedMove && deletedMove.invoiceNo) {
+                    voucherLinkedIds.add(String(deletedMove.invoiceNo));
+                }
+
+                let rawCustomers = safeParseJSON(localStorage.getItem('seraj_customers'), []);
+                let custModified = false;
+                rawCustomers.forEach(c => {
+                    if (c && Array.isArray(c.transactions)) {
+                        let beforeLen = c.transactions.length;
+                        c.transactions = c.transactions.filter(t => {
+                            if (!t) return false;
+                            let tId = String(t.id ?? '');
+                            let tInvNo = String(t.invoiceNo ?? '');
+                            return !voucherLinkedIds.has(tId) && (!tInvNo || !voucherLinkedIds.has(tInvNo));
+                        });
+                        if (c.transactions.length !== beforeLen) {
+                            c._lastModified = Date.now();
+                            custModified = true;
+                        }
+                    }
+                });
+                if (custModified) {
+                    this.saveCustomers(rawCustomers);
+                    this.calculateCustomerBalances();
+                }
+
+                let rawSuppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []);
+                let suppModified = false;
+                rawSuppliers.forEach(s => {
+                    if (s && Array.isArray(s.transactions)) {
+                        let beforeLen = s.transactions.length;
+                        s.transactions = s.transactions.filter(t => {
+                            if (!t) return false;
+                            let tId = String(t.id ?? '');
+                            let tInvNo = String(t.invoiceNo ?? '');
+                            return !voucherLinkedIds.has(tId) && (!tInvNo || !voucherLinkedIds.has(tInvNo));
+                        });
+                        if (s.transactions.length !== beforeLen) {
+                            s._lastModified = Date.now();
+                            suppModified = true;
+                        }
+                    }
+                });
+                if (suppModified) {
+                    this.saveSuppliers(rawSuppliers);
+                    this.calculateSupplierBalances();
+                }
+
+                this.recalculateVaultBalances();
+            }
+
             emitSerajUpdate(cleanCol, 'delete');
             return true;
         } else {
             let updated = false;
-list.forEach(item => {
-                if (String(item.id) === targetId) {
+            list.forEach(item => {
+                if (item && String(item.id) === targetId) {
                     if (cleanCol.includes('invoices')) {
-                        item.isCanceled = true; // نكتفي بختم الإلغاء ونحافظ على نوع الفاتورة الأصلي
+                        item.isCanceled = true;
                     } else {
                         item.isArchived = true;
                         item.isDeleted = true;
@@ -1032,9 +1545,9 @@ list.forEach(item => {
         }
     },
 
-// دالة مساعدة لدمج العملاء أو الموردين المكررين في سجل واحد نظيف دون فقدان أي سند
+    // دالة مساعدة لدمج العملاء أو الموردين المكررين وتنظيف المعرفات العشرية (Float IDs)
     _deduplicateEntities: function(list, colName) {
-        if (!Array.isArray(list)) return { cleaned: [], idRedirectMap: new Map(), changed: false };
+        if (!Array.isArray(list)) return { cleaned: [], idRedirectMap: new Map(), nameChangeMap: new Map(), changed: false };
         let normMap = new Map();
         let idRedirectMap = new Map();
         let cleaned = [];
@@ -1042,6 +1555,16 @@ list.forEach(item => {
 
         list.forEach(item => {
             if (!item || !item.name) return;
+
+            let origIdStr = String(item.id ?? '');
+            let cleanIdStr = window.Utils.sanitizeEntityId(origIdStr);
+            if (origIdStr && origIdStr !== cleanIdStr) {
+                idRedirectMap.set(origIdStr, cleanIdStr);
+                addToDeleteQueue(colName, origIdStr);
+                item.id = cleanIdStr;
+                changed = true;
+            }
+
             if (item.isDeleted || item.isArchived) {
                 cleaned.push(item);
                 return;
@@ -1055,7 +1578,6 @@ list.forEach(item => {
                 normMap.set(norm, item);
                 cleaned.push(item);
             } else {
-                // وجدنا اسماً مكرراً: ندمج بياناته وسنداته في السجل الأساسي الأول ونحذف النسخة الزائدة
                 let primary = normMap.get(norm);
                 changed = true;
                 if (String(item.id) !== String(primary.id)) {
@@ -1082,1118 +1604,1540 @@ list.forEach(item => {
         return { cleaned, idRedirectMap, normMap, changed };
     },
 
-// دالة مساعدة لاستخراج المبلغ المسدد لفاتورة معينة من قائمة السندات بدقة بدون تداخل الأرقام المتشابهة
-_getAppliedVoucherAmountForInvoice: function(inv, validTransactions, isSupplier = false) {
-    let appliedAmount = 0;
-    let invIdStr = String(inv.id);
-    let escapedId = invIdStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    let exactNoteRegex = new RegExp(`(?:\\(فاتورة\\s*${escapedId}\\)|سداد فواتير:[^\\n]*\\b${escapedId}\\b)`);
+    // دالة مساعدة لاستخراج المبلغ المسدد لفاتورة معينة من قائمة السندات بدقة (تدعم id/invoiceId و deducted/amount)
+    _getAppliedVoucherAmountForInvoice: function(inv, validTransactions, isSupplier = false) {
+        if (!inv || !Array.isArray(validTransactions)) return 0;
+        let appliedAmount = 0;
+        let invIdStr = String(inv.id);
+        let escapedId = invIdStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        let exactNoteRegex = new RegExp(`(?:\\(فاتورة\\s*${escapedId}\\)|سداد فواتير:[^\\n]*\\b${escapedId}\\b)`);
 
-    validTransactions.forEach(t => {
-        if (!t) return;
-        let isTargetVoucher = isSupplier
-            ? (t.type === 'payment' || t.type === 'purchase_payment')
-            : (t.type === 'receipt');
-        if (!isTargetVoucher) return;
+        validTransactions.forEach(t => {
+            if (!t) return;
+            let isTargetVoucher = isSupplier
+                ? (t.type === 'payment' || t.type === 'purchase_payment')
+                : (t.type === 'receipt');
+            if (!isTargetVoucher) return;
 
-        let inAllocated = Array.isArray(t.allocatedInvoices) && t.allocatedInvoices.find(a => String(a.id) === invIdStr);
-        if (inAllocated) {
-            appliedAmount += parseFloat(inAllocated.deducted) || 0;
-        } else if (t.notes && exactNoteRegex.test(String(t.notes))) {
-            appliedAmount += parseFloat(t.amount) || 0;
-        }
-    });
-    return Math.round(appliedAmount * 100) / 100;
-},
+            let inAllocated = Array.isArray(t.allocatedInvoices) && t.allocatedInvoices.find(a => a && String(a.id ?? a.invoiceId) === invIdStr);
+            if (inAllocated) {
+                appliedAmount += parseFloat(inAllocated.deducted ?? inAllocated.amount) || 0;
+            } else if (t.notes && exactNoteRegex.test(String(t.notes))) {
+                appliedAmount += parseFloat(t.amount) || 0;
+            }
+        });
+        return Math.round(appliedAmount * 100) / 100;
+    },
 
-// دالة مساعدة لاسترجاع أي سند موجود في الخزينة وسقط من مصفوفة سندات العميل/المورد قبل الحساب
-_collectUnifiedEntityTransactions: function(entity, allMoves, isSupplier = false) {
-    let eIdStr = String(entity.id);
-    let eNorm = window.Utils.normalizeName(entity.name || '');
+    // دالة مساعدة لاسترجاع أي سند موجود في الخزينة وسقط من مصفوفة سندات العميل/المورد قبل الحساب
+    _collectUnifiedEntityTransactions: function(entity, allMoves, isSupplier = false) {
+        let eIdStr = String(entity.id);
+        let eNorm = window.Utils.normalizeName(entity.name || '');
 
-    let validTransactions = Array.isArray(entity.transactions)
-        ? entity.transactions.filter(t => t && t.type !== 'log' && !t.isCanceled && t.status !== 'deleted' && !t.isDeleted)
-        : [];
+        let validTransactions = Array.isArray(entity.transactions)
+            ? entity.transactions.filter(t => t && t.type !== 'log' && !t.isCanceled && t.status !== 'deleted' && !t.isDeleted)
+            : [];
 
-    let recordedTxIds = new Set();
-    validTransactions.forEach(t => {
-        if (t.id !== undefined) recordedTxIds.add(String(t.id));
-        if (t.invoiceNo !== undefined) recordedTxIds.add(String(t.invoiceNo));
-    });
+        validTransactions.forEach(t => {
+            t.date = window.Utils.normalizeDateStr(t.date, t.timestamp);
+            t.timestamp = window.Utils.alignTimestampWithDate(t.date, t.timestamp);
+        });
 
-    allMoves.forEach(m => {
-        if (!m || m.isCanceled || m.isDeleted || m.status === 'deleted') return;
-        if (recordedTxIds.has(String(m.id)) || (m.invoiceNo && recordedTxIds.has(String(m.invoiceNo)))) return;
+        let recordedTxIds = new Set();
+        validTransactions.forEach(t => {
+            if (t.id !== undefined) recordedTxIds.add(String(t.id));
+            if (t.invoiceNo !== undefined) recordedTxIds.add(String(t.invoiceNo));
+        });
 
-        if (isSupplier) {
-            if (m.type !== 'suppliers' && m.type !== 'purchase_payment' && m.type !== 'supplier_receipt') return;
-        } else {
-            if (m.type !== 'customers' && m.type !== 'customer_receipt' && m.type !== 'customer_payment') return;
-        }
+        allMoves.forEach(m => {
+            if (!m || m._isInvoice || m._isMergedInvoice || m.isCanceled || m.isDeleted || m.status === 'deleted') return;
+            if (recordedTxIds.has(String(m.id)) || (m.invoiceNo && recordedTxIds.has(String(m.invoiceNo)))) return;
 
-        let mEntityNorm = window.Utils.normalizeName(isSupplier ? (m.supplier || m.supplierName || '') : (m.customer || m.customerName || ''));
-        let mEntityId = isSupplier ? m.supplierId : m.customerId;
-        let isMatch = (
-            (mEntityId !== undefined && mEntityId !== null && String(mEntityId) === eIdStr) ||
-            (eNorm !== '' && mEntityNorm === eNorm)
-        );
+            if (isSupplier) {
+                if (m.type !== 'suppliers' && m.type !== 'purchase_payment' && m.type !== 'supplier_receipt') return;
+            } else {
+                if (m.type !== 'customers' && m.type !== 'customer_receipt' && m.type !== 'customer_payment') return;
+            }
 
-        if (isMatch) {
-            let add = parseFloat(m.amountAdd) || 0;
-            let ded = parseFloat(m.amountDeduct) || 0;
-            let amt = add || ded || (parseFloat(m.amount) || 0);
-            if (amt <= 0) return;
+            let mEntityNorm = window.Utils.normalizeName(isSupplier ? (m.supplier || m.supplierName || '') : (m.customer || m.customerName || ''));
+            let mEntityId = isSupplier ? m.supplierId : m.customerId;
+            let isMatch = (
+                (mEntityId !== undefined && mEntityId !== null && String(mEntityId) === eIdStr) ||
+                (eNorm !== '' && mEntityNorm === eNorm)
+            );
 
-            let mDateStr = String(m.date || '').split('T')[0].trim();
-            let isDuplicate = validTransactions.some(t => {
-                let tDateStr = String(t.date || '').split('T')[0].trim();
-                return Math.abs((parseFloat(t.amount) || 0) - amt) < 0.01 && tDateStr === mDateStr;
+            if (isMatch) {
+                let add = parseFloat(m.amountAdd) || 0;
+                let ded = parseFloat(m.amountDeduct) || 0;
+                let amt = add || ded || (parseFloat(m.amount) || 0);
+                if (amt <= 0) return;
+
+                let mDateStr = window.Utils.normalizeDateStr(m.date, m.timestamp);
+                let isDuplicate = validTransactions.some(t => {
+                    let tDateStr = window.Utils.normalizeDateStr(t.date, t.timestamp);
+                    return Math.abs((parseFloat(t.amount) || 0) - amt) < 0.01 && tDateStr === mDateStr;
+                });
+
+                if (!isDuplicate) {
+                    let cleanNotes = String(m.notes || '').replace(/^سند\s+(?:تحصيل|سحب|دفع|مورد)\s+رقم\s+[^:]+:\s*[^-]+-\s*/, '').trim();
+                    let txType = isSupplier
+                        ? (ded > 0 || m.type === 'purchase_payment' ? 'payment' : 'receipt')
+                        : (add > 0 || m.type === 'customer_receipt' ? 'receipt' : 'payment');
+
+                    validTransactions.push({
+                        id: m.invoiceNo || m.id,
+                        type: txType,
+                        amount: amt,
+                        notes: cleanNotes || m.notes || '',
+                        treasury: m.vault || m.treasury || 'main',
+                        date: mDateStr,
+                        timestamp: window.Utils.alignTimestampWithDate(mDateStr, m.timestamp),
+                        allocatedInvoices: Array.isArray(m.allocatedInvoices) ? m.allocatedInvoices : [],
+                        _device: m._device,
+                        _lastModifiedBy: m._lastModifiedBy,
+                        _restoredFromTreasury: true
+                    });
+                    recordedTxIds.add(String(m.id));
+                }
+            }
+        });
+
+        return validTransactions;
+    },
+
+    migrateOldData: function() {
+        try {
+            let rawCustomers = safeParseJSON(localStorage.getItem('seraj_customers'), []);
+            let rawSuppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []);
+            let products = safeParseJSON(localStorage.getItem('seraj_products'), []);
+            let sales = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []);
+            let purchases = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
+            let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+
+            let custDedup = this._deduplicateEntities(rawCustomers, 'customers');
+            let customers = custDedup.cleaned;
+            if (custDedup.changed) {
+                _internalSetItem('seraj_customers', JSON.stringify(customers));
+                saveArrayToQueueSafely('customers', customers);
+            }
+
+            let suppDedup = this._deduplicateEntities(rawSuppliers, 'suppliers');
+            let suppliers = suppDedup.cleaned;
+            if (suppDedup.changed) {
+                _internalSetItem('seraj_suppliers', JSON.stringify(suppliers));
+                saveArrayToQueueSafely('suppliers', suppliers);
+            }
+
+            let custMapByNorm = new Map();
+            customers.forEach(c => {
+                if (c && c.name && !c.isDeleted && !c.isArchived) {
+                    custMapByNorm.set(window.Utils.normalizeName(c.name), c);
+                }
             });
 
-            if (!isDuplicate) {
-                let cleanNotes = String(m.notes || '').replace(/^سند\s+(?:تحصيل|سحب|دفع|مورد)\s+رقم\s+[^:]+:\s*[^-]+-\s*/, '').trim();
-                let txType = isSupplier
-                    ? (ded > 0 || m.type === 'purchase_payment' ? 'payment' : 'receipt')
-                    : (add > 0 || m.type === 'customer_receipt' ? 'receipt' : 'payment');
+            let suppMapByNorm = new Map();
+            suppliers.forEach(s => {
+                if (s && s.name && !s.isDeleted && !s.isArchived) {
+                    suppMapByNorm.set(window.Utils.normalizeName(s.name), s);
+                }
+            });
 
-                validTransactions.push({
-                    id: m.invoiceNo || m.id,
-                    type: txType,
-                    amount: amt,
-                    notes: cleanNotes || m.notes || '',
-                    treasury: m.vault || m.treasury || 'main',
-                    date: m.date,
-                    _device: m._device,
-                    _lastModifiedBy: m._lastModifiedBy,
-                    _restoredFromTreasury: true
-                });
-                recordedTxIds.add(String(m.id));
-            }
+            let prodChanged = false;
+            let prodNormMap = new Map();
+            let cleanedProducts = [];
+            products.forEach(p => {
+                if (!p) return;
+                if (p.isDeleted === true && !p.isArchived) { p.isArchived = true; prodChanged = true; }
+                if (p.isArchived === true && !p.isDeleted) { p.isDeleted = true; prodChanged = true; }
+
+                if (p.isDeleted || p.isArchived) {
+                    cleanedProducts.push(p);
+                    return;
+                }
+
+                let normP = window.Utils.normalizeName(p.name);
+                if (!normP || !prodNormMap.has(normP)) {
+                    if (Array.isArray(p.lots) && p.lots.length > 0) {
+                        let calcStock = p.lots.reduce((sum, lot) => sum + (parseFloat(lot.stock) || 0), 0);
+                        if (p.stock === undefined || p.stock === null || isNaN(parseFloat(p.stock))) {
+                            p.stock = calcStock;
+                            prodChanged = true;
+                        }
+                    }
+                    if (normP) prodNormMap.set(normP, p);
+                    cleanedProducts.push(p);
+                } else {
+                    let primaryP = prodNormMap.get(normP);
+                    prodChanged = true;
+                    if (String(p.id) !== String(primaryP.id)) {
+                        addToDeleteQueue('products', p.id);
+                    }
+                    if (Array.isArray(p.lots) && p.lots.length > 0) {
+                        if (!Array.isArray(primaryP.lots)) primaryP.lots = [];
+                        primaryP.lots.push(...p.lots);
+                        primaryP.stock = primaryP.lots.reduce((sum, lot) => sum + (parseFloat(lot.stock) || 0), 0);
+                    } else {
+                        primaryP.stock = (parseFloat(primaryP.stock) || 0) + (parseFloat(p.stock) || 0);
+                    }
+                }
+            });
+            if (prodChanged) _internalSetItem('seraj_products', JSON.stringify(cleanedProducts));
+
+            let salesChanged = false;
+            sales.forEach(inv => {
+                if (!inv) return;
+                if ((inv.type === 'canceled' || inv.status === 'deleted' || inv.isDeleted === true) && !inv.isCanceled) {
+                    inv.isCanceled = true;
+                    salesChanged = true;
+                }
+                if (inv.type === 'return_sale' || inv.type === 'sales_return') {
+                    inv.type = 'return';
+                    salesChanged = true;
+                }
+                let normDate = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+                if (inv.date !== normDate) {
+                    inv.date = normDate;
+                    salesChanged = true;
+                }
+                let alignedTs = window.Utils.alignTimestampWithDate(inv.date, inv.timestamp);
+                if (inv.timestamp !== alignedTs) {
+                    inv.timestamp = alignedTs;
+                    salesChanged = true;
+                }
+                if (inv.initialPaid === undefined && inv.paid !== undefined) {
+                    inv.initialPaid = parseFloat(inv.paid) || 0;
+                    salesChanged = true;
+                }
+                if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
+                    inv.initialRemaining = parseFloat(inv.remaining) || 0;
+                    salesChanged = true;
+                }
+                if (inv.customerId && custDedup.idRedirectMap.has(String(inv.customerId))) {
+                    inv.customerId = custDedup.idRedirectMap.get(String(inv.customerId));
+                    salesChanged = true;
+                }
+                let cNorm = window.Utils.normalizeName(inv.customer || inv.customerName || '');
+                if (cNorm && custMapByNorm.has(cNorm)) {
+                    let matchedC = custMapByNorm.get(cNorm);
+                    if (String(inv.customerId) !== String(matchedC.id)) {
+                        inv.customerId = matchedC.id;
+                        salesChanged = true;
+                    }
+                    if (inv.customer !== matchedC.name) {
+                        inv.customer = matchedC.name;
+                        salesChanged = true;
+                    }
+                }
+            });
+            if (salesChanged) _internalSetItem('seraj_sales_invoices', JSON.stringify(sales));
+
+            let purchChanged = false;
+            purchases.forEach(inv => {
+                if (!inv) return;
+                if ((inv.type === 'canceled' || inv.status === 'deleted' || inv.isDeleted === true) && !inv.isCanceled) {
+                    inv.isCanceled = true;
+                    purchChanged = true;
+                }
+                let normDate = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+                if (inv.date !== normDate) {
+                    inv.date = normDate;
+                    purchChanged = true;
+                }
+                let alignedTs = window.Utils.alignTimestampWithDate(inv.date, inv.timestamp);
+                if (inv.timestamp !== alignedTs) {
+                    inv.timestamp = alignedTs;
+                    purchChanged = true;
+                }
+                if (inv.initialPaid === undefined && inv.paid !== undefined) {
+                    inv.initialPaid = parseFloat(inv.paid) || 0;
+                    purchChanged = true;
+                }
+                if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
+                    inv.initialRemaining = parseFloat(inv.remaining) || 0;
+                    purchChanged = true;
+                }
+                if (inv.supplierId && suppDedup.idRedirectMap.has(String(inv.supplierId))) {
+                    inv.supplierId = suppDedup.idRedirectMap.get(String(inv.supplierId));
+                    purchChanged = true;
+                }
+                let sNorm = window.Utils.normalizeName(inv.supplier || inv.supplierName || '');
+                if (sNorm && suppMapByNorm.has(sNorm)) {
+                    let matchedS = suppMapByNorm.get(sNorm);
+                    if (String(inv.supplierId) !== String(matchedS.id)) {
+                        inv.supplierId = matchedS.id;
+                        purchChanged = true;
+                    }
+                    if (inv.supplier !== matchedS.name) {
+                        inv.supplier = matchedS.name;
+                        purchChanged = true;
+                    }
+                }
+            });
+            if (purchChanged) _internalSetItem('seraj_purchase_invoices', JSON.stringify(purchases));
+
+            let movesChanged = false;
+            let moves = [];
+            rawMoves.forEach(m => {
+                if (!m) return;
+                let mIdStr = String(m.id ?? '');
+                if (m._isInvoice === true || m._isMergedInvoice === true || mIdStr.endsWith('_vouch') || mIdStr.endsWith('_cash')) {
+                    if (mIdStr) addToDeleteQueue('treasury_moves', mIdStr);
+                    movesChanged = true;
+                    return;
+                }
+                if ((m.type === 'canceled' || m.type === 'cancelled' || m.status === 'deleted' || m.isDeleted === true) && !m.isCanceled) {
+                    m.isCanceled = true;
+                    movesChanged = true;
+                }
+                if (!m.vault && m.treasury) {
+                    let v = String(m.treasury).toLowerCase().trim();
+                    if (v.includes('insta') || v.includes('انستا') || v.includes('إنستا')) m.vault = 'insta';
+                    else if (v.includes('wallet') || v.includes('محفظ')) m.vault = 'wallet';
+                    else m.vault = 'main';
+                    movesChanged = true;
+                } else if (!m.vault) {
+                    m.vault = 'main';
+                    movesChanged = true;
+                }
+                let normDate = window.Utils.normalizeDateStr(m.date, m.timestamp);
+                if (m.date !== normDate) {
+                    m.date = normDate;
+                    movesChanged = true;
+                }
+                let alignedTs = window.Utils.alignTimestampWithDate(m.date, m.timestamp);
+                if (m.timestamp !== alignedTs) {
+                    m.timestamp = alignedTs;
+                    movesChanged = true;
+                }
+                let add = parseFloat(m.amountAdd) || 0;
+                let ded = parseFloat(m.amountDeduct) || 0;
+                let rawAmt = parseFloat(m.amount) || 0;
+                if (add === 0 && ded === 0 && rawAmt > 0) {
+                    let isOut = (m.direction === 'out' || m.type === 'payment' || m.type === 'purchase' || m.type === 'purchases' || m.type === 'purchase_payment' || m.type === 'expenses' || m.type === 'expense' || m.type === 'return_sale' || m.type === 'sales_return');
+                    if (isOut) m.amountDeduct = rawAmt;
+                    else m.amountAdd = rawAmt;
+                    movesChanged = true;
+                }
+                if (m.customerId && custDedup.idRedirectMap.has(String(m.customerId))) {
+                    m.customerId = custDedup.idRedirectMap.get(String(m.customerId));
+                    movesChanged = true;
+                }
+                let mcNorm = window.Utils.normalizeName(m.customer || m.customerName || '');
+                if (!m.customerId && mcNorm && custMapByNorm.has(mcNorm)) {
+                    m.customerId = custMapByNorm.get(mcNorm).id;
+                    movesChanged = true;
+                }
+                if (m.supplierId && suppDedup.idRedirectMap.has(String(m.supplierId))) {
+                    m.supplierId = suppDedup.idRedirectMap.get(String(m.supplierId));
+                    movesChanged = true;
+                }
+                let msNorm = window.Utils.normalizeName(m.supplier || m.supplierName || '');
+                if (!m.supplierId && msNorm && suppMapByNorm.has(msNorm)) {
+                    m.supplierId = suppMapByNorm.get(msNorm).id;
+                    movesChanged = true;
+                }
+                moves.push(m);
+            });
+            if (movesChanged) _internalSetItem('seraj_treasury_moves', JSON.stringify(moves));
+
+            return true;
+        } catch (err) {
+            console.error("Migration Error:", err);
+            return false;
         }
-    });
+    },
 
-    return validTransactions;
-},
-
-migrateOldData: function() {
-    try {
-        let rawCustomers = safeParseJSON(localStorage.getItem('seraj_customers'), []);
-        let rawSuppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []);
+    getProducts: function(includeArchived = false) {
         let products = safeParseJSON(localStorage.getItem('seraj_products'), []);
-        let sales = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []);
-        let purchases = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+        return includeArchived ? products : products.filter(p => p && !p.isArchived && !p.isDeleted);
+    },
 
-        // 1. دمج وتطهير الأسماء المكررة في العملاء والموردين
-        let custDedup = this._deduplicateEntities(rawCustomers, 'customers');
-        let customers = custDedup.cleaned;
-        if (custDedup.changed) {
-            localStorage.setItem('seraj_customers', JSON.stringify(customers));
-            saveArrayToQueueSafely('customers', customers);
-        }
+    // حماية الأصناف المؤرشفة عند استدعاء saveProducts(productsDB) من صفحة store.html
+    saveProducts: function(data) {
+        if (!Array.isArray(data)) return;
+        let existingAll = safeParseJSON(localStorage.getItem('seraj_products'), []);
+        let passedIds = new Set();
+        let normMap = new Map();
+        let cleaned = [];
 
-        let suppDedup = this._deduplicateEntities(rawSuppliers, 'suppliers');
-        let suppliers = suppDedup.cleaned;
-        if (suppDedup.changed) {
-            localStorage.setItem('seraj_suppliers', JSON.stringify(suppliers));
-            saveArrayToQueueSafely('suppliers', suppliers);
-        }
-
-        let custMapByNorm = new Map();
-        customers.forEach(c => {
-            if (c && c.name && !c.isDeleted && !c.isArchived) {
-                custMapByNorm.set(window.Utils.normalizeName(c.name), c);
-            }
-        });
-
-        let suppMapByNorm = new Map();
-        suppliers.forEach(s => {
-            if (s && s.name && !s.isDeleted && !s.isArchived) {
-                suppMapByNorm.set(window.Utils.normalizeName(s.name), s);
-            }
-        });
-
-        // 2. دمج وتوحيد المنتجات المكررة بالاسم
-        let prodChanged = false;
-        let prodNormMap = new Map();
-        let cleanedProducts = [];
-        products.forEach(p => {
+        data.forEach(p => {
             if (!p) return;
-            if (p.isDeleted === true && !p.isArchived) { p.isArchived = true; prodChanged = true; }
-            if (p.isArchived === true && !p.isDeleted) { p.isDeleted = true; prodChanged = true; }
-            
+            if (p.id === undefined || p.id === null) {
+                p.id = window.Utils.generateUniqueId();
+            }
+            passedIds.add(String(p.id));
+
             if (p.isDeleted || p.isArchived) {
-                cleanedProducts.push(p);
+                p.isArchived = true;
+                p.isDeleted = true;
+                cleaned.push(p);
                 return;
             }
 
-            let normP = window.Utils.normalizeName(p.name);
-            if (!normP || !prodNormMap.has(normP)) {
-                if (Array.isArray(p.lots) && p.lots.length > 0) {
-                    let calcStock = p.lots.reduce((sum, lot) => sum + (parseFloat(lot.stock) || 0), 0);
-                    if (p.stock === undefined || p.stock === null || isNaN(parseFloat(p.stock))) {
-                        p.stock = calcStock;
-                        prodChanged = true;
-                    }
-                }
-                if (normP) prodNormMap.set(normP, p);
-                cleanedProducts.push(p);
+            let norm = window.Utils.normalizeName(p.name);
+            if (!norm || !normMap.has(norm)) {
+                if (norm) normMap.set(norm, p);
+                cleaned.push(p);
             } else {
-                let primaryP = prodNormMap.get(normP);
-                prodChanged = true;
-                if (String(p.id) !== String(primaryP.id)) {
+                let existing = normMap.get(norm);
+                if (String(p.id) !== String(existing.id)) {
                     addToDeleteQueue('products', p.id);
                 }
                 if (Array.isArray(p.lots) && p.lots.length > 0) {
-                    if (!Array.isArray(primaryP.lots)) primaryP.lots = [];
-                    primaryP.lots.push(...p.lots);
-                    primaryP.stock = primaryP.lots.reduce((sum, lot) => sum + (parseFloat(lot.stock) || 0), 0);
+                    if (!Array.isArray(existing.lots)) existing.lots = [];
+                    existing.lots.push(...p.lots);
+                    existing.stock = existing.lots.reduce((sum, lot) => sum + (parseFloat(lot.stock) || 0), 0);
                 } else {
-                    primaryP.stock = (parseFloat(primaryP.stock) || 0) + (parseFloat(p.stock) || 0);
-                }
-            }
-        });
-        if (prodChanged) localStorage.setItem('seraj_products', JSON.stringify(cleanedProducts));
-
-        // 3. توحيد فواتير المبيعات وتوجيه الأرقام المكررة إلى الـ ID الأساسي للعميل
-        let salesChanged = false;
-        sales.forEach(inv => {
-            if (!inv) return;
-            if ((inv.type === 'canceled' || inv.status === 'deleted' || inv.isDeleted === true) && !inv.isCanceled) {
-                inv.isCanceled = true;
-                salesChanged = true;
-            }
-            if (inv.customerId && custDedup.idRedirectMap.has(String(inv.customerId))) {
-                inv.customerId = custDedup.idRedirectMap.get(String(inv.customerId));
-                salesChanged = true;
-            }
-            let cNorm = window.Utils.normalizeName(inv.customer || inv.customerName || '');
-            if (cNorm && custMapByNorm.has(cNorm)) {
-                let matchedC = custMapByNorm.get(cNorm);
-                if (String(inv.customerId) !== String(matchedC.id)) {
-                    inv.customerId = matchedC.id;
-                    salesChanged = true;
-                }
-                if (inv.customer !== matchedC.name) {
-                    inv.customer = matchedC.name;
-                    salesChanged = true;
-                }
-            }
-        });
-        if (salesChanged) localStorage.setItem('seraj_sales_invoices', JSON.stringify(sales));
-
-        // 4. توحيد فواتير المشتريات وتوجيه الأرقام المكررة إلى الـ ID الأساسي للمورد
-        let purchChanged = false;
-        purchases.forEach(inv => {
-            if (!inv) return;
-            if ((inv.type === 'canceled' || inv.status === 'deleted' || inv.isDeleted === true) && !inv.isCanceled) {
-                inv.isCanceled = true;
-                purchChanged = true;
-            }
-            if (inv.supplierId && suppDedup.idRedirectMap.has(String(inv.supplierId))) {
-                inv.supplierId = suppDedup.idRedirectMap.get(String(inv.supplierId));
-                purchChanged = true;
-            }
-            let sNorm = window.Utils.normalizeName(inv.supplier || inv.supplierName || '');
-            if (sNorm && suppMapByNorm.has(sNorm)) {
-                let matchedS = suppMapByNorm.get(sNorm);
-                if (String(inv.supplierId) !== String(matchedS.id)) {
-                    inv.supplierId = matchedS.id;
-                    purchChanged = true;
-                }
-                if (inv.supplier !== matchedS.name) {
-                    inv.supplier = matchedS.name;
-                    purchChanged = true;
-                }
-            }
-        });
-        if (purchChanged) localStorage.setItem('seraj_purchase_invoices', JSON.stringify(purchases));
-
-        // 5. توحيد حركات الخزينة
-        let movesChanged = false;
-        moves.forEach(m => {
-            if (!m) return;
-            if ((m.type === 'canceled' || m.type === 'cancelled' || m.status === 'deleted' || m.isDeleted === true) && !m.isCanceled) {
-                m.isCanceled = true;
-                movesChanged = true;
-            }
-            if (!m.vault && m.treasury) {
-                let v = String(m.treasury).toLowerCase().trim();
-                if (v.includes('insta') || v.includes('انستا') || v.includes('إنستا')) m.vault = 'insta';
-                else if (v.includes('wallet') || v.includes('محفظ')) m.vault = 'wallet';
-                else m.vault = 'main';
-                movesChanged = true;
-            } else if (!m.vault) {
-                m.vault = 'main';
-                movesChanged = true;
-            }
-            let add = parseFloat(m.amountAdd) || 0;
-            let ded = parseFloat(m.amountDeduct) || 0;
-            let rawAmt = parseFloat(m.amount) || 0;
-            if (add === 0 && ded === 0 && rawAmt > 0) {
-                let isOut = (m.direction === 'out' || m.type === 'payment' || m.type === 'purchase' || m.type === 'purchases' || m.type === 'purchase_payment' || m.type === 'expenses' || m.type === 'return_sale' || m.type === 'sales_return');
-                if (isOut) m.amountDeduct = rawAmt;
-                else m.amountAdd = rawAmt;
-                movesChanged = true;
-            }
-            if (m.customerId && custDedup.idRedirectMap.has(String(m.customerId))) {
-                m.customerId = custDedup.idRedirectMap.get(String(m.customerId));
-                movesChanged = true;
-            }
-            let mcNorm = window.Utils.normalizeName(m.customer || m.customerName || '');
-            if (!m.customerId && mcNorm && custMapByNorm.has(mcNorm)) {
-                m.customerId = custMapByNorm.get(mcNorm).id;
-                movesChanged = true;
-            }
-            if (m.supplierId && suppDedup.idRedirectMap.has(String(m.supplierId))) {
-                m.supplierId = suppDedup.idRedirectMap.get(String(m.supplierId));
-                movesChanged = true;
-            }
-            let msNorm = window.Utils.normalizeName(m.supplier || m.supplierName || '');
-            if (!m.supplierId && msNorm && suppMapByNorm.has(msNorm)) {
-                m.supplierId = suppMapByNorm.get(msNorm).id;
-                movesChanged = true;
-            }
-        });
-        if (movesChanged) localStorage.setItem('seraj_treasury_moves', JSON.stringify(moves));
-
-        return true;
-    } catch (err) {
-        console.error("Migration Error:", err);
-        return false;
-    }
-},
-
-getProducts: function(includeArchived = false) { 
-    let products = safeParseJSON(localStorage.getItem('seraj_products'), []); 
-    return includeArchived ? products : products.filter(p => p && !p.isArchived && !p.isDeleted);
-},
-saveProducts: function(data) { 
-    if (!Array.isArray(data)) return;
-    let normMap = new Map();
-    let cleaned = [];
-
-    data.forEach(p => {
-        if (!p) return;
-        if (p.isDeleted || p.isArchived) {
-            p.isArchived = true;
-            p.isDeleted = true;
-            cleaned.push(p);
-            return;
-        }
-        // تم إزالة شرط (if (st < 0) lot.stock = 0) للسماح بتسجيل (سحب بالسالب / عجز) من شاشة المبيعات
-        let norm = window.Utils.normalizeName(p.name);
-        if (!norm || !normMap.has(norm)) {
-            if (norm) normMap.set(norm, p);
-            cleaned.push(p);
-        } else {
-            // منع تكرار الصنف: دمج الكميات والدفعات في الصنف الموجود مسبقاً
-            let existing = normMap.get(norm);
-            if (String(p.id) !== String(existing.id)) {
-                addToDeleteQueue('products', p.id);
-            }
-            if (Array.isArray(p.lots) && p.lots.length > 0) {
-                if (!Array.isArray(existing.lots)) existing.lots = [];
-                existing.lots.push(...p.lots);
-                existing.stock = existing.lots.reduce((sum, lot) => sum + (parseFloat(lot.stock) || 0), 0);
-            } else {
-                existing.stock = (parseFloat(existing.stock) || 0) + (parseFloat(p.stock) || 0);
-            }
-        }
-    });
-    localStorage.setItem('seraj_products', JSON.stringify(cleaned)); 
-    saveArrayToQueueSafely('products', cleaned); 
-},
-
-getCustomers: function(rawOnly = false) { 
-    let customers = safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
-    if (rawOnly) return customers;
-    return this.calculateCustomerBalances(null, customers);
-},
-
-saveCustomers: function(data) { 
-    if (!Array.isArray(data)) return;
-    let dedup = this._deduplicateEntities(data, 'customers');
-
-    if (dedup.changed && dedup.idRedirectMap.size > 0) {
-        let sales = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []);
-        let sChanged = false;
-        sales.forEach(inv => {
-            if (inv && inv.customerId && dedup.idRedirectMap.has(String(inv.customerId))) {
-                inv.customerId = dedup.idRedirectMap.get(String(inv.customerId));
-                sChanged = true;
-            }
-        });
-        if (sChanged) this.saveSalesInvoices(sales);
-
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-        let mChanged = false;
-        moves.forEach(m => {
-            if (m && m.customerId && dedup.idRedirectMap.has(String(m.customerId))) {
-                m.customerId = dedup.idRedirectMap.get(String(m.customerId));
-                mChanged = true;
-            }
-        });
-        if (mChanged) this.saveTreasuryMoves(moves);
-    }
-
-    let dataToSave = dedup.cleaned.map(c => {
-        let temp = { ...c };
-        if (temp.name) temp.name = String(temp.name).trim();
-        delete temp.balance;
-        delete temp.calculatedBalance;
-        delete temp.netBalanceVal;
-        delete temp.isNetDebt;
-        delete temp.deferredInvoicesTotal;
-        delete temp.displayCurrentBalance;
-        delete temp.isCurrentBalDebt;
-        if (!temp._lastModified) temp._lastModified = Date.now();
-        return temp;
-    });
-    localStorage.setItem('seraj_customers', JSON.stringify(dataToSave)); 
-    saveArrayToQueueSafely('customers', dataToSave); 
-},
-
-
-getSuppliers: function(rawOnly = false) { 
-    let suppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
-    if (rawOnly) return suppliers;
-    return this.calculateSupplierBalances(null, suppliers);
-},
-
-saveSuppliers: function(data) { 
-    if (!Array.isArray(data)) return;
-    let dedup = this._deduplicateEntities(data, 'suppliers');
-
-    if (dedup.changed && dedup.idRedirectMap.size > 0) {
-        let purchases = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
-        let pChanged = false;
-        purchases.forEach(inv => {
-            if (inv && inv.supplierId && dedup.idRedirectMap.has(String(inv.supplierId))) {
-                inv.supplierId = dedup.idRedirectMap.get(String(inv.supplierId));
-                pChanged = true;
-            }
-        });
-        if (pChanged) this.savePurchaseInvoices(purchases);
-
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-        let mChanged = false;
-        moves.forEach(m => {
-            if (m && m.supplierId && dedup.idRedirectMap.has(String(m.supplierId))) {
-                m.supplierId = dedup.idRedirectMap.get(String(m.supplierId));
-                mChanged = true;
-            }
-        });
-        if (mChanged) this.saveTreasuryMoves(moves);
-    }
-
-    let dataToSave = dedup.cleaned.map(s => {
-        let temp = { ...s };
-        if (temp.name) temp.name = String(temp.name).trim();
-        delete temp.balance;
-        delete temp.calculatedBalance;
-        delete temp.netBalanceVal;
-        delete temp.isNetDebt;
-        delete temp.deferredInvoicesTotal;
-        delete temp.displayCurrentBalance;
-        delete temp.isCurrentBalDebt;
-        if (!temp._lastModified) temp._lastModified = Date.now();
-        return temp;
-    });
-    localStorage.setItem('seraj_suppliers', JSON.stringify(dataToSave)); 
-    saveArrayToQueueSafely('suppliers', dataToSave); 
-},
-
-calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers = null) {
-    let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
-    let invoices = this.getSalesInvoices(true);
-    let allMoves = this.getTreasuryMoves(false);
-    let invoicesNeedSave = false;
-
-    const getDayStartMs = (dateVal, fallbackTs) => {
-        let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
-        if (!t) return 0;
-        let d = new Date(t);
-        if (isNaN(d.getTime())) return 0;
-        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    };
-
-    const getOrderSeq = (idVal, idx) => {
-        let num = parseInt(String(idVal || '').replace(/\D/g, ''), 10);
-        if (isNaN(num)) return idx;
-        return (num >= 1000 && num < 100000000) ? (9000000000000 + num) : num;
-    };
-
-    customers.forEach(c => {
-        let cIdStr = String(c.id);
-        let cNorm = window.Utils.normalizeName(c.name || '');
-
-        let cInvs = invoices.filter(inv => {
-            if (!inv) return false;
-            let invCustNorm = window.Utils.normalizeName(inv.customer || inv.customerName || '');
-            let isMatch = (
-                (inv.customerId !== undefined && inv.customerId !== null && String(inv.customerId) === cIdStr) || 
-                (cNorm !== '' && invCustNorm === cNorm)
-            );
-            let isValid = (
-                inv.type !== 'canceled' && 
-                inv.isCanceled !== true && 
-                inv.type !== 'quotation' && 
-                inv.isDeleted !== true && 
-                inv.status !== 'deleted'
-            );
-            return isMatch && isValid;
-        });
-
-        let validTransactions = this._collectUnifiedEntityTransactions(c, allMoves, false);
-        if (validTransactions.some(t => t._restoredFromTreasury)) {
-            c.transactions = validTransactions.map(t => {
-                let cleanT = { ...t };
-                delete cleanT._restoredFromTreasury;
-                return cleanT;
-            });
-        }
-
-        let cDebit = parseFloat(c.openingBalance) || 0; 
-        let cCredit = 0;
-        let currentBal = parseFloat(c.openingBalance) || 0; // الرصيد الحالي (موجب = عليه، سالب = له)
-        let openInvoices = [];
-        let timelineEvents = [];
-
-        // دالة خصم السداد: تخصم من الرصيد الحالي أولاً ثم الفواتير الآجلة الأقدم فالأقدم
-        const applyPaymentReduction = (amount) => {
-            let rem = parseFloat(amount) || 0;
-            if (rem <= 0) return;
-
-            if (currentBal > 0) {
-                let payCurr = Math.min(currentBal, rem);
-                currentBal -= payCurr;
-                rem -= payCurr;
-            }
-
-            if (rem > 0) {
-                for (let i = 0; i < openInvoices.length; i++) {
-                    if (rem <= 0) break;
-                    let oi = openInvoices[i];
-                    if (oi.currentRem > 0) {
-                        let deduct = Math.min(oi.currentRem, rem);
-                        oi.currentRem -= deduct;
-                        rem -= deduct;
-                    }
-                }
-            }
-
-            if (rem > 0) {
-                currentBal -= rem; // فائض للعميل (له)
-            }
-        };
-
-        cInvs.forEach((inv, idx) => {
-            inv.calculatedRemaining = 0;
-            timelineEvents.push({
-                kind: 'invoice',
-                priority: 1,
-                dayMs: getDayStartMs(inv.date, inv.timestamp),
-                seq: getOrderSeq(inv.id, idx),
-                data: inv
-            });
-        });
-
-        validTransactions.forEach((t, idx) => {
-            timelineEvents.push({
-                kind: 'voucher',
-                priority: 2,
-                dayMs: getDayStartMs(t.date, t.timestamp),
-                seq: getOrderSeq(t.id, idx),
-                data: t
-            });
-        });
-
-        timelineEvents.sort((a, b) => {
-            if (a.dayMs !== b.dayMs) return a.dayMs - b.dayMs;
-            if (a.priority !== b.priority) return a.priority - b.priority;
-            return a.seq - b.seq;
-        });
-
-        timelineEvents.forEach(ev => {
-            if (ev.kind === 'invoice') {
-                let inv = ev.data;
-                if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
-                    inv.initialRemaining = parseFloat(inv.remaining) || 0;
-                }
-                let totalVal = parseFloat(inv.total) || 0;
-                let discVal = parseFloat(inv.discount) || 0;
-                let paidVal = parseFloat(inv.paid) || 0;
-                let origRemVal = (inv.initialRemaining !== undefined) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
-                let req = (Math.abs((paidVal + origRemVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
-                if (req < 0) req = 0;
-
-                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-                let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
-                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-                    ? Math.max(0, parseFloat(inv.initialPaid))
-                    : Math.max(0, paidVal - appliedAmount);
-
-                if (!isReturn) {
-                    cDebit += req;
-                    cCredit += checkoutPaid;
-                    let postCheckoutRem = req - checkoutPaid;
-                    if (postCheckoutRem > 0) {
-                        let invEntry = { invRef: inv, currentRem: postCheckoutRem };
-                        openInvoices.push(invEntry);
-                        // إذا كان للعميل رصيد دائن سابق (له)، يخصم من الفاتورة الجديدة تلقائياً
-                        if (currentBal < 0) {
-                            let useCredit = Math.min(-currentBal, invEntry.currentRem);
-                            currentBal += useCredit;
-                            invEntry.currentRem -= useCredit;
-                        }
-                    } else if (postCheckoutRem < 0) {
-                        applyPaymentReduction(Math.abs(postCheckoutRem));
-                    }
-                } else {
-                    cCredit += req;
-                    cDebit += checkoutPaid;
-                    let netReturnCredit = req - checkoutPaid;
-                    if (netReturnCredit > 0) {
-                        applyPaymentReduction(netReturnCredit);
-                    } else if (netReturnCredit < 0) {
-                        currentBal += Math.abs(netReturnCredit);
-                    }
-                }
-            } else {
-                let t = ev.data;
-                let amt = parseFloat(t.amount) || 0;
-                if (amt <= 0) return;
-
-                if (t.type === 'payment') {
-                    // أي فلوس يأخذها العميل تصب مباشرة في الرصيد الحالي دون لمس الفواتير الآجلة
-                    cDebit += amt;
-                    currentBal += amt;
-                } else if (t.type === 'receipt') {
-                    // أي فلوس يسددها العميل تخصم من الرصيد الحالي أولاً ثم الفواتير الآجلة
-                    cCredit += amt;
-                    applyPaymentReduction(amt);
+                    existing.stock = (parseFloat(existing.stock) || 0) + (parseFloat(p.stock) || 0);
                 }
             }
         });
 
-        let netDebt = Math.round((cDebit - cCredit) * 100) / 100;
-
-        // تحديث الفواتير الآجلة في الذاكرة وحفظ المتبقي الجديد داخل الفاتورة ليظهر في الجدول السفلي
-        let actualDeferred = 0;
-        openInvoices.forEach(oi => {
-            let roundedRem = Math.round(oi.currentRem * 100) / 100;
-            oi.invRef.calculatedRemaining = roundedRem;
-
-            let oldRem = parseFloat(oi.invRef.remaining) || 0;
-            if (Math.abs(oldRem - roundedRem) > 0.001) {
-                oi.invRef.remaining = roundedRem;
-                invoicesNeedSave = true;
-            }
-
-            actualDeferred += roundedRem;
-        });
-
-        actualDeferred = Math.round(actualDeferred * 100) / 100;
-        currentBal = Math.round((netDebt - actualDeferred) * 100) / 100;
-
-        c.balance = -netDebt;              
-        c.calculatedBalance = -netDebt;    
-        c.netBalanceVal = Math.abs(netDebt);
-        c.isNetDebt = netDebt > 0;
-        c.deferredInvoicesTotal = actualDeferred; 
-        c.displayCurrentBalance = Math.abs(currentBal); 
-        c.isCurrentBalDebt = currentBal > 0; 
-    });
-
-    if (invoicesNeedSave && typeof this.saveSalesInvoices === 'function') {
-        this.saveSalesInvoices(invoices);
-    }
-
-    if (targetCustomerId !== null && targetCustomerId !== undefined) {
-        return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
-    }
-    return customers;
-},
-
-calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers = null) {
-    let suppliers = preloadedSuppliers || safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
-    let invoices = this.getPurchaseInvoices(true);
-    let allMoves = this.getTreasuryMoves(false);
-    let invoicesNeedSave = false;
-
-    const getDayStartMs = (dateVal, fallbackTs) => {
-        let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
-        if (!t) return 0;
-        let d = new Date(t);
-        if (isNaN(d.getTime())) return 0;
-        return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-    };
-
-    const getOrderSeq = (idVal, idx) => {
-        let num = parseInt(String(idVal || '').replace(/\D/g, ''), 10);
-        if (isNaN(num)) return idx;
-        return (num >= 1000 && num < 100000000) ? (9000000000000 + num) : num;
-    };
-    
-    suppliers.forEach(s => {
-        let sIdStr = String(s.id);
-        let sNorm = window.Utils.normalizeName(s.name || '');
-
-        let sInvs = invoices.filter(inv => {
-            if (!inv) return false;
-            let invSuppNorm = window.Utils.normalizeName(inv.supplier || inv.supplierName || '');
-            let isMatch = (
-                (inv.supplierId !== undefined && inv.supplierId !== null && String(inv.supplierId) === sIdStr) || 
-                (sNorm !== '' && invSuppNorm === sNorm)
-            );
-            let isValid = (
-                inv.type !== 'canceled' && 
-                inv.isCanceled !== true && 
-                inv.type !== 'quotation' && 
-                inv.isDeleted !== true && 
-                inv.status !== 'deleted'
-            );
-            return isMatch && isValid;
-        });
-
-        let validTransactions = this._collectUnifiedEntityTransactions(s, allMoves, true);
-        if (validTransactions.some(t => t._restoredFromTreasury)) {
-            s.transactions = validTransactions.map(t => {
-                let cleanT = { ...t };
-                delete cleanT._restoredFromTreasury;
-                return cleanT;
-            });
-        }
-
-        let sTotalReq = parseFloat(s.openingBalance) || 0; 
-        let sTotalPaid = 0;
-        let currentBal = parseFloat(s.openingBalance) || 0; // الرصيد الحالي للمورد
-        let openInvoices = [];
-        let timelineEvents = [];
-
-        // دالة خصم السداد للمورد: تخصم من الرصيد الحالي أولاً ثم فواتير الشراء الأقدم فالأقدم
-        const applySupplierPaymentReduction = (amount) => {
-            let rem = parseFloat(amount) || 0;
-            if (rem <= 0) return;
-
-            if (currentBal > 0) {
-                let payCurr = Math.min(currentBal, rem);
-                currentBal -= payCurr;
-                rem -= payCurr;
-            }
-
-            if (rem > 0) {
-                for (let i = 0; i < openInvoices.length; i++) {
-                    if (rem <= 0) break;
-                    let oi = openInvoices[i];
-                    if (oi.currentRem > 0) {
-                        let deduct = Math.min(oi.currentRem, rem);
-                        oi.currentRem -= deduct;
-                        rem -= deduct;
-                    }
-                }
-            }
-
-            if (rem > 0) {
-                currentBal -= rem; // فائض لنا عند المورد (عليه)
-            }
-        };
-
-        sInvs.forEach((inv, idx) => {
-            inv.calculatedRemaining = 0;
-            timelineEvents.push({
-                kind: 'invoice',
-                priority: 1,
-                dayMs: getDayStartMs(inv.date, inv.timestamp),
-                seq: getOrderSeq(inv.id, idx),
-                data: inv
-            });
-        });
-
-        validTransactions.forEach((t, idx) => {
-            timelineEvents.push({
-                kind: 'voucher',
-                priority: 2,
-                dayMs: getDayStartMs(t.date, t.timestamp),
-                seq: getOrderSeq(t.id, idx),
-                data: t
-            });
-        });
-
-        timelineEvents.sort((a, b) => {
-            if (a.dayMs !== b.dayMs) return a.dayMs - b.dayMs;
-            if (a.priority !== b.priority) return a.priority - b.priority;
-            return a.seq - b.seq;
-        });
-
-        timelineEvents.forEach(ev => {
-            if (ev.kind === 'invoice') {
-                let inv = ev.data;
-                if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
-                    inv.initialRemaining = parseFloat(inv.remaining) || 0;
-                }
-                let totalVal = parseFloat(inv.total) || 0;
-                let discVal = parseFloat(inv.discount) || 0;
-                let paidVal = parseFloat(inv.paid) || 0;
-                let origRemVal = (inv.initialRemaining !== undefined) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
-                let req = (Math.abs((paidVal + origRemVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
-                if (req < 0) req = 0;
-
-                let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
-                let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
-                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-                    ? Math.max(0, parseFloat(inv.initialPaid))
-                    : Math.max(0, paidVal - appliedAmount);
-
-                if (!isReturn) {
-                    sTotalReq += req;
-                    sTotalPaid += checkoutPaid;
-                    let postCheckoutRem = req - checkoutPaid;
-                    if (postCheckoutRem > 0) {
-                        let invEntry = { invRef: inv, currentRem: postCheckoutRem };
-                        openInvoices.push(invEntry);
-                        if (currentBal < 0) {
-                            let useCredit = Math.min(-currentBal, invEntry.currentRem);
-                            currentBal += useCredit;
-                            invEntry.currentRem -= useCredit;
-                        }
-                    } else if (postCheckoutRem < 0) {
-                        applySupplierPaymentReduction(Math.abs(postCheckoutRem));
-                    }
-                } else {
-                    sTotalReq -= req;
-                    sTotalPaid -= checkoutPaid;
-                    let netReturnReduction = req - checkoutPaid;
-                    if (netReturnReduction > 0) {
-                        applySupplierPaymentReduction(netReturnReduction);
-                    } else if (netReturnReduction < 0) {
-                        currentBal += Math.abs(netReturnReduction);
-                    }
-                }
-            } else {
-                let t = ev.data;
-                let amt = parseFloat(t.amount) || 0;
-                if (amt <= 0) return;
-
-                if (t.type === 'receipt' || t.type === 'supplier_receipt') {
-                    // أي فلوس نستلمها من المورد تصب مباشرة في الرصيد الحالي دون زيادة الفواتير الآجلة
-                    sTotalReq += amt;
-                    currentBal += amt;
-                } else if (t.type === 'payment' || t.type === 'purchase_payment') {
-                    // أي فلوس نسددها للمورد تخصم من الرصيد الحالي أولاً ثم الفواتير الآجلة
-                    sTotalPaid += amt;
-                    applySupplierPaymentReduction(amt);
-                }
+        existingAll.forEach(oldP => {
+            if (!oldP || oldP.id === undefined) return;
+            if ((oldP.isArchived || oldP.isDeleted) && !passedIds.has(String(oldP.id))) {
+                oldP.isArchived = true;
+                oldP.isDeleted = true;
+                cleaned.push(oldP);
             }
         });
 
-        let netDebt = Math.round((sTotalReq - sTotalPaid) * 100) / 100;
+        _internalSetItem('seraj_products', JSON.stringify(cleaned));
+        saveArrayToQueueSafely('products', cleaned);
+    },
 
-        let actualDeferred = 0;
-        openInvoices.forEach(oi => {
-            let roundedRem = Math.round(oi.currentRem * 100) / 100;
-            oi.invRef.calculatedRemaining = roundedRem;
-            
-            let oldRem = parseFloat(oi.invRef.remaining) || 0;
-            if (Math.abs(oldRem - roundedRem) > 0.001) {
-                oi.invRef.remaining = roundedRem;
-                invoicesNeedSave = true;
-            }
-            
-            actualDeferred += roundedRem;
-        });
+    // استرجاع العملاء مع خاصية إخفاء "عملاء الصفر" الخاملين (الذين ليس لهم رصيد ولا فواتير آجلة) من القوائم الافتراضية وبقائهم متاحين للبحث السريع
+    getCustomers: function(rawOnly = false, hideZeroCustomers = null) {
+        let customers = safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
+        if (rawOnly) return customers;
+        let calculated = this.calculateCustomerBalances(null, customers);
+        let shouldHideZero = (hideZeroCustomers !== null) ? Boolean(hideZeroCustomers) : Boolean(this._hideZeroCustomersByDefault || window.HIDE_ZERO_CUSTOMERS);
+        let result = shouldHideZero ? calculated.filter(c => !c.isZeroCustomer) : calculated;
 
-        actualDeferred = Math.round(actualDeferred * 100) / 100;
-        currentBal = Math.round((netDebt - actualDeferred) * 100) / 100;
-
-        s.balance = -netDebt;              
-        s.calculatedBalance = -netDebt;    
-        s.netBalanceVal = Math.abs(netDebt);
-        s.isNetDebt = netDebt > 0;
-        s.deferredInvoicesTotal = actualDeferred; 
-        s.displayCurrentBalance = Math.abs(currentBal); 
-        s.isCurrentBalDebt = currentBal > 0; 
-    });
-
-    if (invoicesNeedSave && typeof this.savePurchaseInvoices === 'function') {
-        this.savePurchaseInvoices(invoices);
-    }
-
-    if (targetSupplierId !== null && targetSupplierId !== undefined) {
-        return suppliers.find(s => String(s.id) === String(targetSupplierId)) || null;
-    }
-    return suppliers;
-},
-
-// 🌟 المحرك المركزي لبناء كشف الحساب الموحد للعميل أو المورد (يضمن التطابق 100% مع الرصيد الخارجي) 🌟
-_buildUnifiedStatement: function(entityId, isSupplier = false, duration = 'allTime', customStartDate = null, customEndDate = null) {
-    let entity = isSupplier
-        ? this.calculateSupplierBalances(entityId)
-        : this.calculateCustomerBalances(entityId);
-    if (!entity) return null;
-
-    let allInvoices = isSupplier ? this.getPurchaseInvoices(true) : this.getSalesInvoices(true);
-    let allMoves = this.getTreasuryMoves(false);
-    let eIdStr = String(entity.id);
-    let eNorm = window.Utils.normalizeName(entity.name || '');
-
-    let entityInvoices = allInvoices.filter(inv => {
-        if (!inv) return false;
-        let invEntityNorm = window.Utils.normalizeName(isSupplier ? (inv.supplier || inv.supplierName || '') : (inv.customer || inv.customerName || ''));
-        let invEntityId = isSupplier ? inv.supplierId : inv.customerId;
-        let isMatch = (
-            (invEntityId !== undefined && invEntityId !== null && String(invEntityId) === eIdStr) ||
-            (eNorm !== '' && invEntityNorm === eNorm)
-        );
-        let isValid = (inv.type !== 'quotation' && !inv.isDeleted && inv.status !== 'deleted' && !inv.isCanceled && inv.type !== 'canceled');
-        return isMatch && isValid;
-    });
-
-    let vouchers = this._collectUnifiedEntityTransactions(entity, allMoves, isSupplier);
-    let allItems = [];
-
-    // 1. الرصيد الافتتاحي إن وجد
-    let openingDebt = parseFloat(entity.openingBalance) || 0;
-    if (openingDebt !== 0) {
-        allItems.push({
-            date: entity.createdAt || '2020-01-01',
-            title: 'رصيد افتتاحي',
-            leh: openingDebt < 0 ? Math.abs(openingDebt) : 0,
-            aleih: openingDebt > 0 ? openingDebt : 0,
-            id: 0,
-            notes: 'رصيد أول المدة'
-        });
-    }
-
-    // 2. الفواتير والمرتجعات والمدفوع نقداً وقت الفاتورة فقط
-    entityInvoices.forEach(inv => {
-        let invTot = parseFloat(inv.total) || 0;
-        let invDiscount = parseFloat(inv.discount) || 0;
-        let invPaid = parseFloat(inv.paid) || 0;
-        let invRem = parseFloat(inv.remaining) || 0;
-        let finalReq = (Math.abs((invPaid + invRem) - invTot) < 0.05 && invDiscount > 0) ? invTot : (invTot - invDiscount);
-        if (finalReq < 0) finalReq = 0;
-
-        let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, vouchers, isSupplier);
-        let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
-            ? Math.max(0, parseFloat(inv.initialPaid))
-            : Math.max(0, invPaid - appliedAmount);
-
-        let isReturn = isSupplier
-            ? (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return')
-            : (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-
-        let invoiceTypeLabel = isSupplier
-            ? (isReturn ? '<span style="color:#ff1a40; font-weight:bold;">فاتورة مرتجع مشتريات</span>' : 'فاتورة مشتريات')
-            : (isReturn ? '<span style="color:#ff1a40; font-weight:bold;">فاتورة مرتجع بيع</span>' : 'فاتورة بيع');
-
-        if (isReturn) {
-            allItems.push({ date: inv.date, title: `${invoiceTypeLabel} رقم: ${inv.id}`, leh: finalReq, aleih: 0, id: inv.id, notes: inv.notes || '---' });
-        } else {
-            allItems.push({ date: inv.date, title: `${invoiceTypeLabel} رقم: ${inv.id}`, leh: 0, aleih: finalReq, id: inv.id, notes: inv.notes || '---' });
-        }
-
-        if (checkoutPaid > 0) {
-            let receiptLabel = isSupplier
-                ? (isReturn ? 'استرداد نقدي أثناء المرتجع' : 'سداد نقدي أثناء الشراء')
-                : (isReturn ? 'رد نقدي أثناء المرتجع' : 'تحصيل نقدي أثناء البيع');
-            allItems.push({
-                date: inv.date,
-                title: `${receiptLabel} (فاتورة ${inv.id})`,
-                leh: isReturn ? 0 : checkoutPaid,
-                aleih: isReturn ? checkoutPaid : 0,
-                id: String(inv.id) + '_cash',
-                notes: '---'
-            });
-        }
-    });
-
-    // 3. السندات (كل سند سطر واحد مستقل بمبلغه الكامل)
-    vouchers.forEach(t => {
-        let isPaymentReduceDebt = isSupplier
-            ? (t.type === 'payment' || t.type === 'purchase_payment')
-            : (t.type === 'receipt');
-        let titleText = isSupplier
-            ? (isPaymentReduceDebt ? `سند سداد لمورد رقم ${t.id}` : `سند استلام من مورد رقم ${t.id}`)
-            : (isPaymentReduceDebt ? `سند تحصيل نقدية رقم ${t.id}` : `سند مديونية رقم ${t.id}`);
-
-        let editTag = (t._lastModifiedBy && t._device && t._lastModifiedBy !== t._device) ? `✏️ تعديل: ${t._lastModifiedBy}` : '';
-        let devName = t._device ? `<br><span style="font-size:11px; color:#38bdf8;">💻 سُجل بواسطة: ${t._device} ${editTag}</span>` : '';
-
-        allItems.push({
-            date: t.date,
-            title: `${titleText} ${devName}`,
-            leh: isPaymentReduceDebt ? (parseFloat(t.amount) || 0) : 0,
-            aleih: !isPaymentReduceDebt ? (parseFloat(t.amount) || 0) : 0,
-            id: t.id,
-            notes: t.notes || '---'
-        });
-    });
-
-    // 4. فلترة الفترة الزمنية
-    let now = new Date();
-    let prevLeh = 0, prevAleih = 0;
-    let combined = [];
-
-    allItems.forEach(item => {
-        if (!item.date) { combined.push(item); return; }
-        let itemDate = new Date(window.Utils.getSafeTime(item.date) || item.date);
-        let includeInCurrent = false;
-
-        if (duration === 'allTime') {
-            includeInCurrent = true;
-        } else if (duration === 'custom' && customStartDate && customEndDate) {
-            let itemTime = itemDate.getTime();
-            let startTime = new Date(customStartDate).getTime();
-            let endTime = new Date(customEndDate).getTime() + 86399999;
-            if (itemTime >= startTime && itemTime <= endTime) includeInCurrent = true;
-            else if (itemTime < startTime) { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else if (duration === 'today') {
-            if (itemDate.toDateString() === now.toDateString()) includeInCurrent = true;
-            else if (itemDate < now) { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else if (duration === 'yesterday') {
-            let yest = new Date(now); yest.setDate(now.getDate() - 1);
-            if (itemDate.toDateString() === yest.toDateString()) includeInCurrent = true;
-            else if (itemDate < yest) { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else if (duration === '7days') {
-            let d = new Date(now); d.setDate(now.getDate() - 7); d.setHours(0,0,0,0);
-            if (itemDate >= d) includeInCurrent = true;
-            else { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else if (duration === 'thisMonth') {
-            let startM = new Date(now.getFullYear(), now.getMonth(), 1);
-            if (itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear()) includeInCurrent = true;
-            else if (itemDate < startM) { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else if (duration === '30days') {
-            let d = new Date(now); d.setDate(now.getDate() - 30); d.setHours(0,0,0,0);
-            if (itemDate >= d) includeInCurrent = true;
-            else { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else if (duration === 'lastMonth') {
-            let lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            if (itemDate.getMonth() === lm.getMonth() && itemDate.getFullYear() === lm.getFullYear()) includeInCurrent = true;
-            else if (itemDate < lm) { prevLeh += item.leh; prevAleih += item.aleih; }
-        } else {
-            includeInCurrent = true;
-        }
-        if (includeInCurrent) combined.push(item);
-    });
-
-    combined.sort((a, b) => {
-        let dateDiff = window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date);
-        if (dateDiff !== 0) return dateDiff;
-        return (Number(a.id) || 0) - (Number(b.id) || 0);
-    });
-
-    let totalLeh = 0, totalAleih = 0;
-    combined.forEach(item => {
-        totalLeh += item.leh;
-        totalAleih += item.aleih;
-    });
-
-    let netDebt = isSupplier ? (entity.balance || 0) : -(entity.balance || 0);
-    return {
-        entity: entity,
-        rows: combined,
-        prevAleih: Math.round(prevAleih * 100) / 100,
-        prevLeh: Math.round(prevLeh * 100) / 100,
-        totalAleih: Math.round(totalAleih * 100) / 100,
-        totalLeh: Math.round(totalLeh * 100) / 100,
-        netDebt: Math.round(netDebt * 100) / 100,
-        isNetDebt: netDebt > 0
-    };
-},
-
-getCustomerStatement: function(customerId, duration = 'allTime', customStartDate = null, customEndDate = null) {
-    return this._buildUnifiedStatement(customerId, false, duration, customStartDate, customEndDate);
-},
-
-getSupplierStatement: function(supplierId, duration = 'allTime', customStartDate = null, customEndDate = null) {
-    return this._buildUnifiedStatement(supplierId, true, duration, customStartDate, customEndDate);
-},
-
-
-getSalesInvoices: function(includeCanceled = true) { 
-    let invs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []); 
-    return includeCanceled ? invs : invs.filter(inv => inv && !inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
-},
-saveSalesInvoices: function(data) { 
-    if (!Array.isArray(data)) return;
-    let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_sales_invoices'), []);
-    let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
-    let now = Date.now();
-
-    // 🌟 تنظيف وتطهير شامل لضمان إزالة أي مراجع DOM أو شوائب من شاشة البيع
-    let cleanData = data.map(inv => {
-        if (!inv) return null;
         try {
-            // تحويل الكائن لـ JSON ثم إعادته يزيل أي عوالق برمجية أو عناصر واجهة غير صالحة
-            let cleanInv = JSON.parse(JSON.stringify(inv));
-            if (!cleanInv.timestamp) cleanInv.timestamp = now;
-            if (cleanInv.type === 'canceled' || cleanInv.status === 'deleted' || cleanInv.isDeleted) cleanInv.isCanceled = true;
-            if (cleanInv.customer) cleanInv.customer = String(cleanInv.customer).trim();
-            
-            let oldInv = oldMap.get(String(cleanInv.id));
-            if (!oldInv || JSON.stringify(oldInv) !== JSON.stringify(cleanInv)) {
-                cleanInv._lastModified = now;
+            Object.defineProperty(result, 'allWithZero', { value: calculated, enumerable: false, configurable: true });
+            Object.defineProperty(result, 'activeOnly', { value: calculated.filter(c => !c.isZeroCustomer), enumerable: false, configurable: true });
+            Object.defineProperty(result, 'fastSearch', {
+                value: (q) => window.Utils.fastSearch(calculated, q, ['name', 'phone', 'id', 'notes']),
+                enumerable: false,
+                configurable: true
+            });
+        } catch (e) {}
+
+        return result;
+    },
+
+    // دالة مساعدة للبحث السريع في جميع العملاء (شاملة عملاء الصفر الخاملين)
+    searchCustomers: function(query) {
+        let allCustomers = this.getCustomers(false, false);
+        return window.Utils.fastSearch(allCustomers, query, ['name', 'phone', 'id', 'notes']);
+    },
+
+    setHideZeroCustomers: function(hide = true) {
+        this._hideZeroCustomersByDefault = Boolean(hide);
+        window.HIDE_ZERO_CUSTOMERS = Boolean(hide);
+    },
+
+    saveCustomers: function(data) {
+        if (!Array.isArray(data)) return;
+        let oldRawCustomers = safeParseJSON(localStorage.getItem('seraj_customers'), []);
+        let oldNameById = new Map();
+        oldRawCustomers.forEach(oc => {
+            if (oc && oc.id !== undefined && oc.name) {
+                oldNameById.set(String(oc.id), String(oc.name).trim());
             }
-            return cleanInv;
-        } catch (err) {
-            console.error("Sales JSON Clean Error:", err);
+        });
+
+        let dedup = this._deduplicateEntities(data, 'customers');
+
+        let renamedMap = new Map();
+        dedup.cleaned.forEach(c => {
+            if (!c || c.id === undefined || !c.name) return;
+            let newName = String(c.name).trim();
+            let oldName = oldNameById.get(String(c.id));
+            if (oldName && oldName !== newName) {
+                renamedMap.set(String(c.id), { oldName, newName });
+            }
+        });
+
+        if ((dedup.changed && dedup.idRedirectMap.size > 0) || renamedMap.size > 0) {
+            let sales = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []);
+            let sChanged = false;
+            sales.forEach(inv => {
+                if (!inv) return;
+                if (inv.customerId && dedup.idRedirectMap.has(String(inv.customerId))) {
+                    inv.customerId = dedup.idRedirectMap.get(String(inv.customerId));
+                    sChanged = true;
+                }
+                if (inv.customerId && renamedMap.has(String(inv.customerId))) {
+                    let newName = renamedMap.get(String(inv.customerId)).newName;
+                    if (inv.customer !== newName) {
+                        inv.customer = newName;
+                        sChanged = true;
+                    }
+                }
+            });
+            if (sChanged) this.saveSalesInvoices(sales);
+
+            let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            let mChanged = false;
+            moves.forEach(m => {
+                if (!m) return;
+                if (m.customerId && dedup.idRedirectMap.has(String(m.customerId))) {
+                    m.customerId = dedup.idRedirectMap.get(String(m.customerId));
+                    mChanged = true;
+                }
+                if (m.customerId && renamedMap.has(String(m.customerId))) {
+                    let newName = renamedMap.get(String(m.customerId)).newName;
+                    if (m.customer !== newName) {
+                        m.customer = newName;
+                        mChanged = true;
+                    }
+                } else if (renamedMap.size > 0 && m.customer) {
+                    renamedMap.forEach((info, cid) => {
+                        if (window.Utils.normalizeName(m.customer) === window.Utils.normalizeName(info.oldName)) {
+                            m.customer = info.newName;
+                            if (!m.customerId) m.customerId = cid;
+                            mChanged = true;
+                        }
+                    });
+                }
+            });
+            if (mChanged) this.saveTreasuryMoves(moves);
+        }
+
+        // الاحتفاظ بأي عميل صفر خامل كان موجوداً في الذاكرة إذا قامت الصفحة بحفظ القائمة المفلترة فقط
+        let passedIds = new Set(dedup.cleaned.map(c => String(c?.id)));
+        oldRawCustomers.forEach(oldC => {
+            if (!oldC || oldC.id === undefined) return;
+            let oId = String(oldC.id);
+            if (!passedIds.has(oId) && !dedup.idRedirectMap.has(oId)) {
+                let normOld = window.Utils.normalizeName(oldC.name);
+                if (normOld && !dedup.normMap.has(normOld)) {
+                    dedup.cleaned.push(oldC);
+                    passedIds.add(oId);
+                }
+            }
+        });
+
+        let dataToSave = dedup.cleaned.map(c => {
+            let temp = _stripComputedFieldsForDiff(c);
+            if (temp.name) temp.name = String(temp.name).trim();
+            if (Array.isArray(temp.transactions)) {
+                temp.transactions = temp.transactions.map(t => {
+                    if (!t) return null;
+                    let normDate = window.Utils.normalizeDateStr(t.date, t.timestamp);
+                    return {
+                        ...t,
+                        date: normDate,
+                        timestamp: window.Utils.alignTimestampWithDate(normDate, t.timestamp)
+                    };
+                }).filter(Boolean);
+            }
+            temp._lastModified = c._lastModified || Date.now();
+            return temp;
+        });
+        _internalSetItem('seraj_customers', JSON.stringify(dataToSave));
+        saveArrayToQueueSafely('customers', dataToSave);
+    },
+
+    getSuppliers: function(rawOnly = false) {
+        let suppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
+        if (rawOnly) return suppliers;
+        return this.calculateSupplierBalances(null, suppliers);
+    },
+
+    saveSuppliers: function(data) {
+        if (!Array.isArray(data)) return;
+        let oldRawSuppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []);
+        let oldNameById = new Map();
+        oldRawSuppliers.forEach(os => {
+            if (os && os.id !== undefined && os.name) {
+                oldNameById.set(String(os.id), String(os.name).trim());
+            }
+        });
+
+        let dedup = this._deduplicateEntities(data, 'suppliers');
+
+        let renamedMap = new Map();
+        dedup.cleaned.forEach(s => {
+            if (!s || s.id === undefined || !s.name) return;
+            let newName = String(s.name).trim();
+            let oldName = oldNameById.get(String(s.id));
+            if (oldName && oldName !== newName) {
+                renamedMap.set(String(s.id), { oldName, newName });
+            }
+        });
+
+        if ((dedup.changed && dedup.idRedirectMap.size > 0) || renamedMap.size > 0) {
+            let purchases = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
+            let pChanged = false;
+            purchases.forEach(inv => {
+                if (!inv) return;
+                if (inv.supplierId && dedup.idRedirectMap.has(String(inv.supplierId))) {
+                    inv.supplierId = dedup.idRedirectMap.get(String(inv.supplierId));
+                    pChanged = true;
+                }
+                if (inv.supplierId && renamedMap.has(String(inv.supplierId))) {
+                    let newName = renamedMap.get(String(inv.supplierId)).newName;
+                    if (inv.supplier !== newName) {
+                        inv.supplier = newName;
+                        pChanged = true;
+                    }
+                }
+            });
+            if (pChanged) this.savePurchaseInvoices(purchases);
+
+            let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            let mChanged = false;
+            moves.forEach(m => {
+                if (!m) return;
+                if (m.supplierId && dedup.idRedirectMap.has(String(m.supplierId))) {
+                    m.supplierId = dedup.idRedirectMap.get(String(m.supplierId));
+                    mChanged = true;
+                }
+                if (m.supplierId && renamedMap.has(String(m.supplierId))) {
+                    let newName = renamedMap.get(String(m.supplierId)).newName;
+                    if (m.supplier !== newName) {
+                        m.supplier = newName;
+                        mChanged = true;
+                    }
+                } else if (renamedMap.size > 0 && m.supplier) {
+                    renamedMap.forEach((info, sid) => {
+                        if (window.Utils.normalizeName(m.supplier) === window.Utils.normalizeName(info.oldName)) {
+                            m.supplier = info.newName;
+                            if (!m.supplierId) m.supplierId = sid;
+                            mChanged = true;
+                        }
+                    });
+                }
+            });
+            if (mChanged) this.saveTreasuryMoves(moves);
+        }
+
+        let dataToSave = dedup.cleaned.map(s => {
+            let temp = _stripComputedFieldsForDiff(s);
+            if (temp.name) temp.name = String(temp.name).trim();
+            if (Array.isArray(temp.transactions)) {
+                temp.transactions = temp.transactions.map(t => {
+                    if (!t) return null;
+                    let normDate = window.Utils.normalizeDateStr(t.date, t.timestamp);
+                    return {
+                        ...t,
+                        date: normDate,
+                        timestamp: window.Utils.alignTimestampWithDate(normDate, t.timestamp)
+                    };
+                }).filter(Boolean);
+            }
+            temp._lastModified = s._lastModified || Date.now();
+            return temp;
+        });
+        _internalSetItem('seraj_suppliers', JSON.stringify(dataToSave));
+        saveArrayToQueueSafely('suppliers', dataToSave);
+    },
+
+    calculateCustomerBalances: function(targetCustomerId = null, preloadedCustomers = null) {
+        let customers = preloadedCustomers || safeParseJSON(localStorage.getItem('seraj_customers'), []).filter(c => c && !c.isArchived && !c.isDeleted);
+        let invoices = this.getSalesInvoices(true);
+        let allMoves = this.getTreasuryMoves(false, true);
+        let invoicesNeedSave = false;
+
+        const getDayStartMs = (dateVal, fallbackTs) => {
+            let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
+            if (!t) return 0;
+            let d = new Date(t);
+            if (isNaN(d.getTime())) return 0;
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        };
+
+        const getOrderSeq = (idVal, idx) => {
+            let num = window.Utils.extractSerialNum(idVal);
+            if (!num) return idx;
+            return (num >= 100 && num < 100000000) ? (9000000000000 + num) : num;
+        };
+
+        customers.forEach(c => {
+            let cIdStr = String(c.id);
+            let cNorm = window.Utils.normalizeName(c.name || '');
+
+            let cInvs = invoices.filter(inv => {
+                if (!inv) return false;
+                let invCustNorm = window.Utils.normalizeName(inv.customer || inv.customerName || '');
+                let isMatch = (
+                    (inv.customerId !== undefined && inv.customerId !== null && String(inv.customerId) === cIdStr) ||
+                    (cNorm !== '' && invCustNorm === cNorm)
+                );
+                let isValid = (
+                    inv.type !== 'canceled' &&
+                    inv.isCanceled !== true &&
+                    inv.type !== 'quotation' &&
+                    inv.isDeleted !== true &&
+                    inv.status !== 'deleted'
+                );
+                return isMatch && isValid;
+            });
+
+            let validTransactions = this._collectUnifiedEntityTransactions(c, allMoves, false);
+            if (validTransactions.some(t => t._restoredFromTreasury)) {
+                c.transactions = validTransactions.map(t => {
+                    let cleanT = { ...t };
+                    delete cleanT._restoredFromTreasury;
+                    return cleanT;
+                });
+            }
+
+            let cDebit = parseFloat(c.openingBalance) || 0;
+            let cCredit = 0;
+            let currentBal = parseFloat(c.openingBalance) || 0;
+            let openInvoices = [];
+            let timelineEvents = [];
+            let latestActivityMs = c.lastActivityDate ? window.Utils.getSafeTime(c.lastActivityDate) : 0;
+
+            const applyPaymentReduction = (amount, allocatedList = null) => {
+                let rem = parseFloat(amount) || 0;
+                if (rem <= 0) return;
+
+                if (Array.isArray(allocatedList) && allocatedList.length > 0) {
+                    allocatedList.forEach(alloc => {
+                        if (!alloc || rem <= 0) return;
+                        let targetInvId = String(alloc.id ?? alloc.invoiceId ?? '');
+                        if (!targetInvId) return;
+                        let targetEntry = openInvoices.find(oi => String(oi.invRef.id) === targetInvId && oi.currentRem > 0);
+                        if (targetEntry) {
+                            let allocAmt = parseFloat(alloc.deducted ?? alloc.amount) || rem;
+                            let deduct = Math.min(targetEntry.currentRem, allocAmt, rem);
+                            targetEntry.currentRem -= deduct;
+                            rem -= deduct;
+                        }
+                    });
+                }
+
+                if (rem > 0 && currentBal > 0) {
+                    let payCurr = Math.min(currentBal, rem);
+                    currentBal -= payCurr;
+                    rem -= payCurr;
+                }
+
+                if (rem > 0) {
+                    for (let i = 0; i < openInvoices.length; i++) {
+                        if (rem <= 0) break;
+                        let oi = openInvoices[i];
+                        if (oi.currentRem > 0) {
+                            let deduct = Math.min(oi.currentRem, rem);
+                            oi.currentRem -= deduct;
+                            rem -= deduct;
+                        }
+                    }
+                }
+
+                if (rem > 0) {
+                    currentBal -= rem;
+                }
+            };
+
+            cInvs.forEach((inv, idx) => {
+                inv.calculatedRemaining = 0;
+                inv.computedRemaining = 0;
+                let dMs = getDayStartMs(inv.date, inv.timestamp);
+                if (dMs > latestActivityMs) latestActivityMs = dMs;
+                timelineEvents.push({
+                    kind: 'invoice',
+                    priority: 1,
+                    dayMs: dMs,
+                    seq: getOrderSeq(inv.id, idx),
+                    data: inv
+                });
+            });
+
+            validTransactions.forEach((t, idx) => {
+                let dMs = getDayStartMs(t.date, t.timestamp);
+                if (dMs > latestActivityMs) latestActivityMs = dMs;
+                timelineEvents.push({
+                    kind: 'voucher',
+                    priority: 2,
+                    dayMs: dMs,
+                    seq: getOrderSeq(t.id, idx),
+                    data: t
+                });
+            });
+
+            if (latestActivityMs > 0) {
+                c.lastActivityDate = window.Utils.getLocalDateString(latestActivityMs);
+            }
+
+            timelineEvents.sort((a, b) => {
+                if (a.dayMs !== b.dayMs) return a.dayMs - b.dayMs;
+                if (a.priority !== b.priority) return a.priority - b.priority;
+                return a.seq - b.seq;
+            });
+
+            timelineEvents.forEach(ev => {
+                if (ev.kind === 'invoice') {
+                    let inv = ev.data;
+                    if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
+                        inv.initialRemaining = parseFloat(inv.remaining) || 0;
+                    }
+                    let totalVal = parseFloat(inv.total) || 0;
+                    let discVal = parseFloat(inv.discount) || 0;
+                    let paidVal = parseFloat(inv.paid) || 0;
+                    let origPaidVal = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                        ? parseFloat(inv.initialPaid)
+                        : paidVal;
+                    let origRemVal = (inv.initialRemaining !== undefined && inv.initialRemaining !== null && !isNaN(parseFloat(inv.initialRemaining)))
+                        ? parseFloat(inv.initialRemaining)
+                        : (parseFloat(inv.remaining) || 0);
+
+                    let req = (Math.abs((origPaidVal + origRemVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                    if (req < 0) req = 0;
+
+                    let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                    let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, false);
+                    let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                        ? Math.max(0, parseFloat(inv.initialPaid))
+                        : Math.max(0, paidVal - appliedAmount);
+
+                    if (inv.initialPaid === undefined || inv.initialPaid === null) {
+                        inv.initialPaid = checkoutPaid;
+                        invoicesNeedSave = true;
+                    }
+
+                    if (!isReturn) {
+                        cDebit += req;
+                        cCredit += checkoutPaid;
+                        let postCheckoutRem = req - checkoutPaid;
+                        if (postCheckoutRem > 0) {
+                            let invEntry = { invRef: inv, currentRem: postCheckoutRem };
+                            openInvoices.push(invEntry);
+                            if (currentBal < 0) {
+                                let useCredit = Math.min(-currentBal, invEntry.currentRem);
+                                currentBal += useCredit;
+                                invEntry.currentRem -= useCredit;
+                            }
+                        } else if (postCheckoutRem < 0) {
+                            applyPaymentReduction(Math.abs(postCheckoutRem));
+                        }
+                    } else {
+                        cCredit += req;
+                        cDebit += checkoutPaid;
+                        let netReturnCredit = req - checkoutPaid;
+                        if (netReturnCredit > 0) {
+                            applyPaymentReduction(netReturnCredit);
+                        } else if (netReturnCredit < 0) {
+                            currentBal += Math.abs(netReturnCredit);
+                        }
+                    }
+                } else {
+                    let t = ev.data;
+                    let amt = parseFloat(t.amount) || 0;
+                    if (amt <= 0) return;
+
+                    if (t.type === 'payment') {
+                        cDebit += amt;
+                        currentBal += amt;
+                    } else if (t.type === 'receipt') {
+                        cCredit += amt;
+                        applyPaymentReduction(amt, t.allocatedInvoices);
+                    }
+                }
+            });
+
+            let netDebt = Math.round((cDebit - cCredit) * 100) / 100;
+
+            let actualDeferred = 0;
+            openInvoices.forEach(oi => {
+                let roundedRem = Math.round(oi.currentRem * 100) / 100;
+                oi.invRef.calculatedRemaining = roundedRem;
+                oi.invRef.computedRemaining = roundedRem;
+
+                let oldRem = parseFloat(oi.invRef.remaining) || 0;
+                if (Math.abs(oldRem - roundedRem) > 0.001) {
+                    oi.invRef.remaining = roundedRem;
+                    invoicesNeedSave = true;
+                }
+
+                actualDeferred += roundedRem;
+            });
+
+            actualDeferred = Math.round(actualDeferred * 100) / 100;
+            currentBal = Math.round((netDebt - actualDeferred) * 100) / 100;
+
+            c.balance = -netDebt;
+            c.calculatedBalance = -netDebt;
+            c.netBalanceVal = Math.abs(netDebt);
+            c.isNetDebt = netDebt > 0;
+            c.deferredInvoicesTotal = actualDeferred;
+            c.displayCurrentBalance = Math.abs(currentBal);
+            c.isCurrentBalDebt = currentBal > 0;
+            // وسم "عملاء الصفر" الخاملين (الذين ليس لهم رصيد ولا فواتير آجلة)
+            c.isZeroCustomer = (Math.abs(netDebt) < 0.01 && actualDeferred < 0.01);
+            c.isIdleZero = c.isZeroCustomer;
+        });
+
+        if (invoicesNeedSave && typeof this.saveSalesInvoices === 'function') {
+            this._isCalculatingBalances = true;
+            try {
+                this.saveSalesInvoices(invoices);
+            } finally {
+                this._isCalculatingBalances = false;
+            }
+        }
+
+        if (targetCustomerId !== null && targetCustomerId !== undefined) {
+            return customers.find(c => String(c.id) === String(targetCustomerId)) || null;
+        }
+        return customers;
+    },
+
+    calculateSupplierBalances: function(targetSupplierId = null, preloadedSuppliers = null) {
+        let suppliers = preloadedSuppliers || safeParseJSON(localStorage.getItem('seraj_suppliers'), []).filter(s => s && !s.isArchived && !s.isDeleted);
+        let invoices = this.getPurchaseInvoices(true);
+        let allMoves = this.getTreasuryMoves(false, true);
+        let invoicesNeedSave = false;
+
+        const getDayStartMs = (dateVal, fallbackTs) => {
+            let t = window.Utils.getSafeTime(dateVal) || window.Utils.getSafeTime(fallbackTs) || 0;
+            if (!t) return 0;
+            let d = new Date(t);
+            if (isNaN(d.getTime())) return 0;
+            return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        };
+
+        const getOrderSeq = (idVal, idx) => {
+            let num = window.Utils.extractSerialNum(idVal);
+            if (!num) return idx;
+            return (num >= 100 && num < 100000000) ? (9000000000000 + num) : num;
+        };
+
+        suppliers.forEach(s => {
+            let sIdStr = String(s.id);
+            let sNorm = window.Utils.normalizeName(s.name || '');
+
+            let sInvs = invoices.filter(inv => {
+                if (!inv) return false;
+                let invSuppNorm = window.Utils.normalizeName(inv.supplier || inv.supplierName || '');
+                let isMatch = (
+                    (inv.supplierId !== undefined && inv.supplierId !== null && String(inv.supplierId) === sIdStr) ||
+                    (sNorm !== '' && invSuppNorm === sNorm)
+                );
+                let isValid = (
+                    inv.type !== 'canceled' &&
+                    inv.isCanceled !== true &&
+                    inv.type !== 'quotation' &&
+                    inv.isDeleted !== true &&
+                    inv.status !== 'deleted'
+                );
+                return isMatch && isValid;
+            });
+
+            let validTransactions = this._collectUnifiedEntityTransactions(s, allMoves, true);
+            if (validTransactions.some(t => t._restoredFromTreasury)) {
+                s.transactions = validTransactions.map(t => {
+                    let cleanT = { ...t };
+                    delete cleanT._restoredFromTreasury;
+                    return cleanT;
+                });
+            }
+
+            let sTotalReq = parseFloat(s.openingBalance) || 0;
+            let sTotalPaid = 0;
+            let currentBal = parseFloat(s.openingBalance) || 0;
+            let openInvoices = [];
+            let timelineEvents = [];
+            let latestActivityMs = s.lastActivityDate ? window.Utils.getSafeTime(s.lastActivityDate) : 0;
+
+            const applySupplierPaymentReduction = (amount, allocatedList = null) => {
+                let rem = parseFloat(amount) || 0;
+                if (rem <= 0) return;
+
+                if (Array.isArray(allocatedList) && allocatedList.length > 0) {
+                    allocatedList.forEach(alloc => {
+                        if (!alloc || rem <= 0) return;
+                        let targetInvId = String(alloc.id ?? alloc.invoiceId ?? '');
+                        if (!targetInvId) return;
+                        let targetEntry = openInvoices.find(oi => String(oi.invRef.id) === targetInvId && oi.currentRem > 0);
+                        if (targetEntry) {
+                            let allocAmt = parseFloat(alloc.deducted ?? alloc.amount) || rem;
+                            let deduct = Math.min(targetEntry.currentRem, allocAmt, rem);
+                            targetEntry.currentRem -= deduct;
+                            rem -= deduct;
+                        }
+                    });
+                }
+
+                if (rem > 0 && currentBal > 0) {
+                    let payCurr = Math.min(currentBal, rem);
+                    currentBal -= payCurr;
+                    rem -= payCurr;
+                }
+
+                if (rem > 0) {
+                    for (let i = 0; i < openInvoices.length; i++) {
+                        if (rem <= 0) break;
+                        let oi = openInvoices[i];
+                        if (oi.currentRem > 0) {
+                            let deduct = Math.min(oi.currentRem, rem);
+                            oi.currentRem -= deduct;
+                            rem -= deduct;
+                        }
+                    }
+                }
+
+                if (rem > 0) {
+                    currentBal -= rem;
+                }
+            };
+
+            sInvs.forEach((inv, idx) => {
+                inv.calculatedRemaining = 0;
+                inv.computedRemaining = 0;
+                let dMs = getDayStartMs(inv.date, inv.timestamp);
+                if (dMs > latestActivityMs) latestActivityMs = dMs;
+                timelineEvents.push({
+                    kind: 'invoice',
+                    priority: 1,
+                    dayMs: dMs,
+                    seq: getOrderSeq(inv.id, idx),
+                    data: inv
+                });
+            });
+
+            validTransactions.forEach((t, idx) => {
+                let dMs = getDayStartMs(t.date, t.timestamp);
+                if (dMs > latestActivityMs) latestActivityMs = dMs;
+                timelineEvents.push({
+                    kind: 'voucher',
+                    priority: 2,
+                    dayMs: dMs,
+                    seq: getOrderSeq(t.id, idx),
+                    data: t
+                });
+            });
+
+            if (latestActivityMs > 0) {
+                s.lastActivityDate = window.Utils.getLocalDateString(latestActivityMs);
+            }
+
+            timelineEvents.sort((a, b) => {
+                if (a.dayMs !== b.dayMs) return a.dayMs - b.dayMs;
+                if (a.priority !== b.priority) return a.priority - b.priority;
+                return a.seq - b.seq;
+            });
+
+            timelineEvents.forEach(ev => {
+                if (ev.kind === 'invoice') {
+                    let inv = ev.data;
+                    if (inv.initialRemaining === undefined && inv.remaining !== undefined) {
+                        inv.initialRemaining = parseFloat(inv.remaining) || 0;
+                    }
+                    let totalVal = parseFloat(inv.total) || 0;
+                    let discVal = parseFloat(inv.discount) || 0;
+                    let paidVal = parseFloat(inv.paid) || 0;
+                    let origPaidVal = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                        ? parseFloat(inv.initialPaid)
+                        : paidVal;
+                    let origRemVal = (inv.initialRemaining !== undefined && inv.initialRemaining !== null && !isNaN(parseFloat(inv.initialRemaining)))
+                        ? parseFloat(inv.initialRemaining)
+                        : (parseFloat(inv.remaining) || 0);
+
+                    let req = (Math.abs((origPaidVal + origRemVal) - totalVal) < 0.05 && discVal > 0) ? totalVal : (totalVal - discVal);
+                    if (req < 0) req = 0;
+
+                    let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+                    let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, validTransactions, true);
+                    let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                        ? Math.max(0, parseFloat(inv.initialPaid))
+                        : Math.max(0, paidVal - appliedAmount);
+
+                    if (inv.initialPaid === undefined || inv.initialPaid === null) {
+                        inv.initialPaid = checkoutPaid;
+                        invoicesNeedSave = true;
+                    }
+
+                    if (!isReturn) {
+                        sTotalReq += req;
+                        sTotalPaid += checkoutPaid;
+                        let postCheckoutRem = req - checkoutPaid;
+                        if (postCheckoutRem > 0) {
+                            let invEntry = { invRef: inv, currentRem: postCheckoutRem };
+                            openInvoices.push(invEntry);
+                            if (currentBal < 0) {
+                                let useCredit = Math.min(-currentBal, invEntry.currentRem);
+                                currentBal += useCredit;
+                                invEntry.currentRem -= useCredit;
+                            }
+                        } else if (postCheckoutRem < 0) {
+                            applySupplierPaymentReduction(Math.abs(postCheckoutRem));
+                        }
+                    } else {
+                        sTotalReq -= req;
+                        sTotalPaid -= checkoutPaid;
+                        let netReturnReduction = req - checkoutPaid;
+                        if (netReturnReduction > 0) {
+                            applySupplierPaymentReduction(netReturnReduction);
+                        } else if (netReturnReduction < 0) {
+                            currentBal += Math.abs(netReturnReduction);
+                        }
+                    }
+                } else {
+                    let t = ev.data;
+                    let amt = parseFloat(t.amount) || 0;
+                    if (amt <= 0) return;
+
+                    if (t.type === 'receipt' || t.type === 'supplier_receipt') {
+                        sTotalReq += amt;
+                        currentBal += amt;
+                    } else if (t.type === 'payment' || t.type === 'purchase_payment') {
+                        sTotalPaid += amt;
+                        applySupplierPaymentReduction(amt, t.allocatedInvoices);
+                    }
+                }
+            });
+
+            let netDebt = Math.round((sTotalReq - sTotalPaid) * 100) / 100;
+
+            let actualDeferred = 0;
+            openInvoices.forEach(oi => {
+                let roundedRem = Math.round(oi.currentRem * 100) / 100;
+                oi.invRef.calculatedRemaining = roundedRem;
+                oi.invRef.computedRemaining = roundedRem;
+
+                let oldRem = parseFloat(oi.invRef.remaining) || 0;
+                if (Math.abs(oldRem - roundedRem) > 0.001) {
+                    oi.invRef.remaining = roundedRem;
+                    invoicesNeedSave = true;
+                }
+
+                actualDeferred += roundedRem;
+            });
+
+            actualDeferred = Math.round(actualDeferred * 100) / 100;
+            currentBal = Math.round((netDebt - actualDeferred) * 100) / 100;
+
+            s.balance = -netDebt;
+            s.calculatedBalance = -netDebt;
+            s.netBalanceVal = Math.abs(netDebt);
+            s.isNetDebt = netDebt > 0;
+            s.deferredInvoicesTotal = actualDeferred;
+            s.displayCurrentBalance = Math.abs(currentBal);
+            s.isCurrentBalDebt = currentBal > 0;
+        });
+
+        if (invoicesNeedSave && typeof this.savePurchaseInvoices === 'function') {
+            this._isCalculatingBalances = true;
+            try {
+                this.savePurchaseInvoices(invoices);
+            } finally {
+                this._isCalculatingBalances = false;
+            }
+        }
+
+        if (targetSupplierId !== null && targetSupplierId !== undefined) {
+            return suppliers.find(s => String(s.id) === String(targetSupplierId)) || null;
+        }
+        return suppliers;
+    },
+
+    // 🌟 المحرك المركزي لبناء كشف الحساب الموحد للعميل أو المورد (يوحد إشارة netDebt للعميل والمورد معاً) 🌟
+    _buildUnifiedStatement: function(entityId, isSupplier = false, duration = 'allTime', customStartDate = null, customEndDate = null) {
+        let entity = isSupplier
+            ? this.calculateSupplierBalances(entityId)
+            : this.calculateCustomerBalances(entityId);
+        if (!entity) return null;
+
+        let allInvoices = isSupplier ? this.getPurchaseInvoices(true) : this.getSalesInvoices(true);
+        let allMoves = this.getTreasuryMoves(false, true);
+        let eIdStr = String(entity.id);
+        let eNorm = window.Utils.normalizeName(entity.name || '');
+
+        let entityInvoices = allInvoices.filter(inv => {
+            if (!inv) return false;
+            let invEntityNorm = window.Utils.normalizeName(isSupplier ? (inv.supplier || inv.supplierName || '') : (inv.customer || inv.customerName || ''));
+            let invEntityId = isSupplier ? inv.supplierId : inv.customerId;
+            let isMatch = (
+                (invEntityId !== undefined && invEntityId !== null && String(invEntityId) === eIdStr) ||
+                (eNorm !== '' && invEntityNorm === eNorm)
+            );
+            let isValid = (inv.type !== 'quotation' && !inv.isDeleted && inv.status !== 'deleted' && !inv.isCanceled && inv.type !== 'canceled');
+            return isMatch && isValid;
+        });
+
+        let vouchers = this._collectUnifiedEntityTransactions(entity, allMoves, isSupplier);
+        let allItems = [];
+
+        let openingDebt = parseFloat(entity.openingBalance) || 0;
+        if (openingDebt !== 0) {
+            allItems.push({
+                date: window.Utils.normalizeDateStr(entity.createdAt || '2020-01-01'),
+                title: 'رصيد افتتاحي',
+                leh: openingDebt < 0 ? Math.abs(openingDebt) : 0,
+                aleih: openingDebt > 0 ? openingDebt : 0,
+                id: 0,
+                notes: 'رصيد أول المدة'
+            });
+        }
+
+        entityInvoices.forEach(inv => {
+            let invTot = parseFloat(inv.total) || 0;
+            let invDiscount = parseFloat(inv.discount) || 0;
+            let invPaid = parseFloat(inv.paid) || 0;
+            let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                ? parseFloat(inv.initialPaid)
+                : invPaid;
+            let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null && !isNaN(parseFloat(inv.initialRemaining)))
+                ? parseFloat(inv.initialRemaining)
+                : (parseFloat(inv.remaining) || 0);
+
+            let finalReq = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDiscount > 0) ? invTot : (invTot - invDiscount);
+            if (finalReq < 0) finalReq = 0;
+
+            let appliedAmount = this._getAppliedVoucherAmountForInvoice(inv, vouchers, isSupplier);
+            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                ? Math.max(0, parseFloat(inv.initialPaid))
+                : Math.max(0, invPaid - appliedAmount);
+
+            let isReturn = isSupplier
+                ? (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return')
+                : (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+
+            let invoiceTypeLabel = isSupplier
+                ? (isReturn ? '<span style="color:#ff1a40; font-weight:bold;">فاتورة مرتجع مشتريات</span>' : 'فاتورة مشتريات')
+                : (isReturn ? '<span style="color:#ff1a40; font-weight:bold;">فاتورة مرتجع بيع</span>' : 'فاتورة بيع');
+
+            let normInvDate = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+
+            if (isReturn) {
+                allItems.push({ date: normInvDate, title: `${invoiceTypeLabel} رقم: ${inv.id}`, leh: finalReq, aleih: 0, id: inv.id, notes: inv.notes || '---' });
+            } else {
+                allItems.push({ date: normInvDate, title: `${invoiceTypeLabel} رقم: ${inv.id}`, leh: 0, aleih: finalReq, id: inv.id, notes: inv.notes || '---' });
+            }
+
+            if (checkoutPaid > 0) {
+                let receiptLabel = isSupplier
+                    ? (isReturn ? 'استرداد نقدي أثناء المرتجع' : 'سداد نقدي أثناء الشراء')
+                    : (isReturn ? 'رد نقدي أثناء المرتجع' : 'تحصيل نقدي أثناء البيع');
+                allItems.push({
+                    date: normInvDate,
+                    title: `${receiptLabel} (فاتورة ${inv.id})`,
+                    leh: isReturn ? 0 : checkoutPaid,
+                    aleih: isReturn ? checkoutPaid : 0,
+                    id: String(inv.id) + '_cash',
+                    notes: '---'
+                });
+            }
+        });
+
+        vouchers.forEach(t => {
+            let isPaymentReduceDebt = isSupplier
+                ? (t.type === 'payment' || t.type === 'purchase_payment')
+                : (t.type === 'receipt');
+            let titleText = isSupplier
+                ? (isPaymentReduceDebt ? `سند سداد لمورد رقم ${t.id}` : `سند استلام من مورد رقم ${t.id}`)
+                : (isPaymentReduceDebt ? `سند تحصيل نقدية رقم ${t.id}` : `سند مديونية رقم ${t.id}`);
+
+            let editTag = (t._lastModifiedBy && t._device && t._lastModifiedBy !== t._device) ? `✏️ تعديل: ${t._lastModifiedBy}` : '';
+            let devName = t._device ? `<br><span style="font-size:11px; color:#38bdf8;">💻 سُجل بواسطة: ${t._device} ${editTag}</span>` : '';
+
+            allItems.push({
+                date: window.Utils.normalizeDateStr(t.date, t.timestamp),
+                title: `${titleText} ${devName}`,
+                leh: isPaymentReduceDebt ? (parseFloat(t.amount) || 0) : 0,
+                aleih: !isPaymentReduceDebt ? (parseFloat(t.amount) || 0) : 0,
+                id: t.id,
+                notes: t.notes || '---'
+            });
+        });
+
+        let now = new Date();
+        let prevLeh = 0, prevAleih = 0;
+        let combined = [];
+
+        allItems.forEach(item => {
+            if (!item.date) { combined.push(item); return; }
+            let itemDate = new Date(window.Utils.getSafeTime(item.date) || item.date);
+            let includeInCurrent = false;
+
+            if (duration === 'allTime') {
+                includeInCurrent = true;
+            } else if (duration === 'custom' && customStartDate && customEndDate) {
+                let itemTime = itemDate.getTime();
+                let startTime = window.Utils.getSafeTime(customStartDate) - 43200000;
+                let endTime = window.Utils.getSafeTime(customEndDate) + 43200000;
+                if (itemTime >= startTime && itemTime <= endTime) includeInCurrent = true;
+                else if (itemTime < startTime) { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else if (duration === 'today') {
+                if (itemDate.toDateString() === now.toDateString()) includeInCurrent = true;
+                else if (itemDate < now) { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else if (duration === 'yesterday') {
+                let yest = new Date(now); yest.setDate(now.getDate() - 1);
+                if (itemDate.toDateString() === yest.toDateString()) includeInCurrent = true;
+                else if (itemDate < yest) { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else if (duration === '7days') {
+                let d = new Date(now); d.setDate(now.getDate() - 7); d.setHours(0, 0, 0, 0);
+                if (itemDate >= d) includeInCurrent = true;
+                else { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else if (duration === 'thisMonth') {
+                let startM = new Date(now.getFullYear(), now.getMonth(), 1);
+                if (itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear()) includeInCurrent = true;
+                else if (itemDate < startM) { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else if (duration === '30days') {
+                let d = new Date(now); d.setDate(now.getDate() - 30); d.setHours(0, 0, 0, 0);
+                if (itemDate >= d) includeInCurrent = true;
+                else { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else if (duration === 'lastMonth') {
+                let lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                if (itemDate.getMonth() === lm.getMonth() && itemDate.getFullYear() === lm.getFullYear()) includeInCurrent = true;
+                else if (itemDate < lm) { prevLeh += item.leh; prevAleih += item.aleih; }
+            } else {
+                includeInCurrent = true;
+            }
+            if (includeInCurrent) combined.push(item);
+        });
+
+        combined.sort((a, b) => {
+            let dateDiff = window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date);
+            if (dateDiff !== 0) return dateDiff;
+            return window.Utils.extractSerialNum(a.id) - window.Utils.extractSerialNum(b.id);
+        });
+
+        let totalLeh = 0, totalAleih = 0;
+        combined.forEach(item => {
+            totalLeh += item.leh;
+            totalAleih += item.aleih;
+        });
+
+        // توحيد إشارة الرصيد الصافي للعميل والمورد معاً لمنع انعكاس رصيد المورد في كشف الحساب
+        let netDebt = -(entity.balance || 0);
+        return {
+            entity: entity,
+            rows: combined,
+            prevAleih: Math.round(prevAleih * 100) / 100,
+            prevLeh: Math.round(prevLeh * 100) / 100,
+            totalAleih: Math.round(totalAleih * 100) / 100,
+            totalLeh: Math.round(totalLeh * 100) / 100,
+            netDebt: Math.round(netDebt * 100) / 100,
+            isNetDebt: netDebt > 0
+        };
+    },
+
+    getCustomerStatement: function(customerId, duration = 'allTime', customStartDate = null, customEndDate = null) {
+        return this._buildUnifiedStatement(customerId, false, duration, customStartDate, customEndDate);
+    },
+
+    getSupplierStatement: function(supplierId, duration = 'allTime', customStartDate = null, customEndDate = null) {
+        return this._buildUnifiedStatement(supplierId, true, duration, customStartDate, customEndDate);
+    },
+
+    getSalesInvoices: function(includeCanceled = true) {
+        let invs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []);
+        let normalized = invs.map(inv => {
+            if (!inv) return null;
+            inv.date = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+            inv.timestamp = window.Utils.alignTimestampWithDate(inv.date, inv.timestamp);
+            if (inv.type === 'return_sale' || inv.type === 'sales_return') {
+                inv.type = 'return';
+            }
+            let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
+            inv.computedRemaining = isNaN(remVal) ? 0 : remVal;
             return inv;
+        }).filter(Boolean);
+
+        return includeCanceled ? normalized : normalized.filter(inv => !inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
+    },
+
+    saveSalesInvoices: function(data) {
+        if (!Array.isArray(data)) return;
+        let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_sales_invoices'), []);
+        let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
+        let rawCustomers = safeParseJSON(localStorage.getItem('seraj_customers'), []);
+        let allMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+        let now = Date.now();
+
+        let cleanData = data.map(inv => {
+            if (!inv) return null;
+            try {
+                let cleanInv = JSON.parse(JSON.stringify(inv));
+                cleanInv.date = window.Utils.normalizeDateStr(cleanInv.date, cleanInv.timestamp);
+                cleanInv.timestamp = window.Utils.alignTimestampWithDate(cleanInv.date, cleanInv.timestamp || now);
+
+                if (cleanInv.type === 'canceled' || cleanInv.status === 'deleted' || cleanInv.isDeleted) {
+                    cleanInv.isCanceled = true;
+                }
+                if (cleanInv.type === 'return_sale' || cleanInv.type === 'sales_return') {
+                    cleanInv.type = 'return';
+                }
+                if (cleanInv.customer) cleanInv.customer = String(cleanInv.customer).trim();
+
+                let oldInv = oldMap.get(String(cleanInv.id));
+
+                if (!oldInv) {
+                    if (cleanInv.initialPaid === undefined || cleanInv.initialPaid === null) {
+                        cleanInv.initialPaid = parseFloat(cleanInv.paid) || 0;
+                    }
+                    if (cleanInv.initialRemaining === undefined || cleanInv.initialRemaining === null) {
+                        cleanInv.initialRemaining = parseFloat(cleanInv.remaining) || 0;
+                    }
+                } else if (!this._isCalculatingBalances) {
+                    let oldPaid = parseFloat(oldInv.paid) || 0;
+                    let newPaid = parseFloat(cleanInv.paid) || 0;
+                    let oldTotal = parseFloat(oldInv.total) || 0;
+                    let newTotal = parseFloat(cleanInv.total) || 0;
+                    let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newPaid - oldPaid) > 0.001 || Math.abs(newTotal - oldTotal) > 0.001);
+
+                    if (wasEditedInHistory) {
+                        let appliedVouchers = 0;
+                        let cNorm = window.Utils.normalizeName(cleanInv.customer || cleanInv.customerName || '');
+                        let matchedCust = rawCustomers.find(c => c && (String(c.id) === String(cleanInv.customerId) || (cNorm && window.Utils.normalizeName(c.name) === cNorm)));
+                        if (matchedCust) {
+                            let validTxs = this._collectUnifiedEntityTransactions(matchedCust, allMoves, false);
+                            appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, false);
+                        }
+                        cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
+                        cleanInv.initialRemaining = Math.max(0, Math.round((newTotal - cleanInv.initialPaid) * 100) / 100);
+                    } else {
+                        if (cleanInv.initialPaid === undefined && oldInv.initialPaid !== undefined) cleanInv.initialPaid = oldInv.initialPaid;
+                        if (cleanInv.initialRemaining === undefined && oldInv.initialRemaining !== undefined) cleanInv.initialRemaining = oldInv.initialRemaining;
+                    }
+                }
+
+                let remVal = cleanInv.calculatedRemaining !== undefined ? parseFloat(cleanInv.calculatedRemaining) : (parseFloat(cleanInv.remaining) || 0);
+                cleanInv.computedRemaining = isNaN(remVal) ? 0 : remVal;
+
+                // استبعاد الحقول المحسوبة المؤقتة (computedRemaining و calculatedRemaining) عند المقارنة مع الكاش لمنع تضخم طابور المزامنة
+                if (!oldInv || JSON.stringify(_stripComputedFieldsForDiff(oldInv)) !== JSON.stringify(_stripComputedFieldsForDiff(cleanInv))) {
+                    cleanInv._lastModified = now;
+                } else if (oldInv._lastModified) {
+                    cleanInv._lastModified = oldInv._lastModified;
+                }
+                return cleanInv;
+            } catch (err) {
+                console.error("Sales JSON Clean Error:", err);
+                return inv;
+            }
+        }).filter(Boolean);
+
+        _internalSetItem('seraj_sales_invoices', JSON.stringify(cleanData));
+        saveArrayToQueueSafely('sales_invoices', cleanData);
+    },
+
+    getPurchaseInvoices: function(includeCanceled = true) {
+        let invs = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
+        let normalized = invs.map(inv => {
+            if (!inv) return null;
+            inv.date = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+            inv.timestamp = window.Utils.alignTimestampWithDate(inv.date, inv.timestamp);
+            let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
+            inv.computedRemaining = isNaN(remVal) ? 0 : remVal;
+            return inv;
+        }).filter(Boolean);
+
+        return includeCanceled ? normalized : normalized.filter(inv => !inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
+    },
+
+    savePurchaseInvoices: function(data, newInvoiceItems = null) {
+        if (!Array.isArray(data)) return;
+        let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_purchase_invoices'), []);
+        let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
+        let rawSuppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []);
+        let allMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+        let now = Date.now();
+        let autoDetectedNewItems = [];
+
+        let cleanData = data.map(inv => {
+            if (!inv) return null;
+            try {
+                let cleanInv = JSON.parse(JSON.stringify(inv));
+                cleanInv.date = window.Utils.normalizeDateStr(cleanInv.date, cleanInv.timestamp);
+                cleanInv.timestamp = window.Utils.alignTimestampWithDate(cleanInv.date, cleanInv.timestamp || now);
+
+                if (cleanInv.type === 'canceled' || cleanInv.status === 'deleted' || cleanInv.isDeleted) {
+                    cleanInv.isCanceled = true;
+                }
+                if (cleanInv.supplier) cleanInv.supplier = String(cleanInv.supplier).trim();
+
+                let oldInv = oldMap.get(String(cleanInv.id));
+
+                if (!oldInv && !cleanInv.isCanceled && cleanInv.type !== 'return' && Array.isArray(cleanInv.items)) {
+                    autoDetectedNewItems.push(...cleanInv.items);
+                }
+
+                if (!oldInv) {
+                    if (cleanInv.initialPaid === undefined || cleanInv.initialPaid === null) {
+                        cleanInv.initialPaid = parseFloat(cleanInv.paid) || 0;
+                    }
+                    if (cleanInv.initialRemaining === undefined || cleanInv.initialRemaining === null) {
+                        cleanInv.initialRemaining = parseFloat(cleanInv.remaining) || 0;
+                    }
+                } else if (!this._isCalculatingBalances) {
+                    let oldPaid = parseFloat(oldInv.paid) || 0;
+                    let newPaid = parseFloat(cleanInv.paid) || 0;
+                    let oldTotal = parseFloat(oldInv.total) || 0;
+                    let newTotal = parseFloat(cleanInv.total) || 0;
+                    let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newPaid - oldPaid) > 0.001 || Math.abs(newTotal - oldTotal) > 0.001);
+
+                    if (wasEditedInHistory) {
+                        let appliedVouchers = 0;
+                        let sNorm = window.Utils.normalizeName(cleanInv.supplier || cleanInv.supplierName || '');
+                        let matchedSupp = rawSuppliers.find(s => s && (String(s.id) === String(cleanInv.supplierId) || (sNorm && window.Utils.normalizeName(s.name) === sNorm)));
+                        if (matchedSupp) {
+                            let validTxs = this._collectUnifiedEntityTransactions(matchedSupp, allMoves, true);
+                            appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, true);
+                        }
+                        cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
+                        cleanInv.initialRemaining = Math.max(0, Math.round((newTotal - cleanInv.initialPaid) * 100) / 100);
+                    } else {
+                        if (cleanInv.initialPaid === undefined && oldInv.initialPaid !== undefined) cleanInv.initialPaid = oldInv.initialPaid;
+                        if (cleanInv.initialRemaining === undefined && oldInv.initialRemaining !== undefined) cleanInv.initialRemaining = oldInv.initialRemaining;
+                    }
+                }
+
+                let remVal = cleanInv.calculatedRemaining !== undefined ? parseFloat(cleanInv.calculatedRemaining) : (parseFloat(cleanInv.remaining) || 0);
+                cleanInv.computedRemaining = isNaN(remVal) ? 0 : remVal;
+
+                // استبعاد الحقول المحسوبة المؤقتة عند المقارنة مع الكاش لمنع تضخم طابور المزامنة
+                if (!oldInv || JSON.stringify(_stripComputedFieldsForDiff(oldInv)) !== JSON.stringify(_stripComputedFieldsForDiff(cleanInv))) {
+                    cleanInv._lastModified = now;
+                } else if (oldInv._lastModified) {
+                    cleanInv._lastModified = oldInv._lastModified;
+                }
+                return cleanInv;
+            } catch (err) {
+                console.error("Purchase JSON Clean Error:", err);
+                return inv;
+            }
+        }).filter(Boolean);
+
+        _internalSetItem('seraj_purchase_invoices', JSON.stringify(cleanData));
+        saveArrayToQueueSafely('purchase_invoices', cleanData);
+
+        let itemsToClean = (Array.isArray(newInvoiceItems) && newInvoiceItems.length > 0) ? newInvoiceItems : autoDetectedNewItems;
+        if (itemsToClean.length > 0) {
+            this.cleanSmartNotesAfterPurchase(itemsToClean);
         }
-    }).filter(Boolean);
-
-    localStorage.setItem('seraj_sales_invoices', JSON.stringify(cleanData)); 
-    saveArrayToQueueSafely('sales_invoices', cleanData); 
-},
-
-getPurchaseInvoices: function(includeCanceled = true) { 
-    let invs = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []); 
-    return includeCanceled ? invs : invs.filter(inv => inv && !inv.isCanceled && inv.type !== 'canceled' && !inv.isDeleted && inv.status !== 'deleted');
-},
-savePurchaseInvoices: function(data, newInvoiceItems = null) { 
-    if (!Array.isArray(data)) return;
-    let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_purchase_invoices'), []);
-    let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
-    let now = Date.now();
-
-    data.forEach(inv => {
-        if (!inv) return;
-        if (!inv.timestamp) inv.timestamp = now;
-        if (inv.type === 'canceled' || inv.status === 'deleted' || inv.isDeleted) inv.isCanceled = true;
-        if (inv.supplier) inv.supplier = String(inv.supplier).trim();
-        let oldInv = oldMap.get(String(inv.id));
-        if (!oldInv || JSON.stringify(oldInv) !== JSON.stringify(inv)) {
-            inv._lastModified = now;
-        }
-    });
-    localStorage.setItem('seraj_purchase_invoices', JSON.stringify(data)); 
-    saveArrayToQueueSafely('purchase_invoices', data); 
-    
-    if (newInvoiceItems && newInvoiceItems.length > 0) {
-        this.cleanSmartNotesAfterPurchase(newInvoiceItems);
-    }
-},
+    },
 
     cleanSmartNotesAfterPurchase: function(newInvoiceItems) {
         if (!newInvoiceItems || newInvoiceItems.length === 0) return;
-        
+
         let smartNotesDB = this.getSmartNotes();
         let isModified = false;
-        let purchasedNames = newInvoiceItems.map(item => String(item.name).trim().toLowerCase());
+        let purchasedNormNames = newInvoiceItems
+            .map(item => window.Utils.normalizeName(item?.name || item?.text || ''))
+            .filter(Boolean);
+
+        if (purchasedNormNames.length === 0) return;
 
         for (let i = smartNotesDB.length - 1; i >= 0; i--) {
             let note = smartNotesDB[i];
-            if (note.items && note.items.length > 0) {
+            if (note && Array.isArray(note.items) && note.items.length > 0) {
                 let originalCount = note.items.length;
                 note.items = note.items.filter(noteItem => {
-                    let noteItemName = String(noteItem.name || noteItem.text || '').replace(/<[^>]*>?/gm, '').replace(/\(مؤرشف\)/g, '').trim().toLowerCase();
-                    return !purchasedNames.includes(noteItemName);
+                    let rawName = String(noteItem?.name || noteItem?.text || '').replace(/<[^>]*>?/gm, '').replace(/\(مؤرشف\)/g, '');
+                    let normNoteItem = window.Utils.normalizeName(rawName);
+                    return !purchasedNormNames.includes(normNoteItem);
                 });
-                
+
                 if (note.items.length !== originalCount) {
                     isModified = true;
-                    // إذا أصبحت النوتة فارغة وليس لها عنوان مخصص، يتم حذفها بالكامل
                     if (note.items.length === 0 && (!note.title || note.title.includes('بدون اسم') || note.title.includes('نواقص'))) {
                         smartNotesDB.splice(i, 1);
                     }
@@ -2202,43 +3146,236 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
         }
 
         if (isModified) {
-            // نستخدم دالة الحفظ المركزية لضمان رفع التحديث للسحابة وإطلاق الرنة والإشعار فوراً!
             this.saveSmartNotes(smartNotesDB);
         }
     },
-    
-    getTreasuryMoves: function(includeCanceled = true) { 
-        let moves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []); 
-        return includeCanceled ? moves : moves.filter(m => m && !m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted');
-    },
-    saveTreasuryMoves: function(data) { 
-        if (!Array.isArray(data)) return;
-        data.forEach(m => {
-            if (!m) return;
-            if (!m.vault && m.treasury) {
-                let v = String(m.treasury).toLowerCase();
-                m.vault = v.includes('insta') ? 'insta' : (v.includes('wallet') ? 'wallet' : 'main');
-            } else if (!m.vault) {
-                m.vault = 'main';
+
+    // فحص ما إذا كانت الفاتورة مسجلة مسبقاً كحركة في seraj_treasury_moves
+    _hasTreasuryMoveForInvoice: function(inv, rawMoves) {
+        if (!inv || !Array.isArray(rawMoves)) return false;
+        let invIdStr = String(inv.id ?? inv.invoiceNo ?? '').trim();
+        let invNoStr = String(inv.invoiceNo ?? invIdStr).trim();
+        if (!invIdStr) return false;
+        let shortId = invIdStr.length > 10 ? invIdStr.slice(-5) : invIdStr;
+
+        return rawMoves.some(m => {
+            if (!m) return false;
+            let mInvNo = String(m.invoiceNo ?? '').trim();
+            let mId = String(m.id ?? '').trim();
+            if (mInvNo && (mInvNo === invIdStr || mInvNo === invNoStr || (shortId && mInvNo === shortId))) return true;
+            if (mId === invIdStr || mId === invNoStr) return true;
+            if (m.notes) {
+                let notesStr = String(m.notes);
+                if (notesStr.includes(`#${invIdStr}`) || notesStr.includes(`فاتورة ${invIdStr}`) || notesStr.includes(`فاتورة رقم ${invIdStr}`)) return true;
+                if (shortId && shortId.length >= 4 && (notesStr.includes(`#${shortId}`) || notesStr.includes(`فاتورة ${shortId}`) || notesStr.includes(`فاتورة رقم ${shortId}`))) return true;
             }
+            return false;
         });
-        localStorage.setItem('seraj_treasury_moves', JSON.stringify(data)); 
-        saveArrayToQueueSafely('treasury_moves', data); 
-        
-        // 🚀 إجبار تحديث شاشة الخزنة فوراً بعد الحفظ لإرضاء أكواد الصفحة
-        try {
-            if (typeof renderMovementsTable === 'function') renderMovementsTable();
-            if (typeof updateTreasuryUI === 'function') updateTreasuryUI();
-        } catch(e) {}
     },
-    
-    getVaults: function() { 
-        return safeParseJSON(localStorage.getItem('seraj_vaults_v2'), { main: 0, insta: 0, wallet: 0 }); 
+
+    // محرك الخزينة المانع للازدواجية: يدمج الفواتير التي ليس لها حركة مسجلة مسبقاً عندما تكون (!rawOnly) سواء طُلبت الحركات النشطة أو الكل
+    getTreasuryMoves: function(includeCanceled = true, rawOnly = false) {
+        let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+
+        let cleanedRaw = rawMoves.filter(m => {
+            if (!m) return false;
+            let mIdStr = String(m.id ?? '');
+            return !(m._isInvoice === true || m._isMergedInvoice === true || mIdStr.endsWith('_vouch') || mIdStr.endsWith('_cash'));
+        }).map(m => {
+            let normDate = window.Utils.normalizeDateStr(m.date, m.timestamp);
+            let alignedTs = window.Utils.alignTimestampWithDate(normDate, m.timestamp);
+            let vKey = m.vault || m.treasury || 'main';
+            if (vKey !== 'main' && vKey !== 'insta' && vKey !== 'wallet') {
+                let low = String(vKey).toLowerCase();
+                vKey = (low.includes('insta') || low.includes('انستا') || low.includes('إنستا')) ? 'insta' : ((low.includes('wallet') || low.includes('محفظ')) ? 'wallet' : 'main');
+            }
+            return {
+                ...m,
+                vault: vKey,
+                treasury: vKey,
+                date: normDate,
+                timestamp: alignedTs
+            };
+        });
+
+        let resultMoves = includeCanceled
+            ? [...cleanedRaw]
+            : cleanedRaw.filter(m => !m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted');
+
+        // دمج الفواتير النشطة غير المسجلة مسبقاً في الخزينة طالما (!rawOnly)
+        if (!rawOnly) {
+            let salesInvs = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []);
+            salesInvs.forEach(inv => {
+                if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted || inv.status === 'deleted') return;
+                if (this._hasTreasuryMoveForInvoice(inv, cleanedRaw)) return;
+
+                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                    ? Math.max(0, parseFloat(inv.initialPaid))
+                    : Math.max(0, parseFloat(inv.paid) || 0);
+                if (checkoutPaid <= 0) return;
+
+                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                let vKey = inv.vault || inv.treasury || inv.paymentMethod || 'main';
+                if (vKey !== 'main' && vKey !== 'insta' && vKey !== 'wallet') {
+                    let low = String(vKey).toLowerCase();
+                    vKey = (low.includes('insta') || low.includes('انستا') || low.includes('إنستا')) ? 'insta' : ((low.includes('wallet') || low.includes('محفظ')) ? 'wallet' : 'main');
+                }
+                let normDate = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+                let alignedTs = window.Utils.alignTimestampWithDate(normDate, inv.timestamp);
+
+                resultMoves.push({
+                    id: String(inv.id) + '_inv_sale',
+                    invoiceNo: inv.id,
+                    type: isReturn ? 'return_sale' : 'sales',
+                    vault: vKey,
+                    treasury: vKey,
+                    amountAdd: isReturn ? 0 : Math.round(checkoutPaid * 100) / 100,
+                    amountDeduct: isReturn ? Math.round(checkoutPaid * 100) / 100 : 0,
+                    amount: Math.round(checkoutPaid * 100) / 100,
+                    notes: `${isReturn ? 'فاتورة مرتجع بيع' : 'فاتورة مبيعات'} رقم #${inv.id}${inv.customer ? ' - ' + inv.customer : ''}`,
+                    date: normDate,
+                    timestamp: alignedTs,
+                    customerId: inv.customerId || null,
+                    customer: inv.customer || null,
+                    _device: inv._device || myDeviceName,
+                    _lastModifiedBy: inv._lastModifiedBy || myDeviceName,
+                    _isInvoice: true,
+                    _isMergedInvoice: true
+                });
+            });
+
+            let purchaseInvs = safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []);
+            purchaseInvs.forEach(inv => {
+                if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted || inv.status === 'deleted') return;
+                if (this._hasTreasuryMoveForInvoice(inv, cleanedRaw)) return;
+
+                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+                    ? Math.max(0, parseFloat(inv.initialPaid))
+                    : Math.max(0, parseFloat(inv.paid) || 0);
+                if (checkoutPaid <= 0) return;
+
+                let isReturn = (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
+                let vKey = inv.vault || inv.treasury || inv.paymentMethod || 'main';
+                if (vKey !== 'main' && vKey !== 'insta' && vKey !== 'wallet') {
+                    let low = String(vKey).toLowerCase();
+                    vKey = (low.includes('insta') || low.includes('انستا') || low.includes('إنستا')) ? 'insta' : ((low.includes('wallet') || low.includes('محفظ')) ? 'wallet' : 'main');
+                }
+                let normDate = window.Utils.normalizeDateStr(inv.date, inv.timestamp);
+                let alignedTs = window.Utils.alignTimestampWithDate(normDate, inv.timestamp);
+
+                resultMoves.push({
+                    id: String(inv.id) + '_inv_purch',
+                    invoiceNo: inv.id,
+                    type: isReturn ? 'return_purchase' : 'purchase',
+                    vault: vKey,
+                    treasury: vKey,
+                    amountAdd: isReturn ? Math.round(checkoutPaid * 100) / 100 : 0,
+                    amountDeduct: isReturn ? 0 : Math.round(checkoutPaid * 100) / 100,
+                    amount: Math.round(checkoutPaid * 100) / 100,
+                    notes: `${isReturn ? 'فاتورة مرتجع مشتريات' : 'فاتورة مشتريات'} رقم #${inv.id}${inv.supplier ? ' - ' + inv.supplier : ''}`,
+                    date: normDate,
+                    timestamp: alignedTs,
+                    supplierId: inv.supplierId || null,
+                    supplier: inv.supplier || null,
+                    _device: inv._device || myDeviceName,
+                    _lastModifiedBy: inv._lastModifiedBy || myDeviceName,
+                    _isInvoice: true,
+                    _isMergedInvoice: true
+                });
+            });
+        }
+
+        return resultMoves;
+    },
+
+    // فلترة صارمة لمنع حفظ أي كائنات مدمجة أو وهمية (_isInvoice أو _vouch أو _cash) وتحديث أرصدة الخزائن تلقائياً
+    saveTreasuryMoves: function(data) {
+        if (!Array.isArray(data)) return;
+        let now = Date.now();
+
+        let cleanedMoves = data.filter(m => {
+            if (!m) return false;
+            let mIdStr = String(m.id ?? '');
+            if (m._isInvoice === true || m._isMergedInvoice === true || mIdStr.endsWith('_vouch') || mIdStr.endsWith('_cash') || mIdStr.endsWith('_inv_sale') || mIdStr.endsWith('_inv_purch')) {
+                return false;
+            }
+            return true;
+        }).map((m, idx) => {
+            let cleanM = { ...m };
+            delete cleanM._isInvoice;
+            delete cleanM._isMergedInvoice;
+
+            if (cleanM.id === undefined || cleanM.id === null || cleanM.id === '') {
+                cleanM.id = window.Utils.generateUniqueId();
+            } else if (String(cleanM.id).includes('.')) {
+                cleanM.id = window.Utils.sanitizeEntityId(cleanM.id);
+            }
+
+            if (!cleanM.vault && cleanM.treasury) {
+                let v = String(cleanM.treasury).toLowerCase();
+                cleanM.vault = (v.includes('insta') || v.includes('انستا') || v.includes('إنستا')) ? 'insta' : ((v.includes('wallet') || v.includes('محفظ')) ? 'wallet' : 'main');
+            } else if (!cleanM.vault) {
+                cleanM.vault = 'main';
+            }
+            cleanM.treasury = cleanM.vault;
+
+            cleanM.date = window.Utils.normalizeDateStr(cleanM.date, cleanM.timestamp);
+            cleanM.timestamp = window.Utils.alignTimestampWithDate(cleanM.date, cleanM.timestamp || (now + idx));
+            if (!cleanM._lastModified) cleanM._lastModified = now;
+            if (!cleanM._device) cleanM._device = myDeviceName;
+            if (!cleanM._lastModifiedBy) cleanM._lastModifiedBy = myDeviceName;
+
+            return cleanM;
+        });
+
+        _internalSetItem('seraj_treasury_moves', JSON.stringify(cleanedMoves));
+        saveArrayToQueueSafely('treasury_moves', cleanedMoves);
+
+        // تحديث أرصدة الخزائن تلقائياً لضمان تسميع أي مصروف أو حركة تضاف مباشرة في الخزينة
+        this.recalculateVaultBalances();
+    },
+
+    // دالة استخراج المصروفات لصفحة المحاسب الذكي (smart_accountant.html)
+    getExpenses: function(includeCanceled = false) {
+        let moves = this.getTreasuryMoves(includeCanceled, true);
+        return moves.filter(m => {
+            if (!m) return false;
+            let t = String(m.type || '').toLowerCase();
+            return t === 'expenses' || t === 'expense';
+        }).map(m => {
+            let amt = parseFloat(m.amountDeduct) || parseFloat(m.amount) || parseFloat(m.amountAdd) || 0;
+            let normDate = window.Utils.normalizeDateStr(m.date, m.timestamp);
+            return {
+                ...m,
+                amount: Math.round(amt * 100) / 100,
+                date: normDate,
+                timestamp: window.Utils.alignTimestampWithDate(normDate, m.timestamp)
+            };
+        });
+    },
+
+    // دالة استرجاع مرتجعات المبيعات لصفحة المحاسب الذكي
+    getSalesReturns: function(includeCanceled = false) {
+        let standaloneReturns = safeParseJSON(localStorage.getItem('seraj_sales_returns'), []);
+        if (!Array.isArray(standaloneReturns) || standaloneReturns.length === 0) return [];
+        let salesIds = new Set(safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []).map(i => String(i?.id)));
+        return standaloneReturns.filter(r => {
+            if (!r) return false;
+            if (!includeCanceled && (r.isCanceled || r.isDeleted || r.status === 'deleted')) return false;
+            return !salesIds.has(String(r.id));
+        }).map(r => ({
+            ...r,
+            date: window.Utils.normalizeDateStr(r.date, r.timestamp)
+        }));
+    },
+
+    getVaults: function() {
+        return safeParseJSON(localStorage.getItem('seraj_vaults_v2'), { main: 0, insta: 0, wallet: 0 });
     },
 
     _isSavingVaults: false,
 
-    saveVaults: function(data) { 
+    saveVaults: function(data) {
         if (this._isSavingVaults) return;
         let cleanVaults = {
             main: Math.round((parseFloat(data?.main) || 0) * 100) / 100,
@@ -2251,9 +3388,10 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
 
         this._isSavingVaults = true;
         try {
-            localStorage.setItem('seraj_vaults_v2', newStr); 
+            _internalSetItem('seraj_vaults_v2', newStr);
             if (cloudReady && navigator.onLine && window.dbCloud) {
-                window.dbCloud.ref('test_Stores/' + currentStoreId + '/vaults_v2').set(cleanVaults); 
+                let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
+                window.dbCloud.ref('test_Stores/' + activeStoreId + '/vaults_v2').set(cleanVaults);
             }
             emitSerajUpdate('vaults_v2', 'local');
         } finally {
@@ -2261,10 +3399,12 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
         }
     },
 
+    // إعادة حساب أرصدة الخزائن من الحركات النشطة (شاملة الفواتير المدمجة التي ليس لها حركة صريحة)
     recalculateVaultBalances: function(autoSave = true) {
-        let moves = this.getTreasuryMoves(false);
+        let activeMoves = this.getTreasuryMoves(false, false);
         let vaults = { main: 0, insta: 0, wallet: 0 };
-        moves.forEach(m => {
+        activeMoves.forEach(m => {
+            if (!m) return;
             let vKey = m.vault || 'main';
             if (vaults[vKey] === undefined) vKey = 'main';
             let add = parseFloat(m.amountAdd) || 0;
@@ -2282,31 +3422,51 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
 
     recordTreasuryTransaction: function(moveObj) {
         if (!moveObj) return null;
-        let moves = this.getTreasuryMoves(true);
-        let vaults = this.getVaults();
+        let moves = this.getTreasuryMoves(true, true);
+        let now = Date.now();
+
+        // حماية من الخصم المزدوج عند ورود حركة type: 'correction' من صفحات السجل لإلغاء/تعديل فاتورة
+        if (moveObj.type === 'correction') {
+            let targetInvNo = moveObj.invoiceNo;
+            if (!targetInvNo && moveObj.notes) {
+                let match = String(moveObj.notes).match(/(?:#|فاتورة\s*(?:رقم)?\s*)([A-Za-z0-9\-_]+)/);
+                if (match && match[1]) targetInvNo = match[1];
+            }
+            if (targetInvNo) {
+                let hasPriorRecord = this._hasTreasuryMoveForInvoice({ id: targetInvNo, invoiceNo: targetInvNo }, moves);
+                if (!hasPriorRecord) {
+                    // الفاتورة لم تكن مسجلة مسبقاً في seraj_treasury_moves (كانت تعتمد على الدمج فقط)، فلا نخصم حركة الـ correction حتى لا يُخصم المبلغ مرتين
+                    this.recalculateVaultBalances();
+                    return null;
+                }
+            }
+        }
 
         let vKey = moveObj.vault || moveObj.treasury || 'main';
         if (vKey !== 'main' && vKey !== 'insta' && vKey !== 'wallet') {
             let low = String(vKey).toLowerCase();
-            vKey = low.includes('insta') || low.includes('انستا') || low.includes('إنستا') ? 'insta' : (low.includes('wallet') || low.includes('محفظ') ? 'wallet' : 'main');
+            vKey = (low.includes('insta') || low.includes('انستا') || low.includes('إنستا')) ? 'insta' : ((low.includes('wallet') || low.includes('محفظ')) ? 'wallet' : 'main');
         }
 
         let amountAdd = parseFloat(moveObj.amountAdd) || 0;
         let amountDeduct = parseFloat(moveObj.amountDeduct) || 0;
         if (amountAdd === 0 && amountDeduct === 0 && moveObj.amount) {
             let rawAmt = parseFloat(moveObj.amount) || 0;
-            if (moveObj.direction === 'out' || moveObj.type === 'payment' || moveObj.type === 'purchase' || moveObj.type === 'purchases' || moveObj.type === 'purchase_payment' || moveObj.type === 'expenses' || moveObj.type === 'return_sale' || moveObj.type === 'sales_return') {
+            if (moveObj.direction === 'out' || moveObj.type === 'payment' || moveObj.type === 'purchase' || moveObj.type === 'purchases' || moveObj.type === 'purchase_payment' || moveObj.type === 'expenses' || moveObj.type === 'expense' || moveObj.type === 'return_sale' || moveObj.type === 'sales_return') {
                 amountDeduct = rawAmt;
             } else {
                 amountAdd = rawAmt;
             }
         }
 
-        // 🚀 توليد جميع صيغ التاريخ الممكنة لإرضاء أي فلتر في صفحة الخزنة
-        let todayStr = new Date().toISOString().split('T')[0]; 
-        let localDateStr = new Date().toLocaleDateString('en-GB'); // صيغة DD/MM/YYYY
-        
-        let moveId = moveObj.id || Date.now();
+        let normDate = window.Utils.normalizeDateStr(moveObj.date, moveObj.timestamp);
+        let alignedTs = window.Utils.alignTimestampWithDate(normDate, moveObj.timestamp || now);
+        let localDateStr = new Date(alignedTs).toLocaleDateString('en-GB');
+
+        let moveId = moveObj.id !== undefined && moveObj.id !== null && moveObj.id !== ''
+            ? window.Utils.sanitizeEntityId(moveObj.id)
+            : window.Utils.generateUniqueId();
+
         let newMove = {
             id: moveId,
             type: moveObj.type || 'direct',
@@ -2316,32 +3476,29 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
             amountDeduct: Math.round(amountDeduct * 100) / 100,
             amount: Math.round((amountAdd || amountDeduct) * 100) / 100,
             notes: moveObj.notes || '',
-            date: moveObj.date || todayStr,
-            dateFormatted: localDateStr, // حقل إضافي يقرأه كود الخزنة لو احتاج الصيغة المائلة
-            timestamp: moveObj.timestamp || Date.now(),
+            date: normDate,
+            dateFormatted: localDateStr,
+            timestamp: alignedTs,
             invoiceNo: moveObj.invoiceNo || null,
+            allocatedInvoices: Array.isArray(moveObj.allocatedInvoices) ? moveObj.allocatedInvoices : [],
             customerId: moveObj.customerId || null,
             customer: moveObj.customer ? String(moveObj.customer).trim() : null,
             supplierId: moveObj.supplierId || null,
             supplier: moveObj.supplier ? String(moveObj.supplier).trim() : null,
             _device: moveObj._device || myDeviceName,
+            _lastModified: moveObj._lastModified || now,
             _lastModifiedBy: moveObj._lastModifiedBy || localStorage.getItem('cashier_name') || myDeviceName
         };
 
-        let existingIdx = moves.findIndex(m => String(m.id) === String(moveId));
+        let existingIdx = moves.findIndex(m => m && String(m.id) === String(moveId));
         if (existingIdx > -1) {
-            let oldMove = moves[existingIdx];
-            let oldVault = oldMove.vault || 'main';
-            vaults[oldVault] = (parseFloat(vaults[oldVault]) || 0) - (parseFloat(oldMove.amountAdd) || 0) + (parseFloat(oldMove.amountDeduct) || 0);
             moves[existingIdx] = newMove;
         } else {
             moves.unshift(newMove);
         }
 
+        // saveTreasuryMoves يقوم بحفظ الحركات واستدعاء recalculateVaultBalances() تلقائياً وجدولة المزامنة الهادئة
         this.saveTreasuryMoves(moves);
-
-        vaults[vKey] = (parseFloat(vaults[vKey]) || 0) + newMove.amountAdd - newMove.amountDeduct;
-        this.saveVaults(vaults);
 
         return newMove;
     },
@@ -2354,77 +3511,85 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
             deviceId: myDeviceName
         });
     },
+
     saveStoreSettings: function(settings) {
-        localStorage.setItem('seraj_store_settings', JSON.stringify(settings));
+        _internalSetItem('seraj_store_settings', JSON.stringify(settings));
         emitSerajUpdate('store_settings', 'local');
     },
 
-// --- النوتة الذكية وقوائم النواقص (Smart Notes) ---
-_isSavingSmartNotes: false,
+    // --- النوتة الذكية وقوائم النواقص (Smart Notes - توحيد المعرف كـ String) ---
+    _isSavingSmartNotes: false,
 
-getSmartNotes: function() { 
-    return safeParseJSON(localStorage.getItem('seraj_smart_notes'), []); 
-},
+    getSmartNotes: function() {
+        let notes = safeParseJSON(localStorage.getItem('seraj_smart_notes'), []);
+        return notes.map((n, idx) => {
+            if (!n) return null;
+            return {
+                ...n,
+                id: String(n.id ?? n.noteId ?? n.timestamp ?? idx),
+                date: window.Utils.normalizeDateStr(n.date, n.timestamp)
+            };
+        }).filter(Boolean);
+    },
 
-saveSmartNotes: function(data) { 
-    if (this._isSavingSmartNotes) return;
-    if (!Array.isArray(data)) data = [];
-    this._isSavingSmartNotes = true;
+    saveSmartNotes: function(data) {
+        if (this._isSavingSmartNotes) return;
+        if (!Array.isArray(data)) data = [];
+        this._isSavingSmartNotes = true;
 
-    try {
-        // المقارنة مع الكاش السحابي لضمان اكتشاف أي تعديل حتى لو حفظت الصفحة في localStorage أولاً
-        let oldNotes = safeParseJSON(localStorage.getItem('seraj_cloud_cache_smart_notes'), []);
-        let oldMap = new Map(oldNotes.map(n => [String(n?.id), n]));
-        let newIds = new Set();
+        try {
+            let oldNotes = safeParseJSON(localStorage.getItem('seraj_cloud_cache_smart_notes'), []);
+            let oldMap = new Map(oldNotes.map(n => [String(n?.id), n]));
+            let newIds = new Set();
 
-        data.forEach((n, idx) => {
-            if (!n) return;
-            // ضمان وجود id لكل نوتة حتى يقبلها الفايربيز
-            if (n.id === undefined || n.id === null) {
-                n.id = n.noteId || n.timestamp || (Date.now() + idx);
-            }
-            let idStr = String(n.id);
-            newIds.add(idStr);
+            data.forEach((n, idx) => {
+                if (!n) return;
+                if (n.id === undefined || n.id === null) {
+                    n.id = n.noteId || n.timestamp || (Date.now() + idx);
+                }
+                n.id = String(n.id);
+                n.date = window.Utils.normalizeDateStr(n.date, n.timestamp);
+                let idStr = n.id;
+                newIds.add(idStr);
 
-            let oldN = oldMap.get(idStr);
-            let oldCopy = oldN ? { ...oldN } : null;
-            let newCopy = { ...n };
-            if (oldCopy) { delete oldCopy._lastModified; delete oldCopy._senderUid; delete oldCopy.updatedBy; }
-            delete newCopy._lastModified; delete newCopy._senderUid; delete newCopy.updatedBy;
+                let oldN = oldMap.get(idStr);
+                let oldCopy = oldN ? { ...oldN, id: String(oldN.id) } : null;
+                let newCopy = { ...n };
+                if (oldCopy) { delete oldCopy._lastModified; delete oldCopy._senderUid; delete oldCopy.updatedBy; }
+                delete newCopy._lastModified; delete newCopy._senderUid; delete newCopy.updatedBy;
 
-            if (!oldCopy || JSON.stringify(oldCopy) !== JSON.stringify(newCopy)) {
-                n._lastModified = Date.now();
-                n.updatedBy = myDeviceName;
-                n._senderUid = myDeviceUid;
-                // رفع فوري ومباشر للنوتة المعدلة للسحابة
-                addToSyncQueue('smart_notes', n);
-            } else if (!n._lastModified) {
-                n._lastModified = Date.now();
-                n.updatedBy = myDeviceName;
-                n._senderUid = myDeviceUid;
-                addToSyncQueue('smart_notes', n);
-            }
-        });
+                if (!oldCopy || JSON.stringify(oldCopy) !== JSON.stringify(newCopy)) {
+                    n._lastModified = Date.now();
+                    n.updatedBy = myDeviceName;
+                    n._senderUid = myDeviceUid;
+                    addToSyncQueue('smart_notes', n);
+                } else if (!n._lastModified) {
+                    n._lastModified = Date.now();
+                    n.updatedBy = myDeviceName;
+                    n._senderUid = myDeviceUid;
+                    addToSyncQueue('smart_notes', n);
+                }
+            });
 
-        // حذف أي نوتة تم مسحها من السحابة
-        oldNotes.forEach(oldN => {
-            if (oldN && oldN.id !== undefined && !newIds.has(String(oldN.id))) {
-                addToDeleteQueue('smart_notes', oldN.id);
-            }
-        });
+            oldNotes.forEach(oldN => {
+                if (oldN && oldN.id !== undefined && !newIds.has(String(oldN.id))) {
+                    addToDeleteQueue('smart_notes', String(oldN.id));
+                }
+            });
 
-        localStorage.setItem('seraj_smart_notes', JSON.stringify(data)); 
-        localStorage.setItem('seraj_cloud_cache_smart_notes', JSON.stringify(data));
-        localCollectionsCache['smart_notes'] = [...data];
-        processSyncQueue();
-        emitSerajUpdate('smart_notes', 'local');
-    } finally {
-        this._isSavingSmartNotes = false;
-    }
-},
+            _internalSetItem('seraj_smart_notes', JSON.stringify(data));
+            _internalSetItem('seraj_cloud_cache_smart_notes', JSON.stringify(data));
+            localCollectionsCache['smart_notes'] = [...data];
+            scheduleSyncQueue(3000);
+            emitSerajUpdate('smart_notes', 'local');
+        } finally {
+            this._isSavingSmartNotes = false;
+        }
+    },
 
-// =========================================================
+    // =========================================================
     // ☁️ محرك الأرشفة السحابية الذكي (Deep Archiving Engine)
+    // يحتفظ بآخر 50 فاتورة نقدية (طياري) أو فواتير آخر يومين ويرحّل الباقي والقديم (>90 يوماً) للسحابة
     // =========================================================
     archiveSmartData: async function() {
         if (!cloudReady || !navigator.onLine || !window.dbCloud) {
@@ -2433,31 +3598,47 @@ saveSmartNotes: function(data) {
         }
 
         return new Promise((resolve) => {
-            SerajConfirm("سيتم أرشفة الفواتير وحركات الخزينة الأقدم من 90 يوماً (والطياري الأقدم من 7 أيام) للسحابة، وتفريغ مساحة الجهاز مع الحفاظ على الأرصدة التراكمية. هل أنت متأكد؟", async (confirm) => {
+            SerajConfirm("سيتم أرشفة فواتير الكاش (الطياري) القديمة مع الاحتفاظ بآخر 50 فاتورة نقدية (أو فواتير آخر يومين)، وأرشفة الفواتير والحركات الأقدم من 90 يوماً للسحابة مع تثبيت الأرصدة الافتتاحية. هل أنت متأكد؟", async (confirm) => {
                 if (!confirm) return resolve(false);
 
                 showCloudStatus("⏳ جاري أرشفة البيانات القديمة للسحابة... برجاء عدم إغلاق الصفحة.");
 
                 let now = Date.now();
-                let days7 = now - (7 * 24 * 60 * 60 * 1000);
+                let days2 = now - (2 * 24 * 60 * 60 * 1000);
                 let days90 = now - (90 * 24 * 60 * 60 * 1000);
 
                 let sales = this.getSalesInvoices(true);
                 let purchases = this.getPurchaseInvoices(true);
-                let moves = this.getTreasuryMoves(true);
+                let moves = this.getTreasuryMoves(true, true);
                 let customers = this.getCustomers(true);
                 let suppliers = this.getSuppliers(true);
 
                 let archivePayload = { sales: {}, purchases: {}, treasury_moves: {} };
                 let newSales = [], newPurchases = [], newMoves = [];
 
-                // 1. فرز وأرشفة المبيعات
-                sales.forEach(inv => {
-                    let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                    let isAnonymous = (!inv.customerId && (!inv.customer || inv.customer.includes('طيار') || inv.customer.includes('نقد')));
+                // ترتيب المبيعات من الأحدث للأقدم لتحديد آخر 50 فاتورة نقدية (طياري/كاش) بدقة
+                let sortedSales = [...sales].sort((a, b) => {
+                    let diff = window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date);
+                    if (diff !== 0) return diff;
+                    return window.Utils.extractSerialNum(b.id) - window.Utils.extractSerialNum(a.id);
+                });
 
-                    if (isAnonymous && t < days7) {
-                        archivePayload.sales[inv.id] = inv;
+                let cashSalesKeptCount = 0;
+
+                sortedSales.forEach(inv => {
+                    if (!inv) return;
+                    let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
+                    let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
+                    let isAnonymousOrCash = (!inv.customerId && (!inv.customer || inv.customer.includes('طيار') || inv.customer.includes('نقد'))) || (remVal <= 0.01 && (parseFloat(inv.initialRemaining) || 0) <= 0.01 && (!inv.customerId));
+
+                    if (isAnonymousOrCash) {
+                        cashSalesKeptCount++;
+                        // الاحتفاظ محلياً بآخر 50 فاتورة نقدية أو فواتير آخر يومين وترحيل الباقي للسحابة
+                        if (cashSalesKeptCount <= 50 || t >= days2) {
+                            newSales.push(inv);
+                        } else {
+                            archivePayload.sales[inv.id] = inv;
+                        }
                     } else if (t < days90) {
                         archivePayload.sales[inv.id] = inv;
                     } else {
@@ -2465,107 +3646,193 @@ saveSmartNotes: function(data) {
                     }
                 });
 
-                // 2. فرز وأرشفة المشتريات
                 purchases.forEach(inv => {
+                    if (!inv) return;
                     let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
                     if (t < days90) archivePayload.purchases[inv.id] = inv;
                     else newPurchases.push(inv);
                 });
 
-                // 3. فرز وأرشفة الخزينة
-                moves.forEach(m => {
-                    let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                    if (t < days90) archivePayload.treasury_moves[m.id] = m;
-                    else newMoves.push(m);
+                // حساب صافي أثر الحركات والفواتير المؤرشفة على الخزائن لتثبيته كحركة رصيد مرحل حتى لا تتغير أرصدة الخزائن بعد الأرشفة
+                let archivedVaultDelta = { main: 0, insta: 0, wallet: 0 };
+
+                // أثر الفواتير المدمجة (التي لم يكن لها حركة خزينة صريحة) وتمت أرشفتها
+                Object.values(archivePayload.sales).forEach(inv => {
+                    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
+                    if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
+                        let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                        if (checkoutPaid > 0) {
+                            let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                            let vKey = inv.vault || inv.treasury || 'main';
+                            if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
+                            archivedVaultDelta[vKey] += isReturn ? -checkoutPaid : checkoutPaid;
+                        }
+                    }
                 });
 
-                // 4. استخلاص المديونيات القديمة وترحيلها لرصيد العملاء التراكمي
+                Object.values(archivePayload.purchases).forEach(inv => {
+                    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
+                    if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
+                        let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                        if (checkoutPaid > 0) {
+                            let isReturn = (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
+                            let vKey = inv.vault || inv.treasury || 'main';
+                            if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
+                            archivedVaultDelta[vKey] += isReturn ? checkoutPaid : -checkoutPaid;
+                        }
+                    }
+                });
+
+                moves.forEach(m => {
+                    if (!m) return;
+                    let t = window.Utils.getSafeTime(m.date || m.timestamp);
+                    if (t < days90 && !String(m.id).startsWith('arch_bal_')) {
+                        archivePayload.treasury_moves[m.id] = m;
+                        if (!m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted') {
+                            let vKey = m.vault || 'main';
+                            if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
+                            archivedVaultDelta[vKey] += ((parseFloat(m.amountAdd) || 0) - (parseFloat(m.amountDeduct) || 0));
+                        }
+                    } else {
+                        newMoves.push(m);
+                    }
+                });
+
+                // تثبيت صافي الحركات المؤرشفة في رصيد افتتاحي للخزائن داخل newMoves
+                ['main', 'insta', 'wallet'].forEach(vKey => {
+                    let delta = Math.round(archivedVaultDelta[vKey] * 100) / 100;
+                    if (Math.abs(delta) < 0.01) return;
+                    let existingArchMove = newMoves.find(m => m && String(m.id) === `arch_bal_${vKey}`);
+                    if (existingArchMove) {
+                        let netNow = ((parseFloat(existingArchMove.amountAdd) || 0) - (parseFloat(existingArchMove.amountDeduct) || 0)) + delta;
+                        existingArchMove.amountAdd = netNow >= 0 ? Math.round(netNow * 100) / 100 : 0;
+                        existingArchMove.amountDeduct = netNow < 0 ? Math.round(Math.abs(netNow) * 100) / 100 : 0;
+                        existingArchMove.amount = Math.round(Math.abs(netNow) * 100) / 100;
+                        existingArchMove._lastModified = now;
+                    } else {
+                        newMoves.push({
+                            id: `arch_bal_${vKey}`,
+                            type: 'direct',
+                            vault: vKey,
+                            treasury: vKey,
+                            amountAdd: delta >= 0 ? delta : 0,
+                            amountDeduct: delta < 0 ? Math.abs(delta) : 0,
+                            amount: Math.abs(delta),
+                            notes: 'رصيد مرحل من الأرشيف السحابي',
+                            date: window.Utils.getLocalDateString(days90),
+                            timestamp: days90,
+                            _device: myDeviceName,
+                            _lastModified: now,
+                            _lastModifiedBy: myDeviceName
+                        });
+                    }
+                });
+
+                // استخلاص المديونيات القديمة للفواتير والحركات المؤرشفة فقط وترحيلها لرصيد العملاء الافتتاحي
                 customers.forEach(c => {
                     let oldAleih = 0; let oldLeh = 0;
-                    
-                    sales.forEach(inv => {
-                        let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                        if (t < days90 && !inv.isCanceled && (String(inv.customerId) === String(c.id) || inv.customer === c.name)) {
+                    let cNorm = window.Utils.normalizeName(c.name || '');
+
+                    Object.values(archivePayload.sales).forEach(inv => {
+                        let invNorm = window.Utils.normalizeName(inv.customer || '');
+                        if (!inv.isCanceled && (String(inv.customerId) === String(c.id) || (cNorm && invNorm === cNorm))) {
                             let invTot = parseFloat(inv.total) || 0;
                             let invDisc = parseFloat(inv.discount) || 0;
-                            let req = (Math.abs(((parseFloat(inv.paid)||0) + (parseFloat(inv.remaining)||0)) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
+                            let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                            let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
+                            let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
                             if (req < 0) req = 0;
 
                             let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-                            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                            
-                            if (!isReturn) { oldAleih += req; oldLeh += checkoutPaid; } 
+                            let checkoutPaid = origPaid;
+
+                            if (!isReturn) { oldAleih += req; oldLeh += checkoutPaid; }
                             else { oldLeh += req; oldAleih += checkoutPaid; }
                         }
                     });
 
-                    moves.forEach(m => {
-                        let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                        if (t < days90 && !m.isCanceled && (String(m.customerId) === String(c.id) || m.customer === c.name)) {
+                    Object.values(archivePayload.treasury_moves).forEach(m => {
+                        let mNorm = window.Utils.normalizeName(m.customer || '');
+                        if (!m.isCanceled && (String(m.customerId) === String(c.id) || (cNorm && mNorm === cNorm))) {
                             let amt = parseFloat(m.amount) || 0;
-                            if (m.type === 'payment') oldAleih += amt;
+                            if (m.type === 'payment' || m.type === 'customer_payment') oldAleih += amt;
                             else if (m.type === 'receipt' || m.type === 'customer_receipt') oldLeh += amt;
                         }
                     });
 
-                    c.openingBalance = (parseFloat(c.openingBalance) || 0) + (oldAleih - oldLeh);
+                    if (Array.isArray(c.transactions)) {
+                        c.transactions = c.transactions.filter(tx => !tx || !archivePayload.treasury_moves[tx.id]);
+                    }
+
+                    c.openingBalance = Math.round(((parseFloat(c.openingBalance) || 0) + (oldAleih - oldLeh)) * 100) / 100;
                 });
 
-                // 5. استخلاص المديونيات القديمة وترحيلها لرصيد الموردين التراكمي
+                // استخلاص المديونيات القديمة للموردين وترحيلها لرصيدهم الافتتاحي
                 suppliers.forEach(s => {
                     let sTotalReq = 0; let sTotalPaid = 0;
+                    let sNorm = window.Utils.normalizeName(s.name || '');
 
-                    purchases.forEach(inv => {
-                        let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                        if (t < days90 && !inv.isCanceled && (String(inv.supplierId) === String(s.id) || inv.supplier === s.name)) {
+                    Object.values(archivePayload.purchases).forEach(inv => {
+                        let invNorm = window.Utils.normalizeName(inv.supplier || '');
+                        if (!inv.isCanceled && (String(inv.supplierId) === String(s.id) || (sNorm && invNorm === sNorm))) {
                             let invTot = parseFloat(inv.total) || 0;
                             let invDisc = parseFloat(inv.discount) || 0;
-                            let req = (Math.abs(((parseFloat(inv.paid)||0) + (parseFloat(inv.remaining)||0)) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
+                            let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                            let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
+                            let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
                             if (req < 0) req = 0;
 
-                            let isReturn = (inv.type === 'return' || inv.type === 'purchase_return');
-                            let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                            let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+                            let checkoutPaid = origPaid;
 
-                            if (!isReturn) { sTotalReq += req; sTotalPaid += checkoutPaid; } 
+                            if (!isReturn) { sTotalReq += req; sTotalPaid += checkoutPaid; }
                             else { sTotalReq -= req; sTotalPaid -= checkoutPaid; }
                         }
                     });
 
-                    moves.forEach(m => {
-                        let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                        if (t < days90 && !m.isCanceled && (String(m.supplierId) === String(s.id) || m.supplier === s.name)) {
+                    Object.values(archivePayload.treasury_moves).forEach(m => {
+                        let mNorm = window.Utils.normalizeName(m.supplier || '');
+                        if (!m.isCanceled && (String(m.supplierId) === String(s.id) || (sNorm && mNorm === sNorm))) {
                             let amt = parseFloat(m.amount) || 0;
                             if (m.type === 'receipt' || m.type === 'supplier_receipt') sTotalReq += amt;
                             else if (m.type === 'payment' || m.type === 'purchase_payment') sTotalPaid += amt;
                         }
                     });
 
-                    s.openingBalance = (parseFloat(s.openingBalance) || 0) + (sTotalReq - sTotalPaid);
+                    if (Array.isArray(s.transactions)) {
+                        s.transactions = s.transactions.filter(tx => !tx || !archivePayload.treasury_moves[tx.id]);
+                    }
+
+                    s.openingBalance = Math.round(((parseFloat(s.openingBalance) || 0) + (sTotalReq - sTotalPaid)) * 100) / 100;
                 });
 
-                // 6. رفع الأرشيف للسحابة الكبيرة ثم تفريغ مساحة الجهاز
                 try {
                     let currentYear = new Date().getFullYear();
-                    let archiveRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/Archive_' + currentYear);
+                    let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
+                    let archiveRef = window.dbCloud.ref('test_Stores/' + activeStoreId + '/Archive_' + currentYear);
                     await archiveRef.update(archivePayload);
+
+                    // حذف الفواتير والحركات المؤرشفة من المسار الحي على السحابة لتخفيف التحميل
+                    Object.keys(archivePayload.sales).forEach(id => addToDeleteQueue('sales_invoices', id));
+                    Object.keys(archivePayload.purchases).forEach(id => addToDeleteQueue('purchase_invoices', id));
+                    Object.keys(archivePayload.treasury_moves).forEach(id => addToDeleteQueue('treasury_moves', id));
 
                     this.saveCustomers(customers);
                     this.saveSuppliers(suppliers);
-                    
-                    localStorage.setItem('seraj_sales_invoices', JSON.stringify(newSales));
+
+                    _internalSetItem('seraj_sales_invoices', JSON.stringify(newSales));
                     saveArrayToQueueSafely('sales_invoices', newSales);
 
-                    localStorage.setItem('seraj_purchase_invoices', JSON.stringify(newPurchases));
+                    _internalSetItem('seraj_purchase_invoices', JSON.stringify(newPurchases));
                     saveArrayToQueueSafely('purchase_invoices', newPurchases);
 
-                    localStorage.setItem('seraj_treasury_moves', JSON.stringify(newMoves));
-                    saveArrayToQueueSafely('treasury_moves', newMoves);
+                    this.saveTreasuryMoves(newMoves);
+                    await this.syncNow();
 
-                    SerajAlert("✅ تمت عملية الأرشفة العميقة بنجاح! تم رفع القديم للسحابة وتفريغ المساحة.", "success", () => {
+                    SerajAlert("✅ تمت عملية الأرشفة الذكية بنجاح! تم الاحتفاظ بآخر 50 فاتورة نقدية وترحيل القديم للسحابة مع تثبيت الأرصدة.", "success", () => {
                         window.location.reload();
                     });
                     resolve(true);
-
                 } catch (e) {
                     console.error("Archive Error:", e);
                     SerajAlert("❌ خطأ أثناء الرفع للسحابة، لم يتم مسح الداتا المحلية لحمايتها من الضياع.", "error");
@@ -2575,7 +3842,6 @@ saveSmartNotes: function(data) {
         });
     },
 
-    // دالة استدعاء الأرشيف من السحابة (لأغراض البحث والتقارير لاحقاً)
     fetchArchivedData: async function(year = new Date().getFullYear()) {
         if (!cloudReady || !navigator.onLine || !window.dbCloud) {
             SerajAlert("يجب الاتصال بالإنترنت للبحث في الأرشيف!", "error");
@@ -2583,7 +3849,8 @@ saveSmartNotes: function(data) {
         }
         showCloudStatus("⏳ جاري سحب الأرشيف من السحابة... برجاء الانتظار.");
         try {
-            let snap = await window.dbCloud.ref('test_Stores/' + currentStoreId + '/Archive_' + year).once('value');
+            let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
+            let snap = await window.dbCloud.ref('test_Stores/' + activeStoreId + '/Archive_' + year).once('value');
             if (snap.exists()) {
                 showCloudStatus("✅ تم جلب الأرشيف بنجاح.");
                 return snap.val();
@@ -2603,24 +3870,22 @@ saveSmartNotes: function(data) {
             sales: this.getSalesInvoices(true),
             purchases: this.getPurchaseInvoices(true),
             products: this.getProducts(true),
-            customers: this.getCustomers(false),
+            customers: this.getCustomers(false, false),
             suppliers: this.getSuppliers(false),
-            treasuryMoves: this.getTreasuryMoves(true),
+            treasuryMoves: this.getTreasuryMoves(true, true),
             smartNotes: this.getSmartNotes()
         };
     },
 
-
-    
     applySavedTheme: function() {
-        let b = localStorage.getItem('seraj_theme_border'); 
-        let g = localStorage.getItem('seraj_theme_glow'); 
-        let bg1 = localStorage.getItem('seraj_theme_bg1'); 
-        let bg2 = localStorage.getItem('seraj_theme_bg2'); 
-        let card = localStorage.getItem('seraj_theme_card'); 
+        let b = localStorage.getItem('seraj_theme_border');
+        let g = localStorage.getItem('seraj_theme_glow');
+        let bg1 = localStorage.getItem('seraj_theme_bg1');
+        let bg2 = localStorage.getItem('seraj_theme_bg2');
+        let card = localStorage.getItem('seraj_theme_card');
         let text = localStorage.getItem('seraj_theme_text');
         if (b && g) {
-            document.documentElement.style.setProperty('--neon-border', b); 
+            document.documentElement.style.setProperty('--neon-border', b);
             document.documentElement.style.setProperty('--neon-glow', g);
             if (bg1) document.documentElement.style.setProperty('--bg-dark-1', bg1);
             if (bg2) document.documentElement.style.setProperty('--bg-dark-2', bg2);
@@ -2635,1463 +3900,174 @@ saveSmartNotes: function(data) {
 // ---------------------------------------------------------
 function checkAndRunAutoCloudBackup() {
     if (!cloudReady || !navigator.onLine || !window.dbCloud) return;
-    
-    let lastBackupTime = parseInt(localStorage.getItem('seraj_last_backup_timestamp') || '0');
+
+    let lastBackupTime = parseInt(localStorage.getItem('seraj_last_backup_timestamp') || '0', 10);
     let now = Date.now();
-    let oneDayMillis = 24 * 60 * 60 * 1000; 
+    let oneDayMillis = 24 * 60 * 60 * 1000;
 
     if ((now - lastBackupTime) > oneDayMillis) {
+        let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
         let fullSystemSnapshot = {
             timestamp: now,
             dateFormatted: new Date().toLocaleString('ar-EG'),
             deviceName: myDeviceName,
-            storeId: currentStoreId, 
+            storeId: activeStoreId,
             ...window.DB.getAggregatedData(),
             vaults: window.DB.getVaults()
         };
 
-        let backupRef = window.dbCloud.ref('test_Stores/' + currentStoreId + '/system_backup/latest_snapshot');
+        let backupRef = window.dbCloud.ref('test_Stores/' + activeStoreId + '/system_backup/latest_snapshot');
         backupRef.set(fullSystemSnapshot)
             .then(() => {
-                localStorage.setItem('seraj_last_backup_timestamp', now.toString());
+                _internalSetItem('seraj_last_backup_timestamp', now.toString());
                 console.log("☁️ تم تحديث النسخة الاحتياطية السحابية بنجاح.");
             })
             .catch(err => console.error("Auto Cloud Backup Error:", err));
     }
 }
 
-// # =========================================================================
-// # 🧠 القسم السادس: استوديو ومحرك المساعد الصوتي الديناميكي (SmartVoice V4)
-// # يدعم: 3 بروفايلات مستقلة (البيع / المشتريات / المخزن) + 24 فلتر قابل للترتيب
-// # والتشكيل والإيقاف + إنشاء قواعد جديدة بدون كود + بطاقات شرح علامة الاستفهام (؟)
-// # =========================================================================
-
-// # [أولاً]: غسالة الإكسيل وفك تشفير الحروف والرموز الخفية (متاحة عالمياً لكل الصفحات)
+// =========================================================================
+// 6. جسر الصوت المختصر (Minimal SmartVoice Bridge)
+// يحافظ فقط على الدوال الأساسية التي تستدعيها الشاشات دون أي فلاتر أو تعقيد
+// =========================================================================
 window.cleanExcelText = function(text) {
     if (!text) return "";
-    let t = String(text);
-    if (typeof t.normalize === 'function') {
-        t = t.normalize('NFKC');
-    }
-    t = t.replace(/_x000d_/gi, ' ')
-         .replace(/[\u200B-\u200F\u202A-\u202E\uFEFF]/g, '')
-         .replace(/[\r\n]+/g, ' ');
-    return t.replace(/\s+/g, ' ').trim();
+    return String(text).replace(/_x000d_/gi, ' ').replace(/[\u200B-\u200F\u202A-\u202E\uFEFF\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
-// # [ثانياً]: موسوعة الفلاتر القياسية الـ 24 (مع بطاقة الشرح الهندسي لعلامة الاستفهام ❓)
-const MasterPipelineCatalog = [
-    {
-        id: "f_excel_clean",
-        defaultOrder: 1,
-        enabled: true,
-        category: "مرحلة التنظيف وفك الالتصاق",
-        title: "غسالة رموز الإكسيل واليونيكود",
-        actionType: "system",
-        targetPattern: "_x000d_",
-        replacementVal: " ",
-        helpTitle: "غسالة رموز الإكسيل وفك التشفير (NFKC)",
-        helpDesc: "يقوم هذا الفلتر بمسح الرموز الخفية التي يتركها برنامج الإكسيل (مثل _x000d_)، ويفك تشفير الحروف العربية المكتوبة بخطوط قديمة لكي يراها محرك البحث حروفاً طبيعية.",
-        helpExample: "ﻟﻤﺒﻪ ٨٢ ﻭﺍﺕ_x000d_ ⬅️ لمبه ٨٢ وات",
-        helpAdvice: "الترتيب الافتراضي (رقم 1): يفضل دائماً بقاؤه في المركز الأول لتنظيف النص الخام قبل دخول أي فلتر آخر."
-    },
-    {
-        id: "f_digits_unstick",
-        defaultOrder: 2,
-        enabled: true,
-        category: "مرحلة التنظيف وفك الالتصاق",
-        title: "توحيد الأرقام الهندية وفك التصاقها بالحروف",
-        actionType: "system",
-        targetPattern: "٠١٢٣٤٥٦٧٨٩",
-        replacementVal: "0123456789",
-        helpTitle: "توحيد الأرقام وفصل الرقم الملتصق بالكلمة",
-        helpDesc: "يحول الأرقام الهندية (٩، ٣٦) إلى أرقام قياسية (9، 36)، ويفصل أي رقم ملتصق بالحروف العربية أو الإنجليزية حتى لا يعتبره الكمبيوتر كلمة مجهولة.",
-        helpExample: "٩وات / 5لمبة / بروفيل1.7مم ⬅️ 9 وات / 5 لمبة / بروفيل 1.7 مم",
-        helpAdvice: "الترتيب الافتراضي (رقم 2): يجب أن يسبق ماكينة تفكيك الكلمات ومقص الـ 10 حروف."
-    },
-    {
-        id: "f_deglue_words",
-        defaultOrder: 3,
-        enabled: true,
-        category: "مرحلة التنظيف وفك الالتصاق",
-        title: "المشرط الذكي لتفكيك الكلمات والأرقام الملتصقة",
-        actionType: "system",
-        targetPattern: "5",
-        replacementVal: " ",
-        helpTitle: "المشرط الحرفي لتفكيك الكلمات الملتصقة",
-        helpDesc: "يفحص الكلمة حرفاً بحرف من اليمين للشمال؛ فإذا وجد المايك قد ألصق رقماً في صنف أو ألصق صنفين ببعضهما، يقوم بفصلهما بمسافة اعتماداً على كلمات المخزن.",
-        helpExample: "أربعةفيشة / علبةماجيك / فيشةذكر ⬅️ أربعة فيشة / علبة ماجيك / فيشة ذكر",
-        helpAdvice: "الترتيب الافتراضي (رقم 3): ضروري جداً أن يكون قبل (مقص الـ 10 حروف) حتى ينقذ الكلمات الملتصقة قبل مسحها."
-    },
-    {
-        id: "f_long_nonsense",
-        defaultOrder: 4,
-        enabled: true,
-        category: "مرحلة التنظيف وفك الالتصاق",
-        title: "مقص التخاريف الطويلة (حاجز الـ 10 حروف)",
-        actionType: "delete",
-        targetPattern: "10",
-        replacementVal: "",
-        helpTitle: "مقص التخاريف والكلمات العشوائية الطويلة",
-        helpDesc: "يمسح أي كتلة حروف ملتصقة تتعدى الطول المحدد (افتراضياً 10 حروف) بشرط التأكد أولاً أنها ليست كلمة أصلية مسجلة في المخزن (مثل كونتاكتور أو إلكترونيات). يمكنك تغيير رقم 10 في خانة الهدف إلى أي طول تريده.",
-        helpExample: "خرخشةمايكطويلةجدا لمبة ⬅️ لمبة",
-        helpAdvice: "الترتيب الافتراضي (رقم 4): يأتي مباشرة بعد (المشرط الذكي) ليمسح فقط التخاريف الحقيقية التي لم تتفكك."
-    },
-    {
-        id: "f_protect_compounds",
-        defaultOrder: 5,
-        enabled: true,
-        category: "مرحلة الفواصل وتقطيع الطلبات",
-        title: "قفل حماية المقاسات والأصناف المزدوجة (× / + / و)",
-        actionType: "protect",
-        targetPattern: "في, ابيض و ورم, مروحه و خلاط, مفتاح و بريزه",
-        replacementVal: "×",
-        helpTitle: "قفل حماية الأصناف المزدوجة من التقطيع",
-        helpDesc: "يحول كلمة (في) بين رقمين إلى علامة المقاس (×)، ويحمي حرف (و) وعلامة (+) داخل الأصناف المزدوجة حتى لا تقوم السكينة بقطع الصنف الواحد إلى طلبين.",
-        helpExample: "بواط 10 في 10 / اسبوت 3 و 5 وات ⬅️ بواط 10×10 / اسبوت 3 و 5 وات (طلب واحد)",
-        helpAdvice: "الترتيب الافتراضي (رقم 5): يجب أن يوضع قبل فلاتر (السكينة والواو والنقطة) ليحمي هذه التراكيب قبل التقطيع."
-    },
-    {
-        id: "f_waw_number_trap",
-        defaultOrder: 6,
-        enabled: true,
-        category: "مرحلة الفواصل وتقطيع الطلبات",
-        title: "مصيدة الواو الملتصقة برقم لبداية طلب جديد (و5 / وخمسه)",
-        actionType: "split_plus",
-        targetPattern: "و",
-        replacementVal: "+",
-        helpTitle: "مصيدة الواو اللازقة في رقم (و5 / واتنين)",
-        helpDesc: "ترصد أي كلمة تبدأ بحرف (و) ملتصق فيه رقم حسابي أو لفظي (بشرط ألا يسبقه مئات مثل ميه و5 أو آحاد مثل واحد وعشرين)، وتفصلها كطلب جديد بكميته.",
-        helpExample: "لمبة و5 مفتاح / فيشة واتنين شاسيه ⬅️ لمبة + 5 مفتاح / فيشة + 2 شاسيه",
-        helpAdvice: "الترتيب الافتراضي (رقم 6): توضع قبل السكينة العامة لتجهيز الفواصل."
-    },
-    {
-        id: "f_dots_punct",
-        defaultOrder: 7,
-        enabled: true,
-        category: "مرحلة الفواصل وتقطيع الطلبات",
-        title: "فلتر النقطة وعلامات الترقيم (. ، - ؟)",
-        actionType: "split_plus",
-        targetPattern: ". , ، ؛ - ! ؟ ? # @",
-        replacementVal: "+",
-        helpTitle: "التحكم في النقطة وعلامات الترقيم",
-        helpDesc: "يتحكم في مصير النقطة (.) والفواصل التي يضعها المايك. يمكنك من القائمة أمامه اختيار (تحويل إلى فاصل طلبات +) أو (مسح وحذف نهائي) أو (تحويل لمسافة عادية).",
-        helpExample: "لمبة 9 وات. مفتاح تكييف ⬅️ لمبة 9 وات + مفتاح تكييف",
-        helpAdvice: "الترتيب الافتراضي (رقم 7): في مرحلة الفواصل وتقطيع الجملة."
-    },
-    {
-        id: "f_sep_words",
-        defaultOrder: 8,
-        enabled: true,
-        category: "مرحلة الفواصل وتقطيع الطلبات",
-        title: "فلتر لزمات وفواصل الكلام (وعندك / وكمان / أو)",
-        actionType: "split_plus",
-        targetPattern: "وعندك, عندك, وكمان, ومعاك, كمان, وهات, وخد, وادي, واديني, زائد, غيره, بعده, أو, او",
-        replacementVal: "+",
-        helpTitle: "تحويل لزمات الكلام بين الأصناف إلى فاصل (+)",
-        helpDesc: "يمسك الكلمات الدارجة التي يقولها الزبون للانتقال من صنف لآخر (مثل: وعندك، وكمان، أو) ويحولها إلى علامة (+) لفصل الطلبات، ويمكنك إضافة أي كلمة جديدة في خانته.",
-        helpExample: "فيشة ماجيك وعندك مفتاح تكييف ⬅️ فيشة ماجيك + مفتاح تكييف",
-        helpAdvice: "الترتيب الافتراضي (رقم 8): يعمل مع السكينة لتقطيع الجمل الطويلة."
-    },
-    {
-        id: "f_standalone_waw",
-        defaultOrder: 9,
-        enabled: true,
-        category: "مرحلة الفواصل وتقطيع الطلبات",
-        title: "فلتر حرف الواو المستقل الفاصل بين الطلبات ( و )",
-        actionType: "split_plus",
-        targetPattern: "و",
-        replacementVal: "+",
-        helpTitle: "تحويل الواو المستقلة ( و ) إلى فاصل طلبات (+)",
-        helpDesc: "يحول حرف العطف (و) المكتوب منفصلاً بين الجمل إلى علامة (+) لتقسيم الأصناف في الطابور. يمكنك إيقافه أو تحويله لمسافة إذا أردت عدم التقطيع بالواو.",
-        helpExample: "5 لمبة و 3 فيشة ⬅️ 5 لمبة + 3 فيشة",
-        helpAdvice: "الترتيب الافتراضي (رقم 9): يأتي بعد حماية الأصناف المزدوجة (مثل ابيض و ورم)."
-    },
-    {
-        id: "f_ignore_welcome",
-        defaultOrder: 10,
-        enabled: true,
-        category: "مرحلة التطبيع والغسيل اللغوي",
-        title: "فلتر مسح كلمات الترحيب والحشو (عايز / هاتلي / لو سمحت)",
-        actionType: "delete",
-        targetPattern: "اديني, هاتلي, عايز, محتاج, لو سمحت, لو, سمحت, هات, ضيف, حط, يا",
-        replacementVal: "",
-        helpTitle: "مسح كلمات البداية والحشو غير المؤثرة",
-        helpDesc: "يحذف الكلمات الترحيبية والطلبية (مثل: اديني، عايز، هاتلي) حتى لا تدخل ضمن اسم الصنف وتضعف نسبة البحث. يمكنك تعديل الكلمات أو تغيير وظيفته إلى (+) لو أردت.",
-        helpExample: "لو سمحت اديني 3 لمبة ⬅️ 3 لمبة",
-        helpAdvice: "الترتيب الافتراضي (رقم 10): يفضل بعد تقطيع الجملة لتنظيف بداية كل طلب."
-    },
-    {
-        id: "f_dedup_chars",
-        defaultOrder: 11,
-        enabled: true,
-        category: "مرحلة التطبيع والغسيل اللغوي",
-        title: "فلتر منع تكرار الحروف الممدودة بالخطأ (لممبه ⬅️ لمبه)",
-        actionType: "system",
-        targetPattern: "3",
-        replacementVal: "1",
-        helpTitle: "إزالة المد والتكرار العشوائي للحروف",
-        helpDesc: "يعالج أخطاء المايك أو الكيبورد عند تكرار نفس الحرف في الكلمة (مثل: فيييشه أو لمممبه) مع الحفاظ على الكلمات الأصلية مثل (مم) أو (قلاووظ).",
-        helpExample: "فيييشه ماااجيك ⬅️ فيشه ماجيك",
-        helpAdvice: "الترتيب الافتراضي (رقم 11): قبل المقشرة والقاموس لتنظيف بنية الكلمة."
-    },
-    {
-        id: "f_dict_replace",
-        defaultOrder: 12,
-        enabled: true,
-        category: "مرحلة التطبيع والغسيل اللغوي",
-        title: "فلتر قاموس المرادفات والتعريب الثنائي (الإنجليزي والسوقي)",
-        actionType: "replace",
-        targetPattern: "قاموس المرادفات",
-        replacementVal: "تلقائي",
-        helpTitle: "تطبيق قاموس المرادفات والتعريب (الإنجليزي ولغة السوق)",
-        helpDesc: "يطبق الكلمات المسجلة في نافذة القاموس (مثل: City ➔ سيتي، UF ➔ يو اف، شفشق ➔ شفشاء، قلاووظ ➔ كلاوز) لتوحيد نطق الزبون مع المكتوب في المخزن.",
-        helpExample: "لمبة قلاووظ / شفشق خلاط ⬅️ لمبه كلاوز / شفشاء خلاط",
-        helpAdvice: "الترتيب الافتراضي (رقم 12): يعمل في بداية التطبيع اللغوي."
-    },
-    {
-        id: "f_phonetic_peeler",
-        defaultOrder: 13,
-        enabled: true,
-        category: "مرحلة التطبيع والغسيل اللغوي",
-        title: "المقشرة الصوتية وتوحيد الحروف المتشابهة (أ/إ/ة/ق/ص/ز) وحذف (ال)",
-        actionType: "system",
-        targetPattern: "أإآ->ا, ة->ه, ى->ي, صث->س, ط->ت, ظذ->ز, ق->ك, ض->د",
-        replacementVal: "توحيد صوتي",
-        helpTitle: "غسالة الحروف المتشابهة صوتياً وإزالة (ال) التعريف",
-        helpDesc: "توحد الحروف التي يخلط المايك بينها في اللهجة المصرية (مثل القاف والكاف، الصاد والسين، التاء المربوطة والهاء، الهمزات) وتحذف (ال) من بداية الكلمات.",
-        helpExample: "اللمبة القلاووظ ⬅️ لمبه كلاوز",
-        helpAdvice: "الترتيب الافتراضي (رقم 13): حجر الأساس لتساوي كفتي المايك والمخزن."
-    },
-    {
-        id: "f_anchor_tens",
-        defaultOrder: 14,
-        enabled: true,
-        category: "مرحلة الأرقام والكميات والمثنى والجمع",
-        title: "رادار الأوتاد لإنقاذ العشرات المشوهة (حد وخمسين ⬅️ 51)",
-        actionType: "system",
-        targetPattern: "عشرين, تلاتين, اربعين, خمسين, ستين, سبعين, تمانين, تسعين",
-        replacementVal: "إنقاذ الآحاد",
-        helpTitle: "رادار أوتاد العشرات لإنقاذ الرقم السابق لها",
-        helpDesc: "يستخدم كلمات العشرات القوية كوتد ثابت، ويفحص الكلمة المشوهة التي قبلها (مثل: حد وخمسين، أو سلاسه وعشرين) ليصلحها ويجمعها في رقم حسابي واحد.",
-        helpExample: "حد وخمسين لمبه ⬅️ 51 لمبه",
-        helpAdvice: "الترتيب الافتراضي (رقم 14): يجب أن يوضع قبل (فلتر نزع الواو الزائدة) لأنه يعتمد على الواو في كلمة (وخمسين)."
-    },
-    {
-        id: "f_anchor_hundreds",
-        defaultOrder: 15,
-        enabled: true,
-        category: "مرحلة الأرقام والكميات والمثنى والجمع",
-        title: "رادار الأوتاد لإنقاذ المئات المشوهة (ميه وسابعه ⬅️ 107)",
-        actionType: "system",
-        targetPattern: "ميه, متين, تلتوميه, ربعميه, خمسميه",
-        replacementVal: "إنقاذ المئات",
-        helpTitle: "رادار أوتاد المئات لإنقاذ الرقم التالي لها",
-        helpDesc: "يرصد كلمات المئات (ميه، متين...) وينقذ الرقم المشوه الذي يليها مباشرة ويجمعهما معاً.",
-        helpExample: "ميه وسابعه فيشه ⬅️ 107 فيشه",
-        helpAdvice: "الترتيب الافتراضي (رقم 15): يوضع مع رادار العشرات قبل نزع الواو الزائدة."
-    },
-    {
-        id: "f_strip_leading_waw",
-        defaultOrder: 16,
-        enabled: true,
-        category: "مرحلة الأرقام والكميات والمثنى والجمع",
-        title: "فلتر نزع أول حرف واو زائد من الكلمات (وتلاته ⬅️ تلاته)",
-        actionType: "delete",
-        targetPattern: "وات, واط, وش, وصله, وصلة, ورم, وارم, وان, واير, ولاعه, ودن, وسام",
-        replacementVal: "",
-        helpTitle: "قص حرف الواو الزائد من بداية أي كلمة",
-        helpDesc: "يقص حرف (و) الزائد من أول الكلمات (مثل: وتلاته ➔ تلاته، ولمبه ➔ لمبه) مع حماية الكلمات التي تبدأ بواو أصلية والمسجلة في خانة الاستثناءات أمامه.",
-        helpExample: "وتلاته ولمبه ⬅️ تلاته لمبه",
-        helpAdvice: "الترتيب الافتراضي (رقم 16): يوضع بعد رادار الأوتاد مباشرة وقبل تعريب الأرقام الفردية."
-    },
-    {
-        id: "f_words_to_numbers",
-        defaultOrder: 17,
-        enabled: true,
-        category: "مرحلة الأرقام والكميات والمثنى والجمع",
-        title: "فلتر تعريب الأرقام المنطوقة بالحروف في الجملة كلها (أولها ووسطها)",
-        actionType: "system",
-        targetPattern: "واحد..تسعتاشر, دسته=12, نص=0.5, ربع=0.25",
-        replacementVal: "أرقام حسابية",
-        helpTitle: "تحويل الأرقام اللفظية إلى حسابية في كامل الجملة",
-        helpDesc: "يحول الأرقام المنطوقة بالحروف سواء جاءت في أول الجملة ككمية أو في وسطها كمواصفة (مثل: لمبة تسعة وات ➔ لمبة 9 وات)، وكذلك الألفاظ مثل دستة ونص وربع.",
-        helpExample: "اثنين لمبة تسعة وات ⬅️ 2 لمبه 9 وات",
-        helpAdvice: "الترتيب الافتراضي (رقم 17): بعد نزع الواو الزائدة ليتعرف على الأرقام بسهولة."
-    },
-    {
-        id: "f_dual_catcher",
-        defaultOrder: 18,
-        enabled: true,
-        category: "مرحلة الأرقام والكميات والمثنى والجمع",
-        title: "فلتر صائد المثنى الذكي (لمبتين ⬅️ 2 لمبه / مفتاحين ⬅️ 2 مفتاح)",
-        actionType: "system",
-        targetPattern: "جوز, حتتين, قطعتين, حبتين, فرعين",
-        replacementVal: "2",
-        helpTitle: "تفكيك المثنى المؤنث والمذكر وألفاظ الزوج",
-        helpDesc: "يلتقط الكلمات المنتهية بـ (ين / تين) ويردها لمفردها مع جعل الكمية (2)، وكذلك يلتقط كلمات (جوز، حتتين، قطعتين) في أول الطلب.",
-        helpExample: "فيشتين ماجيك / مفتاحين تكييف ⬅️ الكمية: 2 | الصنف: فيشه ماجيك / مفتاح تكييف",
-        helpAdvice: "الترتيب الافتراضي (رقم 18): قبل مرحلة عزل الكمية."
-    },
-    {
-        id: "f_plural_to_singular",
-        defaultOrder: 19,
-        enabled: true,
-        category: "مرحلة الأرقام والكميات والمثنى والجمع",
-        title: "فلتر رد الجموع إلى المفرد (لمبات ⬅️ لمبه / مفاتيح ⬅️ مفتاح)",
-        actionType: "system",
-        targetPattern: "لمبات->لمبه, مفاتيح->مفتاح, فيش->فيشه, علب->علبه, بواطات->بواط, كشافات->كشاف, بريزات->بريزه, دوايات->دوايه, وصلات->وصله, شواحن->شاحن, مراوح->مروحه",
-        replacementVal: "رد للمفرد",
-        helpTitle: "تحويل جمع التكسير وجمع المؤنث السالم إلى مفرد",
-        helpDesc: "الزبون غالباً ينطق الصنف بالجمع عندما يطلب كمية (مثل: 5 لمبات أو 3 مفاتيح أو 4 فيش)، بينما المخزن مسجل بالمفرد. هذا الفلتر يرد الكلمة لمفردها لتطابق المخزن.",
-        helpExample: "5 لمبات 9 وات / 3 مفاتيح تكييف ⬅️ 5 لمبه 9 وات / 3 مفتاح تكييف",
-        helpAdvice: "الترتيب الافتراضي (رقم 19): يمكنك إضافة أي جمع ومفرده في خانته بصيغة (الجمع->المفرد)."
-    },
-    {
-        id: "f_protect_units",
-        defaultOrder: 20,
-        enabled: true,
-        category: "مرحلة عزل الكميات (البيع مقابل المخزن)",
-        title: "كلبشة وحماية وحدات القياس (منع سرقة 9 وات أو 63 أمبير ككمية)",
-        actionType: "protect",
-        targetPattern: "وحدات القياس المحمية",
-        replacementVal: "حماية المواصفة",
-        helpTitle: "حماية الرقم المتبوع بوحدة قياس من التحول لكمية",
-        helpDesc: "إذا بدأ الزبون كلامه بـ (9 وات لمبة) أو (63 أمبير مفتاح)، يمنع هذا الفلتر سحب رقم 9 أو 63 في خانة الكمية لأنه متبوع بوحدة قياس من نافذة الوحدات.",
-        helpExample: "لمبة 9 وات (أو 9 وات لمبة) ⬅️ الكمية: 1 | الصنف: لمبة 9 وات",
-        helpAdvice: "الترتيب الافتراضي (رقم 20): يجب أن يوضع مباشرة قبل (فلتر سحب وعزل الكمية)."
-    },
-    {
-        id: "f_extract_quantity",
-        defaultOrder: 21,
-        enabled: true,
-        category: "مرحلة عزل الكميات (البيع مقابل المخزن)",
-        title: "فلتر سحب وعزل الكمية من بداية الطلب (أغلقه في صفحة المخزن 🏭)",
-        actionType: "system",
-        targetPattern: "تجاهل_الكميات=لا",
-        replacementVal: "1",
-        helpTitle: "التحكم في سحب الكميات أو إيقافها تماماً (مهم لصفحة المخزن)",
-        helpDesc: "يسحب الرقم الحر في بداية الطلب ليضعه في خانة (الكمية). إذا قمت بإيقاف هذا الفلتر (🔴) في بروفايل صفحة المخزن، فلن يسحب أي كميات وسيركز على اسم الصنف فقط، ولو كتبت في خانته (مسح_الرقم) سيمسح أي كمية منطوقة تماماً!",
-        helpExample: "مفعل (للبيع): 5 فيشة ⬅️ كمية 5 | متوقف (للمخزن): فيشة (بدون كميات)",
-        helpAdvice: "الترتيب الافتراضي (رقم 21): شغّله في بروفايل البيع والمشتريات، وأوقفه أو خصصه في بروفايل المخزن."
-    },
-    {
-        id: "f_chitchat_expel",
-        defaultOrder: 22,
-        enabled: true,
-        category: "مرحلة قاضي المطابقة وبوابة الفلترة النهائية",
-        title: "فلتر طرد عبارات الدردشة والسلامات خارج الطابور",
-        actionType: "delete",
-        targetPattern: "الشغل, شغل, عامل, اخبارك, اخبار, معاك, خلينا, نشوفك, تغيبش, علينا, ياعم, عم, باشا, هندسه, حبيبي, الله, ينور, يسلم, سلام, ازيك, الحمد, لله, تمام, كده, بقي, بقولك, شوف",
-        replacementVal: "",
-        helpTitle: "بوابة طرد الكلام الجانبي والسلامات",
-        helpDesc: "يستبعد أي جملة دردشة أو تحية يقولها الزبون وسط الطلبات (مثل: والشغل عامل إيه معاك، متغيبش علينا يا عم) فلا تدخل طابور الأصناف ولا تشغل زر التالي.",
-        helpExample: "5 فيشة + والشغل عامل إيه معاك ⬅️ 5 فيشة فقط",
-        helpAdvice: "الترتيب الافتراضي (رقم 22): قبل مطابقة المخزن مباشرة."
-    },
-    {
-        id: "f_number_magnet",
-        defaultOrder: 23,
-        enabled: true,
-        category: "مرحلة قاضي المطابقة وبوابة الفلترة النهائية",
-        title: "فلتر مغناطيس الأرقام وتقريب المقاسات (مثل 32 وات ⬅️ 36 وات)",
-        actionType: "system",
-        targetPattern: "0.35",
-        replacementVal: "تقريب المقاس",
-        helpTitle: "قرينة الرقم المشترك وتقريب المقاسات غير الموجودة",
-        helpDesc: "يرجح الأصناف التي تحتوي على نفس الرقم المنطوق (مثل 36 أو 63)، وإذا نطق الزبون مقاساً قريباً غير مسجل بالمخزن (مثل بنل 32 وات والمخزن فيه 36 وات) يقربه لأقرب مقاس متاح.",
-        helpExample: "أربعة بنل 32 وات ⬅️ 4 بنل 36 وات",
-        helpAdvice: "الترتيب الافتراضي (رقم 23): يعمل داخل قاضي المطابقة."
-    },
-    {
-        id: "f_no_invent_trim",
-        defaultOrder: 24,
-        enabled: true,
-        category: "مرحلة قاضي المطابقة وبوابة الفلترة النهائية",
-        title: "فلتر منع تأليف باقي اسم الصنف (الكتابة على قد كلام الزبون فقط)",
-        actionType: "system",
-        targetPattern: "قص_الزيادات",
-        replacementVal: "تحديد دقيق",
-        helpTitle: "منع تأليف تفاصيل لم ينطقها الزبون عند تشابه الأصناف",
-        helpDesc: "إذا قال الزبون (3 فيشة) أو (فيشة ماجيك) وكان بالمخزن عدة أنواع (شواب، الوسام...)، يمنع هذا الفلتر البرنامج من تأليف النوع من دماغه، ويكتب في مربع البحث (فيشة ماجيك) فقط لتختار أنت من القائمة المنسدلة.",
-        helpExample: "3 فيشة ماجيك ⬅️ يكتب (فيشة ماجيك) فقط ولا يؤلف (فيشة ماجيك شواب)",
-        helpAdvice: "الترتيب الافتراضي (رقم 24): إذا أوقفته سيعطيك البرنامج دائماً الاسم الكامل لأعلى صنف بالمخزن."
-    },
-    {
-        id: "f_merge_duplicates",
-        defaultOrder: 25,
-        enabled: true,
-        category: "مرحلة قاضي المطابقة وبوابة الفلترة النهائية",
-        title: "ماكينة دمج وجمع الأصناف المكررة في نفس الفاتورة (4 + 7 = 11)",
-        actionType: "system",
-        targetPattern: "دمج_المكرر",
-        replacementVal: "جمع",
-        helpTitle: "جمع كميات الصنف الواحد إذا تكرر في نفس المكالمة",
-        helpDesc: "إذا طلب الزبون صنفاً في أول الكلام ثم عاد وطلب نفس الصنف في آخر الكلام (أو نطقه بطريقتين تصبان في نفس الصنف)، يدمجهما في سطر واحد ويجمع الكميتين.",
-        helpExample: "4 فيشة ماجيك ... و 7 فيشة ماجيك ⬅️ 11 فيشة ماجيك",
-        helpAdvice: "الترتيب الافتراضي (رقم 25 - الأخير): يعمل كآخر محطة بعد اكتمال الطابور."
-    }
-];
-
-// # [ثالثاً]: الإعدادات القياسية والقاموس الافتراضي
-const DefaultVoiceConfig = {
-    settings: {
-        letterTolerance: 65,
-        numberMagnet: 80,
-        searchThreshold: 55,
-        mergeDuplicates: true,
-        ignoreQuantitiesMode: false, // # وضع تجاهل الكميات المخصص للمخزن
-        firstWordBonus: 25
-    },
-    units: [
-        "وات", "واط", "امبير", "فولت", "ملي", "مللي", "مم", "سم", "سنتي", "متر",
-        "بوصه", "بوصة", "حصان", "فاز", "طرف", "خط", "مخرج", "عين", "ليد", "تكه",
-        "ركبه", "حركه", "سرعه", "شمعه", "لتر", "كيلو", "جرام", "طن", "كيه", "وفولت", "يو"
-    ],
-    dictionary: {
-        "city": "سيتي", "tiger": "تايجر", "joyroom": "جيروم", "uf": "يو اف",
-        "mk": "ام كي", "kh": "كي اتش", "bm": "بي ام", "b.m": "بي ام",
-        "dcl": "دي سي ال", "dc": "دي سي", "ac": "اي سي", "hp": "اتش بي",
-        "jbl": "جي بي ال", "sky": "سكاي", "fast": "فاست", "fit": "فت",
-        "t.c": "تيبسي", "tc": "تيبسي", "تايب سي": "تيبسي", "تيب سي": "تيبسي",
-        "micro": "ميكرو", "mikro": "ميكرو", "naza": "نازا", "alngar": "النجار",
-        "nagar": "النجار", "sadek": "صادق", "safty": "سيفتي", "smile": "سمايل",
-        "top": "توب", "online": "اونلاين", "dinamo": "دينامو", "blue": "بلو",
-        "4k": "4 كيه", "hd": "اتش دي", "hdmi": "اتش دي", "led": "ليد",
-        "لد": "ليد", "ل ي د": "ليد", "ورم": "وارم", "warm": "وارم",
-        "شفشق": "شفشاء", "قلاووظ": "كلاوز", "قلاوظ": "كلاوز", "قلوظ": "كلاوز",
-        "بانل": "بنل", "بلن": "بنل", "اسبط": "اسبوت", "سبوت": "اسبوت",
-        "موتور": "ماتور", "اتوماتيك": "توماتيك", "اوتوماتيك": "توماتيك",
-        "اطار": "ايطار", "بإطار": "بايطار", "اب&دون": "اب وداون", "اب اند داون": "اب وداون",
-        "ترانس": "ترنس", "ابليك": "ابلك", "شاسيه": "شسيه", "بريزة": "بريزه"
-    }
-};
-
-// # [رابعاً]: دوال إدارة البروفايلات الـ 3 (sales / purchases / inventory) والفلاتر داخل كائن DB
-Object.assign(DB, {
+Object.assign(window.DB, {
     _activeVoiceProfile: localStorage.getItem('seraj_active_voice_profile') || 'sales',
-
-    _getVoiceStorageKey: function(subKey, profileName) {
-        let storePrefix = (typeof currentStoreId !== 'undefined' && currentStoreId) ? currentStoreId : 'Default';
-        let prof = profileName || this._activeVoiceProfile || 'sales';
-        // # القاموس والوحدات مشتركة للمحل كله، بينما المؤشرات وترتيب الفلاتر مستقلة لكل صفحة (بيع / شراء / مخزن)
-        if (subKey === 'dict' || subKey === 'units') {
-            return `seraj_voice_${storePrefix}_${subKey}`;
-        }
-        return `seraj_voice_${storePrefix}_${prof}_${subKey}`;
-    },
-
-    // # تحديد أو قراءة البروفايل النشط حالياً (sales = البيع | purchases = المشتريات | inventory = المخزن)
-    getActiveVoiceProfile: function() {
-        return this._activeVoiceProfile || 'sales';
-    },
-    setActiveVoiceProfile: function(profileName) {
-        if (['sales', 'purchases', 'inventory'].includes(profileName)) {
-            this._activeVoiceProfile = profileName;
-            localStorage.setItem('seraj_active_voice_profile', profileName);
-        }
-    },
-
-    // # 1. قراءة وحفظ إعدادات المؤشرات لبروفايل محدد
-    getVoiceSettings: function(profileName) {
-        let prof = profileName || this._activeVoiceProfile || 'sales';
-        let saved = localStorage.getItem(this._getVoiceStorageKey('settings', prof));
-        let baseDefaults = { ...DefaultVoiceConfig.settings };
-        // # في بروفايل المخزن نجعل تجاهل الكميات مفعلاً افتراضياً لأول مرة
-        if (prof === 'inventory') {
-            baseDefaults.ignoreQuantitiesMode = true;
-            baseDefaults.mergeDuplicates = false;
-        }
-        if (saved) {
-            try { return { ...baseDefaults, ...JSON.parse(saved) }; } catch (e) {}
-        }
-        return baseDefaults;
-    },
-    saveVoiceSettings: function(newSettings, profileName) {
-        let prof = profileName || this._activeVoiceProfile || 'sales';
-        let merged = { ...this.getVoiceSettings(prof), ...newSettings };
-        localStorage.setItem(this._getVoiceStorageKey('settings', prof), JSON.stringify(merged));
-        this._syncVoiceConfigToCloud();
-    },
-
-    // # 2. قراءة وحفظ قائمة الفلاتر وترتيبها ومفاتيحها لبروفايل محدد (بيع / شراء / مخزن)
-    getVoicePipeline: function(profileName) {
-        let prof = profileName || this._activeVoiceProfile || 'sales';
-        let saved = localStorage.getItem(this._getVoiceStorageKey('pipeline', prof));
-        let catalogCopy = JSON.parse(JSON.stringify(MasterPipelineCatalog));
-
-        // # تخصيص افتراضي لبروفايل المخزن (إيقاف سحب الكميات افتراضياً)
-        if (prof === 'inventory') {
-            catalogCopy.forEach(f => {
-                if (f.id === 'f_extract_quantity') {
-                    f.enabled = false;
-                    f.targetPattern = "مسح_الرقم";
-                }
-            });
-        }
-
-        if (saved) {
-            try {
-                let parsed = JSON.parse(saved);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    // # دمج الفلاتر المحفوظة مع أي فلاتر جديدة في الكتالوج + الفلاتر المخصصة التي أنشأها المستخدم
-                    let savedMap = new Map(parsed.map(item => [item.id, item]));
-                    let mergedList = catalogCopy.map(defItem => {
-                        if (savedMap.has(defItem.id)) {
-                            let sItem = savedMap.get(defItem.id);
-                            savedMap.delete(defItem.id);
-                            return { ...defItem, ...sItem, helpTitle: defItem.helpTitle, helpDesc: defItem.helpDesc, helpExample: defItem.helpExample, helpAdvice: defItem.helpAdvice };
-                        }
-                        return defItem;
-                    });
-                    // # إضافة الفلاتر المخصصة التي بناها المستخدم من الشاشة (custom_...)
-                    savedMap.forEach(customItem => mergedList.push(customItem));
-                    return mergedList.sort((a, b) => (Number(a.order ?? a.defaultOrder) || 99) - (Number(b.order ?? b.defaultOrder) || 99));
-                }
-            } catch (e) {}
-        }
-
-        return catalogCopy.map(f => ({ ...f, order: f.defaultOrder })).sort((a, b) => a.order - b.order);
-    },
-
-    saveVoicePipeline: function(pipelineArray, profileName) {
-        let prof = profileName || this._activeVoiceProfile || 'sales';
-        localStorage.setItem(this._getVoiceStorageKey('pipeline', prof), JSON.stringify(pipelineArray || []));
-        this._syncVoiceConfigToCloud();
-    },
-
-    resetVoicePipelineToDefault: function(profileName) {
-        let prof = profileName || this._activeVoiceProfile || 'sales';
-        localStorage.removeItem(this._getVoiceStorageKey('pipeline', prof));
-        localStorage.removeItem(this._getVoiceStorageKey('settings', prof));
-        this._syncVoiceConfigToCloud();
-        return this.getVoicePipeline(prof);
-    },
-
-    // # نسخ الإعدادات وترتيب الفلاتر من صفحة إلى أخرى (مثلاً من البيع إلى المشتريات)
-    copyVoiceProfile: function(fromProfile, toProfile) {
-        let settings = this.getVoiceSettings(fromProfile);
-        let pipeline = this.getVoicePipeline(fromProfile);
-        this.saveVoiceSettings(settings, toProfile);
-        this.saveVoicePipeline(pipeline, toProfile);
-    },
-
-    // # 3. الحساسية السريعة
-    getVoiceSensitivity: function(profileName) {
-        let s = this.getVoiceSettings(profileName);
-        return s.searchThreshold || 55;
-    },
-    saveVoiceSensitivity: function(val, profileName) {
-        let num = parseInt(val) || 55;
-        this.saveVoiceSettings({ searchThreshold: num }, profileName);
-    },
-
-    // # 4. وحدات القياس المحمية (تسمح بالحذف والإضافة الكاملة)
-    getVoiceUnits: function() {
-        let saved = localStorage.getItem(this._getVoiceStorageKey('units'));
-        if (saved !== null) {
-            try { return JSON.parse(saved); } catch (e) {}
-        }
-        return [...DefaultVoiceConfig.units];
-    },
-    saveVoiceUnits: function(unitsArray) {
-        let cleanArr = [...new Set((unitsArray || []).map(u => String(u).trim()).filter(Boolean))];
-        localStorage.setItem(this._getVoiceStorageKey('units'), JSON.stringify(cleanArr));
-        SmartVoice._invalidateShadowCache();
-        this._syncVoiceConfigToCloud();
-    },
-
-    // # 5. قاموس المرادفات (يسمح بحذف أي كلمة نهائياً)
-    getVoiceDictionary: function() {
-        let saved = localStorage.getItem(this._getVoiceStorageKey('dict'));
-        if (saved !== null) {
-            try { return JSON.parse(saved); } catch (e) {}
-        }
-        return { ...DefaultVoiceConfig.dictionary };
-    },
-    saveVoiceDictionary: function(dictObj) {
-        localStorage.setItem(this._getVoiceStorageKey('dict'), JSON.stringify(dictObj || {}));
-        SmartVoice._invalidateShadowCache();
-        this._syncVoiceConfigToCloud();
-    },
-
-    // # 6. الماسح الذاتي لاستنتاج الوحدات من مخزن أي محل
-    autoLearnFromInventory: function() {
-        let products = this.getProducts() || [];
-        let learnedUnits = new Set(this.getVoiceUnits());
-        let unitCandidates = {};
-
-        products.forEach(p => {
-            if (!p || !p.name) return;
-            let clean = window.cleanExcelText(p.name)
-                               .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
-                               .replace(/(\d+)([^\d\s\.])/g, '$1 $2');
-            let tokens = clean.split(/\s+/);
-            for (let i = 0; i < tokens.length - 1; i++) {
-                if (!isNaN(tokens[i]) && isNaN(tokens[i + 1]) && tokens[i + 1].length >= 2 && tokens[i + 1].length <= 6) {
-                    let w = tokens[i + 1];
-                    unitCandidates[w] = (unitCandidates[w] || 0) + 1;
-                }
-            }
-        });
-
-        let addedCount = 0;
-        for (let u in unitCandidates) {
-            if (unitCandidates[u] >= 3 && !learnedUnits.has(u)) {
-                learnedUnits.add(u);
-                addedCount++;
-            }
-        }
-        let finalUnits = Array.from(learnedUnits);
-        this.saveVoiceUnits(finalUnits);
-        return { totalUnits: finalUnits.length, newlyLearned: addedCount };
-    },
-
-    _syncVoiceConfigToCloud: function() {
-        if (typeof cloudReady !== 'undefined' && cloudReady && navigator.onLine && window.dbCloud) {
-            let payload = {
-                sales: { settings: this.getVoiceSettings('sales'), pipeline: this.getVoicePipeline('sales') },
-                purchases: { settings: this.getVoiceSettings('purchases'), pipeline: this.getVoicePipeline('purchases') },
-                inventory: { settings: this.getVoiceSettings('inventory'), pipeline: this.getVoicePipeline('inventory') },
-                units: this.getVoiceUnits(),
-                dictionary: this.getVoiceDictionary(),
-                updatedAt: Date.now()
-            };
-            window.dbCloud.ref('test_Stores/' + currentStoreId + '/voice_studio_v4').set(payload).catch(e => console.error(e));
-        }
-    }
+    getActiveVoiceProfile: function() { return this._activeVoiceProfile || 'sales'; },
+    setActiveVoiceProfile: function(p) { this._activeVoiceProfile = p || 'sales'; _internalSetItem('seraj_active_voice_profile', this._activeVoiceProfile); },
+    getVoiceSettings: function() { return { searchThreshold: 55 }; },
+    saveVoiceSettings: function() {},
+    getVoicePipeline: function() { return []; },
+    saveVoicePipeline: function() {},
+    resetVoicePipelineToDefault: function() { return []; },
+    copyVoiceProfile: function() {},
+    getVoiceSensitivity: function() { return 55; },
+    saveVoiceSensitivity: function() {},
+    getVoiceUnits: function() { return ["وات", "امبير", "فولت", "مم", "سم", "متر", "بوصه", "حصان"]; },
+    saveVoiceUnits: function() {},
+    getVoiceDictionary: function() { return {}; },
+    saveVoiceDictionary: function() {},
+    autoLearnFromInventory: function() { return { totalUnits: 0, newlyLearned: 0 }; }
 });
 
-// # =========================================================================
-// # [خامساً]: المحرك الديناميكي القابل للبرمجة والترتيب (SmartVoice V4)
-// # =========================================================================
 const SmartVoice = {
-    _shadowCache: null,
-    _shadowCacheCount: 0,
-    _vocabSet: null,
-    _vocabList: null,
-
-    _invalidateShadowCache: function() {
-        this._shadowCache = null;
-        this._shadowCacheCount = 0;
-        this._vocabSet = null;
-        this._vocabList = null;
+    _invalidateShadowCache: function() {},
+    peeler: function(text) {
+        return window.Utils.normalizeName(window.cleanExcelText(text).replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d)));
     },
-
-    anchors: {
-        tens: { "عشرين": 20, "عشرون": 20, "تلاتين": 30, "ثلاثين": 30, "اربعين": 40, "خمسين": 50, "ستين": 60, "سبعين": 70, "تمانين": 80, "تسعين": 90 },
-        hundreds: { "ميه": 100, "مائه": 100, "مائة": 100, "متين": 200, "مائتين": 200, "تلتوميه": 300, "ربعميه": 400, "خمسميه": 500, "ستميه": 600, "سبعميه": 700, "تمنميه": 800, "تسعميه": 900 }
-    },
-
-    singles: {
-        1: ["واحد", "واحده", "حد", "احد"],
-        2: ["اتنين", "اثنين", "سنين", "تنين"],
-        3: ["تلاته", "ثلاثه", "تلات", "ثلاث", "سلاسه"],
-        4: ["اربعه", "اربعة", "اربع", "اربعا", "ارباعه"],
-        5: ["خمسه", "خمسة", "خمس", "خمصه"],
-        6: ["سته", "ستة", "ست"],
-        7: ["سبعه", "سبعة", "سبع", "سابعه"],
-        8: ["تمانيه", "ثمانيه", "تمان", "ثمان"],
-        9: ["تسعه", "تسعة", "تسع", "تيسعه"],
-        10: ["عشره", "عشرة", "عشر"]
-    },
-
-    specials: {
-        "حداشر": 11, "احداشر": 11, "اتناشر": 12, "اثناشر": 12, "دسته": 12, "دستة": 12,
-        "تلتاشر": 13, "اربعتاشر": 14, "خمستاشر": 15, "ستاشر": 16, "سبعتاشر": 17,
-        "تمنتاشر": 18, "تسعتاشر": 19, "الف": 1000, "نص": 0.5, "نصف": 0.5, "ربع": 0.25
-    },
-
-    commonStoreWords: [
-        "لمبه", "فيشه", "علبه", "مفتاح", "بريزه", "شاسيه", "وش", "لقمه", "سداد", "مشترك",
-        "دوايه", "كشاف", "اسبوت", "بنل", "ترنس", "شاحن", "وصله", "مكثف", "ماتور", "خلاط",
-        "شفشاء", "مروحه", "سخان", "غساله", "تلاجه", "شريط", "لحام", "مفك", "بنسه", "سلك",
-        "كابل", "خرطوم", "بواط", "ماجيك", "شواب", "فينوس", "الوسام", "تكييف", "كلاوز",
-        "مسمار", "شوكه", "بلحه", "ذكر", "نتايه", "داخل", "خارج", "ساده", "عادي", "اصلي"
-    ],
-
-    // # المقشرة الأساسية السريعة
-    peeler: function(text, applyDict = true) {
-        if (!text) return "";
-        let t = window.cleanExcelText(text).toLowerCase();
-        t = t.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
-        t = t.replace(/(\d+(?:\.\d+)?)\s*w\b/gi, '$1 وات')
-             .replace(/(\d+(?:\.\d+)?)\s*a\b/gi, '$1 امبير')
-             .replace(/(\d+(?:\.\d+)?)\s*v\b/gi, '$1 فولت')
-             .replace(/(\d+(?:\.\d+)?)\s*m\b/gi, '$1 متر');
-        t = t.replace(/(\d+)\s*[\*×x]\s*(\d+)/gi, '$1×$2');
-        t = t.replace(/(\d+(?:\.\d+)?)([^\d\s\.×\+\/])/g, '$1 $2')
-             .replace(/([^\d\s\.×\+\/])(\d+(?:\.\d+)?)/g, '$1 $2');
-        t = t.replace(/([\u0600-\u06FF])([a-zA-Z])/g, '$1 $2')
-             .replace(/([a-zA-Z])([\u0600-\u06FF])/g, '$1 $2');
-
-        if (applyDict) {
-            let dict = (typeof DB !== 'undefined' && DB.getVoiceDictionary) ? DB.getVoiceDictionary() : DefaultVoiceConfig.dictionary;
-            for (let key in dict) {
-                let target = String(dict[key]);
-                let escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                t = t.replace(new RegExp(`(^|\\s)${escapedKey}(?=\\s|$)`, 'gi'), `$1${target}`);
-            }
-        }
-
-        t = t.replace(/[أإآءئؤ]/g, 'ا')
-             .replace(/ة/g, 'ه')
-             .replace(/ى/g, 'ي')
-             .replace(/[صث]/g, 'س')
-             .replace(/ط/g, 'ت')
-             .replace(/[ظذ]/g, 'ز')
-             .replace(/ق/g, 'ك')
-             .replace(/ض/g, 'د');
-
-        t = t.split(/\s+/).map(w => (w.startsWith("ال") && w.length > 4) ? w.substring(2) : w).join(" ");
-        return t.replace(/\s+/g, ' ').trim();
-    },
-
-    fuzzyMatch: function(w1, w2) {
-        if (!w1 || !w2) return 0;
-        if (w1 === w2) return 100;
-        if (w1.includes(w2) || w2.includes(w1)) {
-            let ratio = Math.min(w1.length, w2.length) / Math.max(w1.length, w2.length);
-            if (ratio >= 0.65) return Math.round(ratio * 100);
-        }
-        let matches = 0;
-        let charArray = w2.split('');
-        for (let char of w1) {
-            let index = charArray.indexOf(char);
-            if (index !== -1) { matches++; charArray.splice(index, 1); }
-        }
-        return (matches / Math.max(w1.length, w2.length)) * 100;
-    },
-
-    rescueNumber: function(word, threshold = 50) {
-        if (!word) return null;
-        let peeled = this.peeler(word, false);
-        if (this.specials[peeled] !== undefined) return { number: this.specials[peeled], score: 100 };
-        if (this.anchors.tens[peeled] !== undefined) return { number: this.anchors.tens[peeled], score: 100 };
-        if (this.anchors.hundreds[peeled] !== undefined) return { number: this.anchors.hundreds[peeled], score: 100 };
-
-        let bestMatch = null;
-        let highestScore = 0;
-        for (let num in this.singles) {
-            this.singles[num].forEach(candidate => {
-                let score = this.fuzzyMatch(peeled, this.peeler(candidate, false));
-                if (score > highestScore) { highestScore = score; bestMatch = num; }
-            });
-        }
-        if (highestScore >= threshold) return { number: parseFloat(bestMatch), score: highestScore };
-        return null;
-    },
-
-    prepareInventoryShadow: function(inventoryDB) {
-        if (!Array.isArray(inventoryDB)) inventoryDB = [];
-        if (this._shadowCache && this._shadowCacheCount === inventoryDB.length && this._vocabSet) {
-            return this._shadowCache;
-        }
-
-        let vocabSet = new Set(this.commonStoreWords.map(w => this.peeler(w)));
-        this._shadowCache = inventoryDB.map(item => {
-            let rawName = item.name || String(item);
-            let cleanDisplay = window.cleanExcelText(rawName);
-            let peeled = this.peeler(cleanDisplay);
-            let words = peeled.split(" ").filter(Boolean);
-            let numbers = words.filter(w => !isNaN(w)).map(Number);
-            let textWords = words.filter(w => isNaN(w));
-            textWords.forEach(tw => { if (tw.length >= 2) vocabSet.add(tw); });
-            return {
-                original: rawName,
-                cleanDisplay: cleanDisplay,
-                peeled: peeled,
-                words: words,
-                numbers: numbers,
-                textWords: textWords
-            };
-        });
-
-        this._vocabSet = vocabSet;
-        this._vocabList = Array.from(vocabSet);
-        this._shadowCacheCount = inventoryDB.length;
-        return this._shadowCache;
-    },
-
-    // # دالة مساعدة لتنفيذ قرار المستخدم على أي قائمة كلمات أو رموز (تحويل لـ + / مسح / مسافة / استبدال)
-    _applyDynamicRuleAction: function(text, filterObj) {
-        let rawTargets = String(filterObj.targetPattern || "").split(/[,،]+/).map(s => s.trim()).filter(Boolean);
-        if (rawTargets.length === 0) return text;
-
-        let action = filterObj.actionType || "split_plus";
-        let rep = " ";
-        if (action === "split_plus") rep = " + ";
-        else if (action === "delete") rep = " ";
-        else if (action === "space") rep = " ";
-        else if (action === "replace") rep = " " + (filterObj.replacementVal || "") + " ";
-        else if (action === "protect") return text;
-
-        let out = text;
-        rawTargets.forEach(tok => {
-            let escaped = tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            // # إذا كان الرمز علامة ترقيم غير حرفية نستبدله مباشرة، وإذا كان كلمة نشترط حدود الكلمة
-            if (/^[^\w\u0600-\u06FF]+$/.test(tok)) {
-                out = out.replace(new RegExp(escaped, 'g'), rep);
-            } else {
-                out = out.replace(new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'gi'), rep);
-            }
-        });
-        return out.replace(/\s+/g, ' ').trim();
-    },
-
-    // # المشرط الحرفي لتفكيك الملتصق (كبسولة مستقلة)
-    _runDeglueCapsule: function(text, inventoryDB, addLog, stepOrder) {
-        this.prepareInventoryShadow(inventoryDB);
-        let unitsList = (typeof DB !== 'undefined' && DB.getVoiceUnits) ? DB.getVoiceUnits().map(u => this.peeler(u)) : DefaultVoiceConfig.units;
-
-        const isNumberPiece = (str) => {
-            let p = this.peeler(str, false);
-            if (!p) return false;
-            if (!isNaN(p)) return true;
-            if (p.length >= 3 && this.rescueNumber(p, 75) !== null) return true;
-            if (str.startsWith("و") && str.length >= 4 && this.rescueNumber(str.substring(1), 75) !== null) return true;
-            return false;
-        };
-
-        const isInventoryPiece = (str, allowFuzzy = false) => {
-            let p = this.peeler(str);
-            if (!p || p.length < 2) return false;
-            if (this._vocabSet.has(p) || unitsList.includes(p)) return true;
-            if (allowFuzzy && p.length >= 4) {
-                return this._vocabList.some(vw => Math.abs(vw.length - p.length) <= 1 && this.fuzzyMatch(p, vw) >= 82);
-            }
-            return false;
-        };
-
-        const trySplitGlued = (word, depth = 0) => {
-            for (let k = 2; k <= word.length - 2; k++) {
-                let left = word.substring(0, k);
-                let right = word.substring(k);
-                let leftValid = (k === 2)
-                    ? (this._vocabSet.has(this.peeler(left)) && this.peeler(left).length === 2)
-                    : (isNumberPiece(left) || isInventoryPiece(left, false) || (left.startsWith("و") && left.length >= 4 && isInventoryPiece(left.substring(1), false)));
-
-                if (leftValid) {
-                    if (isInventoryPiece(right, true) || isNumberPiece(right)) return [left, right];
-                    if (depth < 2 && right.length >= 4) {
-                        let sub = trySplitGlued(right, depth + 1);
-                        if (sub) return [left, ...sub];
-                    }
-                }
-            }
-            return null;
-        };
-
-        let tokens = text.split(/\s+/).filter(Boolean);
-        let outTokens = [];
-        tokens.forEach(tok => {
-            let cleanTok = tok.replace(/[!؟?#@،,؛\.]/g, "");
-            if (!cleanTok || cleanTok === "+" || isInventoryPiece(cleanTok, false) || isNumberPiece(cleanTok)) {
-                outTokens.push(tok);
-                return;
-            }
-            if (cleanTok.length >= 5) {
-                let splitRes = trySplitGlued(cleanTok, 0);
-                if (splitRes && splitRes.length > 1) {
-                    addLog("anchor", `[فلتر #${stepOrder}] المشرط الذكي لتفكيك الملتصق 🧩`, `تم تفكيك <mark>${cleanTok}</mark> ⬅️ <b>${splitRes.join(" + ")}</b>`);
-                    outTokens.push(...splitRes);
-                    return;
-                }
-            }
-            outTokens.push(tok);
-        });
-        return outTokens.join(" ");
-    },
-
-    // # =====================================================================
-    // # 🚀 المدير التنفيذي للاستوديو (يشغل الفلاتر حسب أرقام ترتيبها ومفاتيحها)
-    // # =====================================================================
     analyzeFullText: function(rawText, customInventoryDB, profileOverride) {
-        let logs = [];
-        const addLog = (type, title, msg) => logs.push(`<div class="log-item log-${type}"><span class="step-title">${title}</span>${msg}</div>`);
+        if (!rawText || !String(rawText).trim()) return { queue: [], logsHTML: "", activeProfile: profileOverride || 'sales' };
+        let activeProfile = profileOverride || window.DB.getActiveVoiceProfile();
+        let inventoryDB = Array.isArray(customInventoryDB) ? customInventoryDB : window.DB.getProducts();
+        let chunks = String(rawText)
+            .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
+            .replace(/(^|\s)(?:زائد|و)(?=\s|$)/g, ' + ')
+            .split('+')
+            .map(c => c.trim())
+            .filter(Boolean);
 
-        if (!rawText || !rawText.trim()) return { queue: [], logsHTML: "" };
-
-        let activeProfile = profileOverride || ((typeof DB !== 'undefined' && DB.getActiveVoiceProfile) ? DB.getActiveVoiceProfile() : 'sales');
-        let inventoryDB = customInventoryDB || ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts() : []);
-        let cfg = (typeof DB !== 'undefined' && DB.getVoiceSettings) ? DB.getVoiceSettings(activeProfile) : DefaultVoiceConfig.settings;
-        let pipeline = (typeof DB !== 'undefined' && DB.getVoicePipeline) ? DB.getVoicePipeline(activeProfile) : MasterPipelineCatalog;
-        let unitsList = (typeof DB !== 'undefined' && DB.getVoiceUnits) ? DB.getVoiceUnits().map(u => this.peeler(u, false)) : DefaultVoiceConfig.units;
-
-        this.prepareInventoryShadow(inventoryDB);
-
-        // # فرز الفلاتر المفعلة فقط حسب رقم الترتيب الذي حدده المستخدم في الشاشة
-        let activeFilters = pipeline
-            .filter(f => f.enabled !== false)
-            .sort((a, b) => (Number(a.order ?? a.defaultOrder) || 99) - (Number(b.order ?? b.defaultOrder) || 99));
-
-        let filterMap = new Map(activeFilters.map(f => [f.id, f]));
-
-        // # المرحلة الأولى: تمرير الجملة على فلاتر المستوى النصي والمفككات بالترتيب المحدد
-        let workingText = String(rawText);
-
-        activeFilters.forEach(filter => {
-            let stepNum = filter.order ?? filter.defaultOrder;
-            let beforeText = workingText;
-
-            switch (filter.id) {
-                case "f_excel_clean":
-                    workingText = window.cleanExcelText(workingText);
-                    break;
-
-                case "f_digits_unstick":
-                    workingText = workingText
-                        .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
-                        .replace(/(\d+(?:\.\d+)?)([^\d\s\.×\+\/])/g, '$1 $2')
-                        .replace(/([^\d\s\.×\+\/])(\d+(?:\.\d+)?)/g, '$1 $2')
-                        .replace(/([\u0600-\u06FF])([a-zA-Z])/g, '$1 $2')
-                        .replace(/([a-zA-Z])([\u0600-\u06FF])/g, '$1 $2');
-                    if (beforeText !== workingText) {
-                        addLog("peel", `[فلتر #${stepNum}] فك التصاق الأرقام والحروف`, `<mark>${workingText}</mark>`);
-                    }
-                    break;
-
-                case "f_deglue_words":
-                    workingText = this._runDeglueCapsule(workingText, inventoryDB, addLog, stepNum);
-                    break;
-
-                case "f_long_nonsense": {
-                    let maxLen = parseInt(filter.targetPattern) || 10;
-                    let wordsArr = workingText.split(/\s+/);
-                    let removedLong = [];
-                    wordsArr = wordsArr.filter(w => {
-                        let cleanW = w.replace(/[!؟?#@،,؛\.]/g, "");
-                        if (cleanW.length >= maxLen) {
-                            let p = this.peeler(cleanW);
-                            let inStore = this._vocabSet.has(p) || this._vocabList.some(vw => Math.abs(vw.length - p.length) <= 1 && this.fuzzyMatch(p, vw) >= 82);
-                            if (!inStore) {
-                                removedLong.push(cleanW);
-                                return false;
-                            }
-                        }
-                        return true;
-                    });
-                    workingText = wordsArr.join(" ");
-                    if (removedLong.length > 0) {
-                        addLog("peel", `[فلتر #${stepNum}] مقص التخاريف (${maxLen}+ حروف) ✂️`, `تم مسح: <span class="highlight-danger">${removedLong.join(" ، ")}</span>`);
-                    }
-                    break;
-                }
-
-                case "f_protect_compounds":
-                    workingText = workingText
-                        .replace(/(\d+)\s+في\s+(\d+)/g, '$1×$2')
-                        .replace(/(\d+)\s*\+\s*(\d+)/g, '$1__PLUS__$2')
-                        .replace(/(\d+)\s+و\s*(\d+)\s+(وات|واط|مم|ملي|سم|بوصه|امبير|فولت)/g, '$1__AND__$2 $3')
-                        .replace(/(ابيض|احمر|اصفر|ازرق)\s+و\s*(ورم|وارم|احمر|ازرق|الوان)/g, '$1__AND__$2')
-                        .replace(/(مروحه)\s+و\s*(خلاط)/g, '$1__AND__$2')
-                        .replace(/(مفتاح)\s+و\s*(بريزه)/g, '$1__AND__$2');
-                    break;
-
-                case "f_waw_number_trap": {
-                    let toks = workingText.split(/\s+/);
-                    let repSymbol = filter.actionType === "delete" ? "" : (filter.actionType === "space" ? " " : "+ ");
-                    for (let i = 0; i < toks.length; i++) {
-                        let w = toks[i];
-                        let prevPeeled = i > 0 ? this.peeler(toks[i - 1], false) : "";
-                        let prevIsHundred = this.anchors.hundreds[prevPeeled] !== undefined || prevPeeled === "100" || prevPeeled === "200";
-                        let prevIsSingle = !isNaN(prevPeeled) || this.rescueNumber(prevPeeled, 70) !== null;
-
-                        if (/^و\d+$/.test(w) && !prevIsHundred) {
-                            toks[i] = repSymbol + w.substring(1);
-                            addLog("peel", `[فلتر #${stepNum}] مصيدة الواو والرقم`, `تحويل <mark>${w}</mark> ⬅️ <b>${toks[i]}</b>`);
-                        } else if (w.startsWith("و") && w.length > 2 && !prevIsHundred && !prevIsSingle) {
-                            let afterWaw = w.substring(1);
-                            if (!this.anchors.tens[this.peeler(afterWaw, false)]) {
-                                let checkSingle = this.rescueNumber(afterWaw, 75);
-                                if (checkSingle) {
-                                    toks[i] = repSymbol + checkSingle.number;
-                                    addLog("peel", `[فلتر #${stepNum}] مصيدة الواو والرقم`, `تحويل <mark>${w}</mark> ⬅️ <b>${toks[i]}</b>`);
-                                }
-                            }
-                        }
-                    }
-                    workingText = toks.join(" ");
-                    break;
-                }
-
-                case "f_dots_punct": {
-                    let rawChars = String(filter.targetPattern || ". , ، ؛ - ! ؟ ? # @").split(/\s+/).filter(Boolean);
-                    let act = filter.actionType || "split_plus";
-                    let rep = act === "split_plus" ? " + " : (act === "delete" ? "" : (act === "space" ? " " : ` ${filter.replacementVal || ""} `));
-                    rawChars.forEach(ch => {
-                        let esc = ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        workingText = workingText.replace(new RegExp(esc, 'g'), rep);
-                    });
-                    if (beforeText !== workingText) {
-                        addLog("peel", `[فلتر #${stepNum}] معالجة النقطة والترقيم`, `تحويل الرموز إلى (${act === 'split_plus' ? '+' : act}): <mark>${workingText}</mark>`);
-                    }
-                    break;
-                }
-
-                case "f_sep_words":
-                    workingText = this._applyDynamicRuleAction(workingText, filter);
-                    if (beforeText !== workingText) {
-                        addLog("peel", `[فلتر #${stepNum}] فواصل الكلام ولزمات المحل`, `<mark>${workingText}</mark>`);
-                    }
-                    break;
-
-                case "f_standalone_waw": {
-                    let act = filter.actionType || "split_plus";
-                    let rep = act === "split_plus" ? " + " : (act === "delete" ? " " : ` ${filter.replacementVal || " "} `);
-                    workingText = workingText.replace(/\s+و\s+/g, rep);
-                    break;
-                }
-
-                case "f_ignore_welcome":
-                    workingText = this._applyDynamicRuleAction(workingText, filter);
-                    break;
-
-                default:
-                    // # تنفيذ أي فلتر مخصص أنشأه المستخدم من الشاشة (custom_...) في مكانه وترتيبه بالظبط
-                    if (String(filter.id).startsWith("custom_")) {
-                        workingText = this._applyDynamicRuleAction(workingText, filter);
-                        if (beforeText !== workingText) {
-                            addLog("peel", `[فلتر مخصص #${stepNum}] ${filter.title}`, `النتيجة: <mark>${workingText}</mark>`);
-                        }
-                    }
-                    break;
+        let queue = [];
+        chunks.forEach(chunk => {
+            let tokens = chunk.split(/\s+/).filter(Boolean);
+            if (!tokens.length) return;
+            let qty = 1;
+            if (activeProfile !== 'inventory' && !isNaN(tokens[0])) {
+                qty = parseFloat(tokens.shift()) || 1;
             }
-        });
+            let queryNorm = this.peeler(tokens.join(' '));
+            if (!queryNorm) return;
 
-        // # تقطيع الجملة إلى طلبات بناءً على علامة (+) الناتجة من الفلاتر السابقة
-        let chunks = workingText.split('+').map(c => c.trim()).filter(c => c.length > 0);
-        let extractedQueue = [];
-
-        // # المرحلة الثانية: تمرير كل طلب مقطوع على فلاتر الكلمات والأرقام والمثنى والجمع والكميات بالترتيب المحدد
-        chunks.forEach((chunk, idx) => {
-            chunk = chunk.replace(/__PLUS__/g, '+').replace(/__AND__/g, ' و ');
-            let words = chunk.split(/\s+/).filter(Boolean);
-            if (words.length === 0) return;
-
-            let dualQtyFound = null;
-            let extractedQty = 1;
-            let quantityWasHandled = false;
-            let protectedFirstNumber = false;
-
-            activeFilters.forEach(filter => {
-                let stepNum = filter.order ?? filter.defaultOrder;
-
-                switch (filter.id) {
-                    case "f_dedup_chars":
-                        words = words.map(w => w.replace(/([^\d\sو])\1{2,}/g, '$1'));
-                        break;
-
-                    case "f_dict_replace": {
-                        let dict = (typeof DB !== 'undefined' && DB.getVoiceDictionary) ? DB.getVoiceDictionary() : DefaultVoiceConfig.dictionary;
-                        let joined = words.join(" ").toLowerCase();
-                        for (let key in dict) {
-                            let target = String(dict[key]);
-                            let esc = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                            joined = joined.replace(new RegExp(`(^|\\s)${esc}(?=\\s|$)`, 'gi'), `$1${target}`);
-                        }
-                        words = joined.split(/\s+/).filter(Boolean);
-                        break;
-                    }
-
-                    case "f_phonetic_peeler":
-                        words = words.map(w => this.peeler(w, false)).join(" ").split(/\s+/).filter(Boolean);
-                        break;
-
-                    case "f_anchor_tens":
-                        for (let i = 0; i < words.length; i++) {
-                            let w = words[i];
-                            let pW = this.peeler(w, false);
-                            if (pW.startsWith("و") && pW.length > 3) {
-                                let tenWord = pW.substring(1);
-                                if (this.anchors.tens[tenWord]) {
-                                    let tenVal = this.anchors.tens[tenWord];
-                                    let prevW = words[i - 1];
-                                    if (prevW && isNaN(prevW)) {
-                                        let rescue = this.rescueNumber(prevW, 40);
-                                        if (rescue) {
-                                            words[i - 1] = (rescue.number + tenVal).toString();
-                                            words.splice(i, 1); i--;
-                                            addLog("rescue", `[فلتر #${stepNum}] إنقاذ وتد العشرات`, `دمج <span class="highlight-danger">${prevW}</span> + <mark>${tenWord}</mark> ⬅️ <b>${words[i]}</b>`);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        break;
-
-                    case "f_anchor_hundreds":
-                        for (let i = 0; i < words.length; i++) {
-                            let pW = this.peeler(words[i], false);
-                            if (this.anchors.hundreds[pW]) {
-                                let hunVal = this.anchors.hundreds[pW];
-                                let nextW = words[i + 1];
-                                if (nextW && nextW.startsWith("و")) {
-                                    let rescue = this.rescueNumber(nextW.substring(1), 40);
-                                    if (rescue) {
-                                        words[i] = (hunVal + rescue.number).toString();
-                                        words.splice(i + 1, 1);
-                                        addLog("rescue", `[فلتر #${stepNum}] إنقاذ وتد المئات`, `دمج <mark>${pW}</mark> + <span class="highlight-danger">${nextW}</span> ⬅️ <b>${words[i]}</b>`);
-                                    }
-                                } else {
-                                    words[i] = hunVal.toString();
-                                }
-                            }
-                        }
-                        break;
-
-                    case "f_strip_leading_waw": {
-                        let protectedWawRoots = String(filter.targetPattern || "وات, واط, وش, وصله, وصلة, ورم, وارم, وان, واير, ولاعه, ودن, وسام")
-                            .split(/[,،]+/).map(s => this.peeler(s.trim(), false)).filter(Boolean);
-                        for (let i = 0; i < words.length; i++) {
-                            let pW = this.peeler(words[i], false);
-                            if (words[i].startsWith("و") && words[i].length > 2 && !protectedWawRoots.includes(pW)) {
-                                let oldW = words[i];
-                                words[i] = words[i].substring(1);
-                                addLog("peel", `[فلتر #${stepNum}] نزع الواو الزائدة ✂️`, `<mark>${oldW}</mark> ⬅️ <b>${words[i]}</b>`);
-                            }
-                        }
-                        break;
-                    }
-
-                    case "f_words_to_numbers":
-                        for (let i = 0; i < words.length; i++) {
-                            if (isNaN(words[i])) {
-                                let tol = (i === 0) ? 65 : 78;
-                                let numCheck = this.rescueNumber(words[i], tol);
-                                if (numCheck) words[i] = numCheck.number.toString();
-                            }
-                        }
-                        break;
-
-                    case "f_dual_catcher": {
-                        let dualPrefixes = String(filter.targetPattern || "جوز, حتتين, قطعتين, حبتين, فرعين")
-                            .split(/[,،]+/).map(s => this.peeler(s.trim(), false)).filter(Boolean);
-                        if (words.length > 1 && dualPrefixes.includes(this.peeler(words[0], false))) {
-                            dualQtyFound = 2;
-                            words.shift();
-                        }
-                        let protectedIn = ["عشرين", "تلاتين", "اربعين", "خمسين", "ستين", "سبعين", "تمانين", "تسعين", "اتنين", "اثنين", "بنزين", "يمين", "شربين", "مشتركين", "فلسطين"];
-                        for (let i = 0; i < words.length; i++) {
-                            let w = this.peeler(words[i], false);
-                            if (w.length > 4 && w.endsWith("ين") && !protectedIn.includes(w)) {
-                                dualQtyFound = 2;
-                                words[i] = w.endsWith("تين") ? (w.slice(0, -3) + "ه") : w.slice(0, -2);
-                                addLog("anchor", `[فلتر #${stepNum}] صائد المثنى الذكي`, `<mark>${w}</mark> ⬅️ الكمية: <b>2</b> | المفرد: <b>${words[i]}</b>`);
-                                break;
-                            }
-                        }
-                        break;
-                    }
-
-                    case "f_plural_to_singular": {
-                        let pairs = String(filter.targetPattern || "").split(/[,،]+/).map(s => s.trim()).filter(Boolean);
-                        let pluralMap = {};
-                        pairs.forEach(p => {
-                            let parts = p.split("->").map(x => this.peeler(x.trim(), false));
-                            if (parts.length === 2 && parts[0] && parts[1]) pluralMap[parts[0]] = parts[1];
-                        });
-                        for (let i = 0; i < words.length; i++) {
-                            let pW = this.peeler(words[i], false);
-                            if (pluralMap[pW]) {
-                                addLog("anchor", `[فلتر #${stepNum}] رد الجمع للمفرد`, `<mark>${words[i]}</mark> ⬅️ <b>${pluralMap[pW]}</b>`);
-                                words[i] = pluralMap[pW];
-                            } else if (pW.length >= 5 && pW.endsWith("ات") && !["ساعات", "شربات", "ثرموستات"].includes(pW)) {
-                                // # قاعدة عامة لجمع المؤنث السالم إذا كان مفرده موجوداً في المخزن (مثل: لمبات -> لمبه / كشافات -> كشاف)
-                                let stem = pW.slice(0, -2);
-                                let femCandidate = stem + "ه";
-                                if (this._vocabSet.has(femCandidate)) {
-                                    words[i] = femCandidate;
-                                    addLog("anchor", `[فلتر #${stepNum}] رد الجمع للمفرد`, `<mark>${pW}</mark> ⬅️ <b>${femCandidate}</b>`);
-                                } else if (this._vocabSet.has(stem)) {
-                                    words[i] = stem;
-                                    addLog("anchor", `[فلتر #${stepNum}] رد الجمع للمفرد`, `<mark>${pW}</mark> ⬅️ <b>${stem}</b>`);
-                                }
-                            }
-                        }
-                        break;
-                    }
-
-                    case "f_protect_units":
-                        if (words.length > 1 && !isNaN(words[0])) {
-                            let nextW = this.peeler(words[1], false);
-                            if (unitsList.includes(nextW)) {
-                                protectedFirstNumber = true;
-                                addLog("anchor", `[فلتر #${stepNum}] حماية الوحدات 🔒`, `حماية <mark>${words[0]} ${words[1]}</mark> كمواصفة للصنف.`);
-                            }
-                        }
-                        break;
-
-                    case "f_extract_quantity":
-                        quantityWasHandled = true;
-                        if (cfg.ignoreQuantitiesMode) {
-                            // # في وضع المخزن (تجاهل الكميات): لا نسحب كمية، وإذا كان الرقم في البداية حر نحذفه ليظل اسم الصنف صافياً
-                            extractedQty = "";
-                            if (words.length > 0 && !isNaN(words[0]) && !protectedFirstNumber) {
-                                words.shift();
-                            }
-                        } else {
-                            extractedQty = dualQtyFound !== null ? dualQtyFound : 1;
-                            if (words.length > 0 && !isNaN(words[0]) && !protectedFirstNumber) {
-                                extractedQty = Number(words[0]);
-                                words.shift();
-                            }
-                        }
-                        break;
-                }
+            let matched = inventoryDB.find(p => p && this.peeler(p.name).includes(queryNorm)) || null;
+            let sellP = matched ? (parseFloat(matched.sellPrice ?? matched.price ?? 0) || 0) : 0;
+            let buyP = matched ? (parseFloat(matched.purchasePrice ?? matched.buyPrice ?? matched.costPrice ?? 0) || 0) : 0;
+            if (matched && Array.isArray(matched.lots) && matched.lots.length > 0) {
+                let lot = matched.lots[matched.lots.length - 1];
+                if (!sellP) sellP = parseFloat(lot.sellPrice ?? lot.price ?? 0) || 0;
+                if (!buyP) buyP = parseFloat(lot.purchasePrice ?? lot.buyPrice ?? 0) || 0;
+            }
+            let displayName = matched ? window.cleanExcelText(matched.name) : tokens.join(' ');
+            queue.push({
+                id: matched ? matched.id : null,
+                product: matched,
+                qty: qty,
+                displayQty: activeProfile === 'inventory' ? '' : qty,
+                name: displayName,
+                cleanName: displayName,
+                price: activeProfile === 'purchases' ? (buyP || sellP) : (sellP || buyP),
+                sellPrice: sellP,
+                purchasePrice: buyP,
+                score: matched ? 100 : 60
             });
-
-            // # إذا كان فلتر سحب الكميات متوقفاً تماماً (🔴) من لوحة الفلاتر أو في وضع المخزن
-            if (!quantityWasHandled || cfg.ignoreQuantitiesMode) {
-                if (cfg.ignoreQuantitiesMode || (filterMap.get("f_extract_quantity") === undefined)) {
-                    let qFilterInCatalog = pipeline.find(f => f.id === "f_extract_quantity");
-                    let shouldDropLeadingNum = cfg.ignoreQuantitiesMode || (qFilterInCatalog && String(qFilterInCatalog.targetPattern).includes("مسح"));
-                    if (shouldDropLeadingNum && words.length > 1 && !isNaN(words[0]) && !protectedFirstNumber) {
-                        words.shift();
-                    }
-                    extractedQty = cfg.ignoreQuantitiesMode ? "" : 1;
-                }
-            }
-
-            let rawItemName = words.join(" ").trim();
-            if (!rawItemName) return;
-
-            // # المرحلة الثالثة: قاضي المطابقة وبوابة الفلترة النهائية (تخضع لفلاتر 22، 23، 24)
-            let matchResult = this._evaluateCandidateWithStudio(rawItemName, inventoryDB, cfg, filterMap, addLog);
-            if (matchResult.status === "matched" || matchResult.status === "no_db") {
-                extractedQueue.push({
-                    qty: extractedQty === "" ? 1 : extractedQty,
-                    displayQty: extractedQty,
-                    name: matchResult.matchedName,
-                    cleanName: matchResult.cleanName || matchResult.matchedName,
-                    score: matchResult.score
-                });
-            }
         });
-
-        // # المحطة الأخيرة (فلتر 25): دمج وجمع الأصناف المكررة إذا كان الفلتر مفعلاً
-        let finalQueue = [];
-        let mergeFilterActive = filterMap.has("f_merge_duplicates") && cfg.mergeDuplicates !== false && !cfg.ignoreQuantitiesMode;
-
-        if (mergeFilterActive) {
-            let map = new Map();
-            let stepNum = filterMap.get("f_merge_duplicates").order || 25;
-            extractedQueue.forEach(item => {
-                let key = item.name;
-                if (map.has(key)) {
-                    let existing = map.get(key);
-                    let oldQty = existing.qty;
-                    existing.qty += item.qty;
-                    existing.displayQty = existing.qty;
-                    addLog("anchor", `[فلتر #${stepNum}] دمج الأصناف المكررة 🔄`, `جمع تكرار <mark>${item.cleanName}</mark>: (${oldQty} + ${item.qty}) = <b>${existing.qty}</b>`);
-                } else {
-                    map.set(key, { ...item });
-                    finalQueue.push(map.get(key));
-                }
-            });
-        } else {
-            finalQueue = extractedQueue;
-        }
-
-        return {
-            queue: finalQueue,
-            logsHTML: logs.join(""),
-            activeProfile: activeProfile
-        };
+        return { queue: queue, logsHTML: "", activeProfile: activeProfile };
     },
-
-    // # قاضي المطابقة المتصل بمفاتيح الاستوديو (الدردشة + المغناطيس + عدم تأليف باقي الصنف)
-    _evaluateCandidateWithStudio: function(spokenItemName, inventoryDB, cfg, filterMap, addLog) {
-        let shadowList = this.prepareInventoryShadow(inventoryDB);
-        if (shadowList.length === 0) {
-            return { matchedName: spokenItemName, cleanName: spokenItemName, score: 100, status: "no_db" };
-        }
-
-        let unitsList = (typeof DB !== 'undefined' && DB.getVoiceUnits) ? DB.getVoiceUnits().map(u => this.peeler(u, false)) : [];
-        let peeledSpoken = this.peeler(spokenItemName);
-        let spokenWords = peeledSpoken.split(" ").filter(Boolean);
-        let spokenNumbers = spokenWords.filter(w => !isNaN(w)).map(Number);
-        let spokenCoreWords = spokenWords.filter(w => isNaN(w) && !unitsList.includes(w));
-        let spokenUnitWords = spokenWords.filter(w => isNaN(w) && unitsList.includes(w));
-
-        // # فحص فلتر طرد الدردشة والسلامات (#22)
-        if (filterMap.has("f_chitchat_expel")) {
-            let chitFilter = filterMap.get("f_chitchat_expel");
-            let chitWords = String(chitFilter.targetPattern || "").split(/[,،]+/).map(w => this.peeler(w.trim(), false)).filter(Boolean);
-            let nonChit = spokenCoreWords.filter(w => !chitWords.includes(w));
-            if (nonChit.length === 0 && spokenNumbers.length === 0) {
-                if (addLog) addLog("peel", `[فلتر #${chitFilter.order || 22}] طرد الدردشة والسلامات 🧹`, `تم استبعاد العبارة الجانبية: <mark>${spokenItemName}</mark>`);
-                return { matchedName: null, score: 0, status: "chitchat" };
-            }
-            spokenCoreWords = nonChit;
-        }
-
-        let magnetActive = filterMap.has("f_number_magnet");
-        let noInventActive = filterMap.has("f_no_invent_trim");
-
-        let bestCandidate = null;
-        let highestFinalScore = 0;
-        let bestApproximatedNum = null;
-        let matchReason = "";
-
-        shadowList.forEach(dbItem => {
-            if (dbItem.peeled === peeledSpoken) {
-                highestFinalScore = 100;
-                bestCandidate = dbItem;
-                bestApproximatedNum = null;
-                matchReason = "تطابق تام 100%";
-                return;
-            }
-
-            let matchedCoreScore = 0;
-            spokenCoreWords.forEach(sw => {
-                let bestW = 0;
-                dbItem.textWords.forEach(dw => {
-                    let s = this.fuzzyMatch(sw, dw);
-                    if (s > bestW) bestW = s;
-                });
-                matchedCoreScore += bestW;
-            });
-
-            let avgCoreScore = spokenCoreWords.length > 0 ? (matchedCoreScore / spokenCoreWords.length) : 0;
-            if (avgCoreScore < (100 - cfg.letterTolerance)) return;
-
-            let firstWordBonus = 0;
-            if (spokenCoreWords[0] && dbItem.textWords[0]) {
-                let firstSim = this.fuzzyMatch(spokenCoreWords[0], dbItem.textWords[0]);
-                if (firstSim >= 75) firstWordBonus = (cfg.firstWordBonus || 20) * (firstSim / 100);
-            }
-
-            let unitBonus = 0;
-            if (spokenUnitWords.length > 0) {
-                let hasSameUnit = spokenUnitWords.some(u => dbItem.textWords.includes(u));
-                unitBonus = hasSameUnit ? 8 : -8;
-            }
-
-            let numberEffect = 0;
-            let numNote = "";
-            let candidateApproxNum = null;
-
-            if (magnetActive && spokenNumbers.length > 0) {
-                let magnetWeight = (cfg.numberMagnet || 80) / 100;
-                if (dbItem.numbers.length > 0) {
-                    let exactNumMatch = spokenNumbers.every(sn => dbItem.numbers.includes(sn));
-                    if (exactNumMatch) {
-                        numberEffect = 28 * magnetWeight;
-                        numNote = "🎯 تطابق الرقم المشترك";
-                    } else {
-                        let sNum = spokenNumbers[0];
-                        let closestDiffRatio = 999;
-                        let closestDbNum = dbItem.numbers[0];
-                        dbItem.numbers.forEach(dn => {
-                            let diffRatio = Math.abs(sNum - dn) / Math.max(sNum, dn, 1);
-                            if (diffRatio < closestDiffRatio) {
-                                closestDiffRatio = diffRatio;
-                                closestDbNum = dn;
-                            }
-                        });
-                        if (closestDiffRatio <= 0.35 && avgCoreScore >= 75) {
-                            numberEffect = (15 * (1 - closestDiffRatio)) * magnetWeight;
-                            candidateApproxNum = closestDbNum;
-                            numNote = `📏 تقريب المقاس (${sNum} ⬅️ ${closestDbNum})`;
-                        } else {
-                            numberEffect = -12 * magnetWeight;
-                        }
-                    }
-                } else {
-                    numberEffect = -5;
-                }
-            }
-
-            let totalScore = (avgCoreScore * 0.78) + firstWordBonus + unitBonus + numberEffect;
-            totalScore = Math.min(100, Math.max(0, totalScore));
-
-            if (totalScore > highestFinalScore) {
-                highestFinalScore = totalScore;
-                bestCandidate = dbItem;
-                bestApproximatedNum = candidateApproxNum;
-                matchReason = numNote;
-            }
-        });
-
-        highestFinalScore = Math.round(highestFinalScore);
-
-        if (bestCandidate && highestFinalScore >= cfg.searchThreshold) {
-            let finalOutputName = bestCandidate.cleanDisplay;
-
-            // # تنفيذ فلتر عدم تأليف باقي اسم الصنف (#24) إذا كان مفعلاً
-            if (noInventActive) {
-                let displayTokens = bestCandidate.cleanDisplay
-                    .replace(/(\d+(?:\.\d+)?)([^\d\s\.×\+\/])/g, '$1 $2')
-                    .replace(/([^\d\s\.×\+\/])(\d+(?:\.\d+)?)/g, '$1 $2')
-                    .split(/\s+/).filter(Boolean);
-
-                let verifiedTokens = [];
-                let minWordSim = Math.max(55, 100 - cfg.letterTolerance);
-
-                displayTokens.forEach(dTok => {
-                    let pTok = this.peeler(dTok);
-                    if (!pTok) return;
-                    if (!isNaN(pTok)) {
-                        let numVal = Number(pTok);
-                        if (spokenNumbers.includes(numVal) || (bestApproximatedNum !== null && numVal === bestApproximatedNum)) {
-                            verifiedTokens.push(dTok);
-                        }
-                    } else {
-                        let wasSpoken = spokenWords.some(sw => isNaN(sw) && this.fuzzyMatch(sw, pTok) >= minWordSim);
-                        if (wasSpoken) verifiedTokens.push(dTok);
-                    }
-                });
-
-                if (verifiedTokens.length > 0) {
-                    finalOutputName = verifiedTokens.join(" ");
-                }
-            }
-
-            if (addLog) {
-                addLog("success", `قاضي المطابقة (${highestFinalScore}%) ✅`, `المنطوق: <mark>${spokenItemName}</mark> ⬅️ النتيجة المعتمدة: <b>${finalOutputName}</b> ${matchReason ? `<span style="color:#fde047;">(${matchReason})</span>` : ""}`);
-            }
-
-            return {
-                matchedName: finalOutputName,
-                cleanName: finalOutputName,
-                score: highestFinalScore,
-                status: "matched"
-            };
-        } else {
-            if (addLog) {
-                addLog("rescue", "بوابة الفلترة والعزل 🚫", `استبعاد <span class="highlight-danger">${spokenItemName}</span> (أعلى شبه: ${highestFinalScore}% أقل من المؤشر ${cfg.searchThreshold}%)`);
-            }
-            return { matchedName: null, score: highestFinalScore, status: "rejected" };
-        }
-    },
-
     parseCommand: function(rawChunk, inventoryDB, profileOverride) {
         let res = this.analyzeFullText(rawChunk, inventoryDB, profileOverride);
-        return (res.queue && res.queue.length > 0) ? { name: res.queue[0].name, qty: res.queue[0].qty } : null;
+        return (res.queue && res.queue.length > 0) ? res.queue[0] : null;
     }
 };
 
-window.DB.migrateOldData();
-window.DB.applySavedTheme();
-initCloud();
+window.SmartVoice = SmartVoice;
 
-// التقاط تلقائي لأي حفظ مباشر في seraj_smart_notes من داخل الصفحات ورفعه للسحابة فوراً
+// ---------------------------------------------------------
+// 7. المراقب الذكي لـ localStorage وحارس الحقول الرقمية
+// ---------------------------------------------------------
 const _origSetItem = localStorage.setItem.bind(localStorage);
+let _isInternalSetItem = false;
+
+function _internalSetItem(key, value) {
+    _isInternalSetItem = true;
+    try {
+        _origSetItem(key, value);
+    } finally {
+        _isInternalSetItem = false;
+    }
+}
+
 localStorage.setItem = function(key, value) {
-    _origSetItem(key, value);
+    if (_isInternalSetItem) {
+        return _origSetItem(key, value);
+    }
+
     if (key === 'seraj_smart_notes' && window.DB && !window.DB._isSavingSmartNotes) {
+        _origSetItem(key, value);
         try {
             let parsed = JSON.parse(value);
             if (Array.isArray(parsed)) window.DB.saveSmartNotes(parsed);
         } catch (e) {}
-    } 
-// =========================================================================
+        return;
+    }
+
+    if (key === 'seraj_treasury_moves' && window.DB) {
+        try {
+            let parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) {
+                window.DB.saveTreasuryMoves(parsed);
+                return;
+            }
+        } catch (e) {}
+    }
+
+    if (key === 'seraj_vaults_v2' && window.DB && !window.DB._isSavingVaults) {
+        try {
+            let parsed = JSON.parse(value);
+            if (parsed && typeof parsed === 'object') {
+                window.DB.saveVaults(parsed);
+                return;
+            }
+        } catch (e) {}
+    }
+
+    _origSetItem(key, value);
+};
+
 // 🛡️ حارس مركزي: منع إدخال الأرقام السالبة في أي حقل رقمي على مستوى البرنامج
-// =========================================================================
 document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' && e.target.type === 'number') {
-        // منع كتابة علامة الناقص من الكيبورد
+    if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
         if (e.key === '-' || e.key === 'Minus') {
             e.preventDefault();
         }
@@ -4099,12 +4075,13 @@ document.addEventListener('keydown', (e) => {
 }, true);
 
 document.addEventListener('input', (e) => {
-    if (e.target.tagName === 'INPUT' && e.target.type === 'number') {
-        // تنظيف الحقل فوراً لو تم عمل (لصق - Paste) لرقم سالب
-        if (e.target.value.includes('-')) {
+    if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
+        if (e.target.value && e.target.value.includes('-')) {
             e.target.value = e.target.value.replace(/-/g, '');
         }
     }
 }, true);
 
-};
+window.DB.migrateOldData();
+window.DB.applySavedTheme();
+initCloud();
