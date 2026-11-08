@@ -869,27 +869,7 @@
                     DB.saveProducts(productsDB);
                 }
 
-                // 3. سحب/رد المدفوع النقدي الفعلي وقت البيع فقط (checkoutPaid) عبر حركة correction
-                let oldPaid = parseFloat(inv.paid) || 0;
-                let checkoutPaid = Math.max(0, Math.round((oldPaid - allocatedFromVouchers) * 100) / 100);
 
-                if (checkoutPaid > 0 && typeof DB.recordTreasuryTransaction === 'function') {
-                    let vaultKey = inv.vault || 'main';
-                    DB.recordTreasuryTransaction({
-                        id: Date.now(), 
-                        type: 'correction', 
-                        vault: vaultKey, 
-                        amountAdd: isReturn ? checkoutPaid : 0, 
-                        amountDeduct: isReturn ? 0 : checkoutPaid,
-                        notes: `تسوية أوتوماتيكية لإلغاء فاتورة ${isReturn ? 'مرتجع' : 'مبيعات'}`, 
-                        date: typeof window.Utils !== 'undefined' && typeof window.Utils.getSafeTime === 'function' ? window.Utils.getSafeTime().split('T')[0] : new Date().toISOString().split('T')[0],
-                        invoiceNo: formatIdDisplay(inv.id),
-                        customerId: inv.customerId || null,
-                        customer: inv.customer || '',
-                        timestamp: Date.now(),
-                        _lastModified: Date.now()
-                    });
-                }
             }
 
             // 4. الإلغاء والحذف المركزي الآمن حصرياً عبر DB.deleteItem('sales_invoices', inv.id, 'soft')
@@ -1345,25 +1325,6 @@
             finalRem = Math.round((finalReq - finalPaid) * 100) / 100;
         }
 
-        // 2. تسوية الخزينة القديمة وعكسها بمقدار checkoutPaid فقط بنوع correction
-        if(checkoutPaid > 0 && !wasQuotation) {
-            if(typeof DB.recordTreasuryTransaction === 'function') {
-                DB.recordTreasuryTransaction({
-                    id: Date.now(), 
-                    type: 'correction', 
-                    vault: oldVault, 
-                    amountAdd: isReturn ? checkoutPaid : 0, 
-                    amountDeduct: isReturn ? 0 : checkoutPaid,
-                    notes: `استرداد لتعديل فاتورة ${isReturn ? 'مرتجع' : 'مبيعات'}`, 
-                    date: finalDate,
-                    invoiceNo: formatIdDisplay(oldInv.id),
-                    customerId: oldInv.customerId || null,
-                    customer: oldInv.customer || '',
-                    timestamp: Date.now(),
-                    _lastModified: Date.now()
-                });
-            }
-        }
 
         // 3. البحث عن العميل بـ normalizeName قبل إنشاء عميل جديد (دون المساس برصيده أو معاملاته)
         let finalCustId = null; 
@@ -1380,25 +1341,6 @@
             }
         }
 
-        // 4. تسجيل دفعة الخزينة الجديدة
-        if(finalPaid > 0 && !isNowQuotation) {
-            if(typeof DB.recordTreasuryTransaction === 'function') {
-                DB.recordTreasuryTransaction({
-                    id: Date.now() + 1, 
-                    type: isReturn ? 'return_sale' : 'sales', 
-                    vault: finalVault, 
-                    amountAdd: isReturn ? 0 : finalPaid, 
-                    amountDeduct: isReturn ? finalPaid : 0,
-                    notes: `تحصيل/سداد ${isConvertingQuote ? 'تحويل عرض سعر إلى فاتورة' : 'تعديل فاتورة'} ${isReturn ? 'مرتجع' : 'مبيعات'} - العميل: ${finalCust || 'نقدي'}`, 
-                    date: finalDate,
-                    invoiceNo: formatIdDisplay(editingInvoiceData.id),
-                    customerId: finalCustId,
-                    customer: finalCust || '',
-                    timestamp: Date.now(),
-                    _lastModified: Date.now()
-                });
-            }
-        }
         
         // 5. تسوية المخزن والدفعات (FIFO + تحديث p.stock + تحديث p._lastModified لكل صنف)
         if (!wasQuotation) {

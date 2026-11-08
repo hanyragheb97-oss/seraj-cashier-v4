@@ -699,22 +699,7 @@ async function cancelPurchaseInvoice() {
         // 2. الحذف الآمن المركزي للفاتورة
         DB.deleteItem('purchase_invoices', inv.id, 'soft');
 
-        // 3. تسوية عكسية (correction) في الخزينة لحماية السندات المخصصة allocatedInvoices
-        let oldPaid = parseFloat(inv.paid) || 0;
-        if (oldPaid > 0) {
-            DB.recordTreasuryTransaction({
-                id: Date.now(),
-                type: 'correction',
-                vault: inv.vault || 'main',
-                amountAdd: oldPaid,
-                amountDeduct: 0,
-                notes: `تسوية عكسية لإلغاء فاتورة شراء رقم ${formatIdDisplay(inv.id)}`,
-                supplierId: inv.supplierId || null,
-                supplier: inv.supplier || 'نقدي',
-                invoiceNo: inv.id,
-                allocatedInvoices: inv.allocatedInvoices || []
-            });
-        }
+
 
         if(typeof DB.calculateSupplierBalances === 'function') {
             DB.calculateSupplierBalances();
@@ -1170,43 +1155,10 @@ function confirmFinalEdit() {
         return;
     }
 
-    // ====== 1. الخزينة (تسوية عكسية correction ثم قيد شراء purchase) ======
-    if(oldPaid > 0) {
-        DB.recordTreasuryTransaction({
-            id: Date.now(),
-            type: 'correction',
-            vault: oldVault,
-            amountAdd: oldPaid,
-            amountDeduct: 0,
-            notes: `تسوية عكسية لتعديل فاتورة شراء رقم ${formatIdDisplay(oldInv.id)}`, 
-            supplierId: oldInv.supplierId || null,
-            supplier: oldInv.supplier || 'نقدي',
-            invoiceNo: oldInv.id,
-            allocatedInvoices: oldInv.allocatedInvoices || []
-        });
-    }
-
-    let actualNewPaid = finalPaid;
-    if (normalizedSup === "" && finalPaid > finalReq) {
-        actualNewPaid = finalReq; 
+// ====== 1. ضبط المدفوع للمورد النقدي (بدون تسجيل خزينة يدوي) ======
+if (normalizedSup === "" && finalPaid > finalReq) {
         finalPaid = finalReq; 
         finalRem = 0;
-    }
-
-    if(actualNewPaid > 0) {
-        setTimeout(() => {
-            DB.recordTreasuryTransaction({
-                id: Date.now() + 50,
-                type: 'purchase',
-                vault: finalVault,
-                amountAdd: 0,
-                amountDeduct: actualNewPaid,
-                notes: `دفع نقدية لتعديل فاتورة شراء رقم ${formatIdDisplay(editingInvoiceData.id)}`, 
-                supplierId: targetSupplierId,
-                supplier: finalSupDisplay || 'نقدي',
-                invoiceNo: editingInvoiceData.id
-            });
-        }, 50);
     }
 
     // ====== 2. المخزون والدفعات والختم الزمني (القاعدة 1) ======

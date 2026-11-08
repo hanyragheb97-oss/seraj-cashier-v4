@@ -318,21 +318,20 @@
         let purchaseInvoicesDB = [];
         
         function loadDB() {
-            try {
-                if (typeof DB !== 'undefined') {
-                    productsDB = DB.getProducts(true) || [];
-                    suppliersDB = (typeof DB.calculateSupplierBalances === 'function' ? DB.calculateSupplierBalances() : DB.getSuppliers()) || [];
-                    if (!Array.isArray(suppliersDB) || suppliersDB.length === 0) {
-                        suppliersDB = DB.getSuppliers() || [];
-                    }
-                    purchaseInvoicesDB = DB.getPurchaseInvoices() || [];
-                } else {
-                    productsDB = JSON.parse(localStorage.getItem('seraj_products')) || [];
-                    suppliersDB = JSON.parse(localStorage.getItem('seraj_suppliers')) || [];
-                    purchaseInvoicesDB = JSON.parse(localStorage.getItem('seraj_purchase_invoices')) || [];
-                }
-            } catch(e) { console.error(e); }
+    try {
+        if (typeof DB !== 'undefined') {
+            productsDB = DB.getProducts(true) || [];
+            suppliersDB = DB.getSuppliers(false) || [];
+            purchaseInvoicesDB = DB.getPurchaseInvoices(true) || [];
+        } else {
+            productsDB = JSON.parse(localStorage.getItem('seraj_products')) || [];
+            suppliersDB = JSON.parse(localStorage.getItem('seraj_suppliers')) || [];
+            purchaseInvoicesDB = JSON.parse(localStorage.getItem('seraj_purchase_invoices')) || [];
         }
+    } catch (e) {
+        console.error("خطأ أثناء تحميل قاعدة البيانات:", e);
+    }
+}
 
         let invoice = JSON.parse(localStorage.getItem('seraj_draft_purchase')) || [];
         let lastSavedInvoice = null; 
@@ -345,10 +344,12 @@
             if (typeof renderTable === 'function') renderTable();
 
             // مستمع التحديثات اللحظية للمزامنة المركزية (V4 Clean)
-            window.addEventListener('seraj:updated', (e) => {
-                if (typeof loadDB === 'function') loadDB();
-                if (typeof renderTable === 'function') renderTable();
-            });
+// ✅ الاستماع للتحديثات السحابية ✅
+window.addEventListener('seraj:updated', (e) => {
+    if (typeof loadDB === 'function') loadDB();
+    if (typeof renderTable === 'function') renderTable();
+    // إذا كان لديك قوائم منسدلة مفتوحة للعملاء يمكن تحديثها هنا
+});
         };
 
         function handleExit() { window.location.href = 'index.html'; }
@@ -923,29 +924,27 @@
         }
 
         function generateSmartPurchaseId(dbArray) {
-            let deviceCode = localStorage.getItem('seraj_device_code');
-            if (!deviceCode) {
-                deviceCode = Math.floor(Math.random() * 9) + 1; 
-                localStorage.setItem('seraj_device_code', deviceCode);
-            }
-
-            let myInvoices = dbArray.filter(inv => {
-                let strId = String(inv.id);
-                return strId.startsWith(deviceCode.toString()) && strId.length >= 6;
+            // 1. جلب الحرف الإجباري الخاص بالجهاز (لو مفيش ياخد X)
+            let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
+            
+            // 2. قراءة مصفوفة المشتريات
+            let invoices = dbArray || purchaseInvoicesDB || [];
+            
+            let maxNum = 99; // البداية دائماً من 100
+            
+            invoices.forEach(inv => {
+                let invNo = String(inv.invoiceNo || inv.id || '');
+                // البحث عن الفواتير اللي بتبدأ بنفس الحرف فقط
+                if (invNo.startsWith(devPrefix + '-')) {
+                    let numPart = parseInt(invNo.split('-')[1], 10);
+                    if (!isNaN(numPart) && numPart > maxNum) {
+                        maxNum = numPart;
+                    }
+                }
             });
-
-            let nextNumber = 1;
-            if (myInvoices.length > 0) {
-                let maxNum = 0;
-                myInvoices.forEach(inv => {
-                    let numPart = parseInt(String(inv.id).substring(1));
-                    if (!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
-                });
-                nextNumber = maxNum + 1;
-            }
-
-            let finalId = parseInt(deviceCode.toString() + nextNumber.toString().padStart(5, '0'));
-            return finalId;
+            
+            // النتيجة: A-100 أو B-150
+            return `${devPrefix}-${maxNum + 1}`;
         }
 
         let _isConfirmingPurchaseSave = false;
@@ -1088,26 +1087,9 @@
                     });
                     if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
 
-                    // القاعدة 4: تسجيل المبالغ المدفوعة عبر DB.recordTreasuryTransaction بنوع purchase
-                    if (inputPaid > 0 && typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-                        DB.recordTreasuryTransaction({
-                            id: nowTs + Math.floor(Math.random() * 1000),
-                            type: 'purchase',
-                            vault: vaultKey,
-                            amountDeduct: inputPaid,
-                            date: invDate,
-                            timestamp: nowTs,
-                            notes: `فاتورة شراء رقم ${newInvoiceId} - المورد: ${suppName || 'نقدي'}`,
-                            supplierId: suppId || null,
-                            supplier: suppName || null,
-                            invoiceNo: newInvoiceId,
-                            _device: dName,
-                            _lastModified: nowTs
-                        });
-                    }
 
-                    // القاعدة 3: حفظ الفاتورة حصرياً بـ DB.savePurchaseInvoices
-                    let newInvoice = { 
+                // القاعدة 3: حفظ الفاتورة حصرياً بـ DB.savePurchaseInvoices
+                let newInvoice = { 
                         id: newInvoiceId, 
                         timestamp: nowTs, 
                         date: invDate, 
@@ -1116,6 +1098,8 @@
                         total: finalReq,
                         remaining: remaining,
                         paid: inputPaid, 
+                        initialPaid: inputPaid,             // تثبيت المدفوع النقدي الأولي
+                        initialRemaining: remaining,       // تثبيت المتبقي الأولي لحماية الخصم
                         discount: discount,
                         notes: notes,
                         vault: vaultKey,
@@ -1128,7 +1112,11 @@
                     };
                     
                     purchaseInvoicesDB.push(newInvoice);
-                    if (typeof DB !== 'undefined') DB.savePurchaseInvoices(purchaseInvoicesDB);
+
+                    // تمرير formattedItems كمعامل ثانٍ لتنظيف النواقص المشتراة من النوتة الذكية فوراً
+                    if (typeof DB !== 'undefined') {
+                        DB.savePurchaseInvoices(purchaseInvoicesDB, formattedItems);
+                    }
 
                     lastSavedInvoice = newInvoice;
                 } catch (err) {

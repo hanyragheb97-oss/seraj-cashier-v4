@@ -1325,7 +1325,6 @@ function confirmInvoicePayment(e) {
 
     function executeInvoicePayment() {
         let inv = activeSelectedInvoice.rawObj;
-        // تأمين القيم كأرقام لمنع خطأ المطابقة
         let rem = parseFloat(inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (inv.remaining || 0)) || 0;
         let maxRem = rem || parseFloat(inv.total) || 0;
 
@@ -1344,12 +1343,12 @@ function confirmInvoicePayment(e) {
 
         let txId = window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId('SUP_REC') : 'SUP_REC_' + Date.now();
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
+        let allocArray = [{ invoiceId: inv.id, amount: pAmount }];
 
         if(!s.transactions) s.transactions = [];
-
         let newVoucher = { 
             id: txId, type: 'payment', amount: pAmount, notes: notes, treasury: treasuryKey, date: date, 
-            allocatedInvoices: [{ invoiceId: inv.id, amount: pAmount }], _device: dName, _lastModifiedBy: dName 
+            allocatedInvoices: allocArray, _device: dName, _lastModifiedBy: dName 
         };
         s.transactions.push(newVoucher);
 
@@ -1367,20 +1366,12 @@ function confirmInvoicePayment(e) {
                     date: date,
                     supplierId: s.id,
                     supplier: s.name,
+                    allocatedInvoices: allocArray, // تمرير التخصيص للمحرك المركزي
                     _device: dName
                 });
             }
 
-            let purchaseInvoices = DB.getPurchaseInvoices() || [];
-            let invIndex = purchaseInvoices.findIndex(x => String(x.id) === String(inv.id));
-            if(invIndex !== -1) {
-                let savedInv = purchaseInvoices[invIndex];
-                savedInv.paid = (parseFloat(savedInv.paid) || 0) + pAmount;
-                let newRem = (parseFloat(savedInv.total) || 0) - savedInv.paid;
-                savedInv.remaining = newRem > 0 ? newRem : 0;
-                purchaseInvoices[invIndex] = savedInv;
-                DB.savePurchaseInvoices(purchaseInvoices);
-            }
+            // 🛑 تم حذف كود التدخل اليدوي في الفواتير نهائياً 🛑
 
             if (typeof saveActionToQueueSafely === 'function') {
                 saveActionToQueueSafely({ type: 'add_supplier_voucher', docId: String(s.id), voucher: newVoucher, timestamp: Date.now() });
@@ -1502,7 +1493,6 @@ if(r.value === v.type) r.checked = true;
 document.getElementById('editVoucherModal').style.display = 'flex';
 }
 
-// استبدل الدالة بالكامل بهذا الكود
 async function deleteVoucherFromInline(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
     if(typeof closeAllMenus === 'function') closeAllMenus();
@@ -1514,27 +1504,14 @@ async function deleteVoucherFromInline(e) {
     let isConfirmed = typeof SerajConfirm === 'function' ? await SerajConfirm(`هل أنت متأكد من حذف السند رقم ${String(v.id).slice(-6)} بقيمة ${v.amount}؟`) : confirm(`حذف السند؟`);
     if(!isConfirmed) return;
 
-    // 1. حذف من مصفوفة المورد وحفظ المورد أولاً
+    // 1. حذف من مصفوفة المورد وحفظ المورد
     s.transactions = s.transactions.filter(x => String(x.id) !== String(v.id));
     if(typeof DB !== 'undefined') {
         DB.saveSuppliers(suppliersDB);
 
-        // 2. التوزيع المعكوس (رد المبالغ للفواتير)
-        if(v.allocatedInvoices && v.allocatedInvoices.length > 0) {
-            let pInvs = DB.getPurchaseInvoices() || [];
-            let updated = false;
-            v.allocatedInvoices.forEach(alloc => {
-                let invIndex = pInvs.findIndex(x => String(x.id) === String(alloc.invoiceId));
-                if(invIndex !== -1) {
-                    pInvs[invIndex].paid = (parseFloat(pInvs[invIndex].paid) || 0) - alloc.amount;
-                    pInvs[invIndex].remaining = (parseFloat(pInvs[invIndex].remaining) || 0) + alloc.amount;
-                    updated = true;
-                }
-            });
-            if(updated) DB.savePurchaseInvoices(pInvs);
-        }
+        // 🛑 تم حذف بلوك التوزيع المعكوس (رد المبالغ للفواتير يدوياً) 🛑
 
-        // 3. الحذف المركزي من الخزينة والسحابة بدون لمس vaults يدوياً
+        // 2. الحذف المركزي من الخزينة
         if(typeof DB.deleteItem === 'function') {
             await DB.deleteItem('treasury_moves', v.id, 'hard');
         }
@@ -1546,8 +1523,7 @@ async function deleteVoucherFromInline(e) {
 
     let lastScroll = window.scrollY;
     setTimeout(() => {
-        recalculateSupplierBalances();
-        // 4. سحب الأرصدة المعتمدة مباشرة
+        recalculateSupplierBalances(); // db_2.js سيعيد حساب الفواتير بعد اختفاء السند
         suppliersDB = DB.getSuppliers() || [];
         openSupplierAccount(s.id);
         window.scrollTo(0, lastScroll);
@@ -1570,48 +1546,26 @@ async function saveEditedVoucher(e) {
 
     if(newAmount <= 0) return typeof SerajAlert === 'function' ? SerajAlert("أدخل مبلغ صحيح!", "error") : alert("أدخل مبلغ صحيح!");
 
-    // 1. تحديث مصفوفة المورد وحفظ المورد أولاً (ترتيب إجباري)
     let tIndex = s.transactions.findIndex(x => String(x.id) === String(v.id));
     let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
     
     if(typeof DB !== 'undefined') {
-        // التوزيع المعكوس للفواتير
-        let pInvs = DB.getPurchaseInvoices() || [];
-        let invoicesUpdated = false;
-
-        if(v.allocatedInvoices && v.allocatedInvoices.length > 0) {
-            v.allocatedInvoices.forEach(alloc => {
-                let invIndex = pInvs.findIndex(x => String(x.id) === String(alloc.invoiceId));
-                if(invIndex !== -1) {
-                    pInvs[invIndex].paid = (parseFloat(pInvs[invIndex].paid) || 0) - alloc.amount;
-                    pInvs[invIndex].remaining = (parseFloat(pInvs[invIndex].remaining) || 0) + alloc.amount;
-                    invoicesUpdated = true;
-                }
-            });
-        }
-
-        if(newType === 'payment' && v.allocatedInvoices && v.allocatedInvoices.length > 0) {
-            let alloc = v.allocatedInvoices[0];
-            alloc.amount = newAmount;
-            let invIndex = pInvs.findIndex(x => String(x.id) === String(alloc.invoiceId));
-            if(invIndex !== -1) {
-                pInvs[invIndex].paid = (parseFloat(pInvs[invIndex].paid) || 0) + newAmount;
-                let rem = (parseFloat(pInvs[invIndex].total) || 0) - pInvs[invIndex].paid;
-                pInvs[invIndex].remaining = rem > 0 ? rem : 0;
-                invoicesUpdated = true;
-            }
-        } else {
+        // 🛑 تم حذف بلوك التوزيع المعكوس وتعديل الفواتير يدوياً 🛑
+        
+        // تعديل تخصيص السند إذا تغير نوعه من دفع إلى استلام
+        if(newType !== 'payment') {
             v.allocatedInvoices = [];
+        } else if (v.allocatedInvoices && v.allocatedInvoices.length > 0) {
+            v.allocatedInvoices[0].amount = newAmount; // تحديث المبلغ المخصص ليتطابق مع المبلغ الجديد
         }
-        if(invoicesUpdated) DB.savePurchaseInvoices(pInvs);
 
         if(tIndex !== -1) {
             s.transactions[tIndex] = { id: v.id, type: newType, amount: newAmount, notes: newNotes, treasury: newTreasury, date: newDate, allocatedInvoices: v.allocatedInvoices, _device: v._device, _lastModifiedBy: dName };
         }
-        // حفظ المورد أولاً قبل الخزينة
+        
         DB.saveSuppliers(suppliersDB);
 
-        // 2. تحديث الخزينة مركزياً (بدون لمس vaults يدوياً)
+        // تحديث الخزينة مركزياً
         if(typeof DB.deleteItem === 'function') {
             await DB.deleteItem('treasury_moves', v.id, 'hard');
         }
@@ -1626,6 +1580,7 @@ async function saveEditedVoucher(e) {
                 date: newDate,
                 supplierId: s.id,
                 supplier: s.name,
+                allocatedInvoices: v.allocatedInvoices,
                 _device: v._device
             });
         }
@@ -1638,8 +1593,7 @@ async function saveEditedVoucher(e) {
     let lastScroll = window.scrollY;
     setTimeout(() => {
         closeModals();
-        recalculateSupplierBalances();
-        // 3. سحب الأرصدة المعتمدة مباشرة
+        recalculateSupplierBalances(); // db_2.js سيتولى إعادة ربط الأرصدة بالفواتير
         suppliersDB = DB.getSuppliers() || [];
         openSupplierAccount(s.id);
         window.scrollTo(0, lastScroll);
@@ -1691,18 +1645,19 @@ function saveTransaction(e) {
         if(amount <= 0) return typeof SerajAlert === 'function' ? SerajAlert("أدخل مبلغ صحيح!", "error") : alert("مبلغ غير صحيح!");
         if(!s.transactions) s.transactions = [];
 
-        // 1. توليد رقم السند دائماً عبر SUP_REC
         let txId = window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId('SUP_REC') : 'SUP_REC_' + Date.now();
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
-        let newVoucher = { id: txId, type: txType, amount: amount, notes: notes, treasury: treasuryKey, date: date, _device: dName, _lastModifiedBy: dName };
+        let newVoucher = { 
+            id: txId, type: txType, amount: amount, notes: notes, treasury: treasuryKey, date: date, 
+            allocatedInvoices: [], // تخصيص فارغ للأقدم فالأقدم
+            _device: dName, _lastModifiedBy: dName 
+        };
         s.transactions.push(newVoucher);
 
         if(typeof DB !== 'undefined') {
-            // 2. ترتيب الحفظ إجباري: حفظ المورد أولاً
             DB.saveSuppliers(suppliersDB);
 
-            // 3. تسجيل الحركة بالخزينة مع تمرير supplierId و supplier صراحةً
             if(typeof DB.recordTreasuryTransaction === 'function') {
                 DB.recordTreasuryTransaction({
                     id: txId,
@@ -1714,6 +1669,7 @@ function saveTransaction(e) {
                     date: date,
                     supplierId: s.id,
                     supplier: s.name,
+                    allocatedInvoices: [], // تمرير للمحرك المركزي
                     _device: dName
                 });
             }
@@ -1726,7 +1682,6 @@ function saveTransaction(e) {
         let lastScroll = window.scrollY;
         setTimeout(() => {
             recalculateSupplierBalances();
-            // 4. سحب الأرصدة المعتمدة مباشرة
             suppliersDB = DB.getSuppliers() || [];
             if(typeof closeModals === 'function') closeModals();
             openSupplierAccount(s.id);
@@ -1734,7 +1689,7 @@ function saveTransaction(e) {
             typeof SerajAlert === 'function' ? SerajAlert(`تم الحفظ وتحديث الخزينة! \n رقم السند: ${String(txId).slice(-6)}`, "success") : alert("تم الحفظ!");
         }, 300);
     }
-} 
+}
 
 window.openPaymentModalFromInline = function(e) {
     try {

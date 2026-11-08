@@ -1456,7 +1456,6 @@ function openPaymentModalFromInline(e) {
 
 function confirmInvoicePayment(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
-
     if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
         if (!window.Utils.preventDoubleClick(e.target)) return;
     }
@@ -1481,6 +1480,8 @@ function confirmInvoicePayment(e) {
         : 'REC_' + Date.now();
     let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
     let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `تحصيل فاتورة رقم ${inv.id}`;
+
+    // 🛑 التزاماً بتعليمات db.js: نحدد الفاتورة المخصصة فقط دون التدخل في أرصدتها
     let allocatedInvoices = [{ id: inv.id, deducted: pAmount }];
 
     if(!c.transactions) c.transactions = [];
@@ -1501,25 +1502,8 @@ function confirmInvoicePayment(e) {
     c.transactions.push(newTx);
 
     if(typeof DB !== 'undefined') {
-        let salesInvoices = DB.getSalesInvoices() || [];
-        let invIndex = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
-        if(invIndex !== -1) {
-            let savedInv = salesInvoices[invIndex];
-            let currentPaid = parseFloat(savedInv.paid) || 0;
-            let totalReq = (parseFloat(savedInv.total)||0) - (parseFloat(savedInv.discount)||0);
-            let newPaid = currentPaid + pAmount;
-            let newRem = totalReq - newPaid;
-
-            savedInv.paid = newPaid;
-            savedInv.remaining = newRem > 0 ? newRem : 0;
-            if(savedInv.remaining <= 0 && savedInv.type === 'delayed') {
-                savedInv.type = 'sales';
-            }
-            salesInvoices[invIndex] = savedInv;
-            DB.saveSalesInvoices(salesInvoices);
-        }
-
-        DB.saveCustomers(customersDB);
+        // 🛑 حفظ العميل والسند فقط، والـ DB سيتكفل بخصمها من الفواتير
+        DB.saveCustomers(customersDB); 
 
         if (typeof DB.recordTreasuryTransaction === 'function') {
             DB.recordTreasuryTransaction({
@@ -1537,32 +1521,25 @@ function confirmInvoicePayment(e) {
             });
         }
 
+        // 🛑 إعادة السحب بعد أن قام المحرك بالتحديثات الحسابية
         customersDB = DB.getCustomers();
     }
 
     let lastScroll = window.scrollY;
     setTimeout(() => {
         closeModals();
-
         let updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
-        if (!updatedCustomer && c && c.name) {
-            updatedCustomer = customersDB.find(x => (window.Utils && window.Utils.normalizeName ? window.Utils.normalizeName(x.name) === window.Utils.normalizeName(c.name) : x.name === c.name));
-            if (updatedCustomer) currentActiveCustomerId = updatedCustomer.id;
-        }
-
         if (updatedCustomer) {
             updateAccountSummary(updatedCustomer);
             renderAccountTransactions(updatedCustomer);
         }
-
         window.scrollTo(0, lastScroll);
-        SerajAlert(`تم الإجراء بنجاح!`);
+        SerajAlert(`تم التحصيل بنجاح!`);
     }, 300);
 }
 
 function saveTransaction(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
-    
     if (e && e.target && window.Utils && typeof window.Utils.preventDoubleClick === 'function') {
         if (!window.Utils.preventDoubleClick(e.target)) return;
     }
@@ -1585,7 +1562,7 @@ function saveTransaction(e) {
         
     let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
-    // 🌟 السند الحر/العام لا يحتوي على تخصيص مباشر، التوزيع يتم بالكامل داخل المحرك db.js 🌟
+    // 🛑 السند الحر يترك المخصصات فارغة للـ FIFO
     let newTx = { 
         id: receiptId, 
         type: txType, 
@@ -1595,18 +1572,15 @@ function saveTransaction(e) {
         date: date, 
         _device: dName, 
         _lastModifiedBy: dName,
-        allocatedInvoices: [] // فارغ تماماً ليقوم الـ DB بحسابه
+        allocatedInvoices: [] 
     };
 
     c.lastActivityDate = date;
-    
-    // 1. إضافة السند لملف العميل وحفظ العميل فقط
     c.transactions.push(newTx);
     
     if(typeof DB !== 'undefined') {
         DB.saveCustomers(customersDB);
 
-        // 2. تسجيل حركة الخزينة مركزياً عبر المركز
         if (typeof DB.recordTreasuryTransaction === 'function') {
             DB.recordTreasuryTransaction({
                 id: String(receiptId), 
@@ -1622,8 +1596,6 @@ function saveTransaction(e) {
                 customer: c.name.trim()
             });
         }
-
-        // 3. سحب البيانات بعد أن قام DB.js بالحسبة الذكية والتوزيع الصحيح
         customersDB = DB.getCustomers();
     }
 
@@ -1632,7 +1604,6 @@ function saveTransaction(e) {
         closeModals();
         const updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
         if (updatedCustomer) {
-            // تحديث الشاشة بناءً على حسابات الـ DB الجديدة
             updateAccountSummary(updatedCustomer);
             renderAccountTransactions(updatedCustomer);
         }
@@ -1755,33 +1726,17 @@ async function deleteVoucherFromInline(e) {
     let isConfirmed = await SerajConfirm(`هل أنت متأكد من حذف السند رقم ${v.id} بقيمة ${v.amount}؟`);
     if(!isConfirmed) return;
 
+    // 🛑 التزاماً بالقواعد: نحذف السند من العميل فقط ونترك db.js يتدخل
     c.transactions = (c.transactions || []).filter(x => String(x.id) !== String(v.id));
 
     if(typeof DB !== 'undefined') {
         DB.saveCustomers(customersDB);
 
-        let salesInvoices = DB.getSalesInvoices() || [];
-        let invoicesChanged = false;
-
-        if (v.allocatedInvoices && v.allocatedInvoices.length > 0) {
-            v.allocatedInvoices.forEach(alloc => {
-                let invIndex = salesInvoices.findIndex(x => String(x.id) === String(alloc.id));
-                if(invIndex !== -1) {
-                    let inv = salesInvoices[invIndex];
-                    inv.paid = Math.max(0, (parseFloat(inv.paid) || 0) - (parseFloat(alloc.deducted) || 0));
-                    inv.remaining = (parseFloat(inv.remaining) || 0) + (parseFloat(alloc.deducted) || 0);
-                    if(inv.remaining > 0) inv.type = 'delayed';
-                    salesInvoices[invIndex] = inv;
-                    invoicesChanged = true;
-                }
-            });
-        }
-        if(invoicesChanged) DB.saveSalesInvoices(salesInvoices);
-
         if (typeof DB.deleteItem === 'function') {
             DB.deleteItem('treasury_moves', String(v.id), 'hard');
         }
 
+        // 🛑 إعادة تحميل العملاء بعد أن قام المحرك باسترجاع مديونيات الفواتير
         customersDB = DB.getCustomers();
     }
 
@@ -1793,7 +1748,7 @@ async function deleteVoucherFromInline(e) {
             renderAccountTransactions(updatedCustomer);
         }
         window.scrollTo(0, lastScroll);
-        SerajAlert("تم حذف السند بنجاح وتم إرجاع المديونيات للفواتير المرتبطة!");
+        SerajAlert("تم حذف السند وإرجاع المديونيات للفواتير تلقائياً!");
     }, 300);
 }
 
@@ -1815,67 +1770,12 @@ function saveEditedVoucher(e) {
 
     if(newAmount <= 0) return SerajAlert("أدخل مبلغ صحيح!");
 
-    let newAllocatedInvoices = [];
     c.lastActivityDate = newDate;
 
     if(typeof DB !== 'undefined') {
-        let salesInvoices = DB.getSalesInvoices() || [];
-        let invoicesChanged = false;
-
-        if (v.type === 'receipt' && v.allocatedInvoices && v.allocatedInvoices.length > 0) {
-            v.allocatedInvoices.forEach(alloc => {
-                let invIndex = salesInvoices.findIndex(x => String(x.id) === String(alloc.id));
-                if(invIndex !== -1) {
-                    let inv = salesInvoices[invIndex];
-                    inv.paid = Math.max(0, (parseFloat(inv.paid) || 0) - (parseFloat(alloc.deducted) || 0));
-                    inv.remaining = (parseFloat(inv.remaining) || 0) + (parseFloat(alloc.deducted) || 0);
-                    if(inv.remaining > 0) inv.type = 'delayed';
-                    salesInvoices[invIndex] = inv;
-                    invoicesChanged = true;
-                }
-            });
-        }
-
-        if (newType === 'receipt') {
-            let remainingReceipt = newAmount;
-            let cNameClean = String(c.name || '').trim();
-            let cInvs = salesInvoices.filter(x => x && !x.isCanceled && x.type !== 'canceled' && !x.isDeleted && (String(x.customerId) === String(c.id) || String(x.customer || '').trim() === cNameClean) && (parseFloat(x.remaining) || 0) > 0 && x.type !== 'return' && x.type !== 'return_sale');
-            cInvs.sort((a, b) => new Date(a.date) - new Date(b.date));
-
-            let totalDeferred = cInvs.reduce((sum, inv) => sum + (parseFloat(inv.remaining) || 0), 0);
-            let currentNetDebt = c.isNetDebt ? (c.netBalanceVal || 0) : -(c.netBalanceVal || 0);
-            let cashDebt = Math.max(0, currentNetDebt - totalDeferred);
-
-            if (cashDebt > 0) {
-                if (remainingReceipt >= cashDebt) remainingReceipt -= cashDebt;
-                else remainingReceipt = 0;
-            }
-
-            if (remainingReceipt > 0 && cInvs.length > 0) {
-                let appliedInvoicesText = '';
-                for (let i = 0; i < cInvs.length; i++) {
-                    if (remainingReceipt <= 0) break;
-                    let inv = cInvs[i];
-                    let rem = parseFloat(inv.remaining) || 0;
-
-                    if (rem > 0) {
-                        let deduction = Math.round(Math.min(rem, remainingReceipt) * 100) / 100;
-                        inv.paid = Math.round(((parseFloat(inv.paid) || 0) + deduction) * 100) / 100;
-                        inv.remaining = Math.round((rem - deduction) * 100) / 100;
-                        remainingReceipt = Math.round((remainingReceipt - deduction) * 100) / 100;
-
-                        newAllocatedInvoices.push({ id: inv.id, deducted: deduction });
-                        if (inv.remaining <= 0) inv.type = 'sales';
-
-                        let mainIdx = salesInvoices.findIndex(x => String(x.id) === String(inv.id));
-                        if (mainIdx !== -1) salesInvoices[mainIdx] = inv;
-                        invoicesChanged = true;
-                        appliedInvoicesText += ` (فاتورة ${inv.id})`;
-                    }
-                }
-                if(appliedInvoicesText && !newNotes.includes('فاتورة')) newNotes += appliedInvoicesText;
-            }
-        }
+        
+        // 🛑 التزاماً بالقواعد: نترك db.js يعيد توزيع السداد بنظام FIFO
+        let newAllocatedInvoices = []; 
 
         let updatedVoucher = {
             id: v.id,
@@ -1893,9 +1793,8 @@ function saveEditedVoucher(e) {
         if(tIndex === -1) c.transactions.push(updatedVoucher);
         else c.transactions[tIndex] = updatedVoucher;
 
+        // 🛑 حفظ العميل، و DB سيتولى ضبط كل الفواتير المخصصة والآجلة
         DB.saveCustomers(customersDB);
-
-        if (invoicesChanged) DB.saveSalesInvoices(salesInvoices);
 
         if (typeof DB.deleteItem === 'function') {
             DB.deleteItem('treasury_moves', String(v.id), 'hard');
@@ -1928,7 +1827,7 @@ function saveEditedVoucher(e) {
             renderAccountTransactions(updatedCustomer);
         }
         window.scrollTo(0, lastScroll);
-        SerajAlert("تم تعديل السند وإعادة توزيع المديونيات بنجاح!");
+        SerajAlert("تم تعديل السند وإعادة التوزيع تلقائياً بنجاح!");
     }, 300);
 }
 

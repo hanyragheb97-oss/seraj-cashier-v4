@@ -278,9 +278,9 @@ let invoicesDB = [];
 
 function loadDB() {
     if (typeof DB !== 'undefined') {
-        productsDB = DB.getProducts() || [];
-        customersDB = DB.getCustomers() || [];
-        invoicesDB = DB.getSalesInvoices() || [];
+        productsDB = DB.getProducts(true) || [];
+        customersDB = DB.getCustomers(false) || [];
+        invoicesDB = DB.getSalesInvoices(true) || [];
     }
 }
 
@@ -393,7 +393,7 @@ function searchProducts() {
         }
 
         return { product: p, score: score, matchedWords: matchedWordsCount };
-    }).filter(item => item.score > 0 && !item.product.isDeleted);
+    }).filter(item => item.score > 0 && !item.product.isDeleted && !item.product.isArchived);
 
     filtered.sort((a, b) => b.score - a.score);
 
@@ -886,14 +886,15 @@ function confirmSave() {
     let custInputEl = document.getElementById('customerSearchInput');
     let custName = custInputEl ? custInputEl.value.trim() : "";
     let vaultKey = document.getElementById('modalVaultSelect')?.value || 'main';
-    let invDate = document.getElementById('modalDate')?.value || new Date().toISOString().split('T')[0];
+    
+    let nowDate = new Date();
+    let localTodayStr = nowDate.getFullYear() + '-' + String(nowDate.getMonth() + 1).padStart(2, '0') + '-' + String(nowDate.getDate()).padStart(2, '0');
+    let invDate = document.getElementById('modalDate')?.value || localTodayStr;
     let notes = (document.getElementById('modalNotes')?.value || "").trim();
     
     let actualPaid = inputPaid;
-    let vaultAmount = inputPaid;
     if (custName === "" && inputPaid > finalReq) {
         actualPaid = finalReq;
-        vaultAmount = finalReq;
     }
     
     let remaining = parseFloat((finalReq - actualPaid).toFixed(2));
@@ -921,9 +922,12 @@ function confirmSave() {
         customer: custName || null,
         total: finalReq,
         remaining: remaining,
+        initialRemaining: remaining,
         discount: discount,
         paid: actualPaid,
+        initialPaid: actualPaid,
         vault: vaultKey,
+        treasury: vaultKey,
         notes: notes,
         items: itemsSnapshot,
         prevBalance: 0,
@@ -941,9 +945,6 @@ function confirmSave() {
     invoice = [];
     renderTable();
     closeModals();
-
-    // إظهار شريط الطباعة والتصدير السفلي بـ display: flex بعد إتمام الحفظ
-
 
     let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
     let printModalEl = document.getElementById('postSavePrintModal');
@@ -971,12 +972,10 @@ function confirmSave() {
                     c = customersDB.find(x => x && !x.isDeleted && norm(x.name) === cleanTarget);
                 }
 
-                let todayStr = new Date().toISOString().split('T')[0];
-
                 if (c) {
                     customerIdSnapshot = c.id;
                     prevBal = parseFloat(c.calculatedBalance ?? c.balance) || 0;
-                    c.lastActivityDate = todayStr;
+                    c.lastActivityDate = localTodayStr;
                     c._lastModified = Date.now();
                 } else {
                     let newId = Date.now();
@@ -984,7 +983,7 @@ function confirmSave() {
                         id: newId,
                         name: custName,
                         balance: 0,
-                        lastActivityDate: todayStr,
+                        lastActivityDate: localTodayStr,
                         _lastModified: Date.now()
                     };
                     customersDB.push(newC);
@@ -1055,10 +1054,8 @@ function confirmSave() {
                                 }
                             }
 
-                            // حذف الدفعات الصفرية
                             p.lots = p.lots.filter(l => (parseFloat(l.stock) || 0) !== 0);
 
-                            // إنشاء دفعة عجز بالسالب عند نفاد الرصيد
                             if (qtyToProcess > 0) {
                                 let negLot = p.lots.find(l => l.supplier === 'سحب بالسالب (عجز)' || (parseFloat(l.stock) || 0) < 0);
                                 if (negLot) {
@@ -1074,7 +1071,6 @@ function confirmSave() {
                                 }
                             }
 
-                            // إعادة حساب الرصيد الإجمالي وتحديث ختم الوقت إجبارياً
                             p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
                             p._lastModified = Date.now();
 
@@ -1086,26 +1082,9 @@ function confirmSave() {
                 });
 
                 if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
-
-                // 3. تسجيل حركة الخزينة مركزياً
-                if (vaultAmount > 0 && typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-                    DB.recordTreasuryTransaction({
-                        id: Date.now() + Math.floor(Math.random() * 1000),
-                        type: isReturn ? 'return_sale' : 'sales',
-                        vault: vaultKey,
-                        amountAdd: isReturn ? 0 : vaultAmount,
-                        amountDeduct: isReturn ? vaultAmount : 0,
-                        date: invDate,
-                        notes: `${isReturn ? 'فاتورة مرتجع بيع' : 'فاتورة بيع'} #${typeof formatIdDisplay === 'function' ? formatIdDisplay(newInvoiceId) : newInvoiceId} - العميل: ${custName || 'نقدي'}`,
-                        customerId: customerIdSnapshot,
-                        customer: custName || null,
-                        invoiceNo: typeof formatIdDisplay === 'function' ? formatIdDisplay(newInvoiceId) : newInvoiceId,
-                        _device: dName
-                    });
-                }
             }
 
-            // 4. الحفظ المركزي للفاتورة
+            // 3. الحفظ المركزي للفاتورة فقط (ملف db.js سيتولى تسجيل حركة الخزينة تلقائياً)
             invoicesDB.push(lastSavedInvoice);
             if (typeof DB !== 'undefined') DB.saveSalesInvoices(invoicesDB);
 
@@ -1364,7 +1343,7 @@ function processLocalAI() {
             loadDB();
             let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) 
                 ? productsDB 
-                : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts() : []);
+                : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts(true) : []);
 
             let result = null;
             if (window.SmartVoice && typeof window.SmartVoice.analyzeFullText === 'function') {
@@ -1611,8 +1590,8 @@ window.addEventListener('seraj:updated', (e) => {
     let col = e.detail && e.detail.collection ? e.detail.collection : null;
     if (!col || col === 'sales_invoices' || col === 'products' || col === 'customers') {
         if (typeof DB !== 'undefined') {
-            productsDB = DB.getProducts() || [];
-            customersDB = DB.getCustomers() || [];
+            productsDB = DB.getProducts(true) || [];
+            customersDB = DB.getCustomers(false) || [];
             invoicesDB = DB.getSalesInvoices(true) || [];
         }
         renderTable();
