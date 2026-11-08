@@ -821,15 +821,6 @@ let vaultsDB = {};
             catch(e) { return []; }
         }
 
-        function syncSingleMoveToCloud(moveObj, isDelete = false) {
-            let storeId = localStorage.getItem('seraj_store_id') || '9999';
-            let safeId = String(moveObj.id).replace(/[.#$\[\]]/g, "_");
-            if (window.dbCloud && navigator.onLine) {
-                let ref = window.dbCloud.ref('test_Stores/' + storeId + '/treasury_moves/' + safeId);
-                if (isDelete) ref.remove().catch(e => console.error(e));
-                else ref.set(moveObj).catch(e => console.error(e));
-            }
-        }
 
         function buildUnifiedTreasuryMovements() {
             let rawMoves = [...getRawTreasuryMoves()];
@@ -1020,23 +1011,6 @@ let vaultsDB = {};
                         });
                     }
 
-                    let extraPaid = Math.round((totalPaidOnInv - initPaid - sumEmbedded) * 100) / 100;
-                    if (extraPaid > 0.01) {
-                        let payTs = getSafeTime(inv.lastPaymentDate || inv._lastModified) || (ts + 1000);
-                        unified.push({
-                            id: `${inv.id}_vouch`,
-                            type: isRet ? 'customer_payment' : 'customer_receipt',
-                            vault: normalizeVaultKey(inv.lastPaymentVault || vKey),
-                            amountAdd: isRet ? 0 : extraPaid,
-                            amountDeduct: isRet ? extraPaid : 0,
-                            notes: `سند تسديد عميل - ${cName} (فاتورة #${invKey})`,
-                            date: getLocalDateStr(payTs),
-                            timestamp: payTs,
-                            invoiceNo: invKey,
-                            _device: inv._lastModifiedBy || inv._device || 'حسابات العملاء',
-                            _isInvoice: true
-                        });
-                    }
                 });
             }
 
@@ -1146,23 +1120,6 @@ let vaultsDB = {};
                         });
                     }
 
-                    let extraPaid = Math.round((totalPaidOnInv - initPaid - sumEmbedded) * 100) / 100;
-                    if (extraPaid > 0.01) {
-                        let payTs = getSafeTime(inv.lastPaymentDate || inv._lastModified) || (ts + 1000);
-                        unified.push({
-                            id: `${inv.id}_vouch`,
-                            type: isRet ? 'supplier_receipt' : 'supplier_payment',
-                            vault: normalizeVaultKey(inv.lastPaymentVault || vKey),
-                            amountAdd: isRet ? extraPaid : 0,
-                            amountDeduct: isRet ? 0 : extraPaid,
-                            notes: `سند سداد مورد - ${sName} (فاتورة #${invKey})`,
-                            date: getLocalDateStr(payTs),
-                            timestamp: payTs,
-                            invoiceNo: invKey,
-                            _device: inv._lastModifiedBy || inv._device || 'حسابات الموردين',
-                            _isInvoice: true
-                        });
-                    }
                 });
             }
 
@@ -1315,56 +1272,6 @@ let vaultsDB = {};
             renderExpensesList(true);
         });
 
-        // دمج ذكي مع السحابة يحافظ على السندات المحلية ويرفعها دون مسحها
-        let treasuryCloudHooked = false;
-        setInterval(() => {
-            if (!treasuryCloudHooked && window.dbCloud) {
-                treasuryCloudHooked = true;
-                let sId = localStorage.getItem('seraj_store_id') || '9999';
-                ['treasury_moves', 'sales_invoices', 'purchase_invoices', 'customers', 'suppliers'].forEach(col => {
-                    window.dbCloud.ref('test_Stores/' + sId + '/' + col).on('value', snap => {
-                        if (snap.exists()) {
-                            let valObj = snap.val();
-                            let cloudArr = Array.isArray(valObj) ? valObj.filter(Boolean) : Object.values(valObj);
-                            let localArr = [];
-                            try { localArr = JSON.parse(localStorage.getItem('seraj_' + col) || '[]'); } catch(e) {}
-
-                            let mergedMap = new Map();
-                            cloudArr.forEach((item, idx) => {
-                                if (item) {
-                                    let k = String(item.id !== undefined ? item.id : `c_${idx}`);
-                                    mergedMap.set(k, item);
-                                }
-                            });
-                            localArr.forEach((localItem, idx) => {
-                                if (localItem) {
-                                    let k = String(localItem.id !== undefined ? localItem.id : `l_${idx}_${localItem.timestamp || ''}`);
-                                    if (!mergedMap.has(k)) {
-                                        mergedMap.set(k, localItem);
-                                        if (col === 'treasury_moves' && navigator.onLine) {
-                                            let safeId = k.replace(/[.#$\[\]]/g, "_");
-                                            window.dbCloud.ref('test_Stores/' + sId + '/treasury_moves/' + safeId).set(localItem).catch(()=>{});
-                                        }
-                                    } else {
-                                        let cItem = mergedMap.get(k);
-                                        let lTime = localItem._lastModified || localItem.timestamp || 0;
-                                        let cTime = cItem._lastModified || cItem.timestamp || 0;
-                                        if (lTime >= cTime || (parseFloat(localItem.paid) || 0) > (parseFloat(cItem.paid) || 0)) {
-                                            mergedMap.set(k, localItem);
-                                        }
-                                    }
-                                }
-                            });
-
-                            localStorage.setItem('seraj_' + col, JSON.stringify(Array.from(mergedMap.values())));
-                            refreshVaultCardsDOM();
-                            renderMovementsTable(true);
-                            renderExpensesList(true);
-                        }
-                    });
-                });
-            }
-        }, 1200);
 
         // ==========================================
         // الدوال الحساسة للتحكم في القوائم المنسدلة
@@ -1460,7 +1367,7 @@ let vaultsDB = {};
                 amount: amount,
                 notes: notes,
                 date: date,
-                timestamp: Date.now(),
+                timestamp: window.Utils.alignTimestampWithDate ? window.Utils.alignTimestampWithDate(date) : Date.now(),
                 _device: dName
             };
 
@@ -1471,7 +1378,7 @@ let vaultsDB = {};
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
             }
-            syncSingleMoveToCloud(moveObj, false);
+         
 
             document.getElementById('trAmount').value = '';
             document.getElementById('trNotes').value = '';
@@ -1502,7 +1409,7 @@ let vaultsDB = {};
                 amount: amount,
                 notes: destination,
                 date: date,
-                timestamp: Date.now(),
+                timestamp: window.Utils.alignTimestampWithDate ? window.Utils.alignTimestampWithDate(date) : Date.now(),
                 _device: dName
             };
 
@@ -1513,7 +1420,7 @@ let vaultsDB = {};
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
             }
-            syncSingleMoveToCloud(moveObj, false);
+
 
             updateExpenseVaultUI();
             if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
@@ -1962,7 +1869,6 @@ let vaultsDB = {};
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
             }
-            syncSingleMoveToCloud(targetMove, false);
 
             document.getElementById('editMovementModal').style.display = 'none';
             updateTreasuryUI();
@@ -1991,7 +1897,6 @@ let vaultsDB = {};
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(filteredMoves));
             }
-            syncSingleMoveToCloud(m, true);
 
             updateTreasuryUI();
             if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
@@ -2001,108 +1906,7 @@ let vaultsDB = {};
         }
 
 
-        function openEditMovementModal() {
-            document.getElementById('actionSheetModal').style.display = 'none';
-            if(!checkAdminPin()) return; 
-            let m = treasuryMovements.find(x => x.id === selectedMovementId);
-            if(!m) return;
-
-            document.getElementById('editTrId').value = m.id;
-            document.getElementById('editTrAmount').value = m.amountAdd > 0 ? m.amountAdd : m.amountDeduct;
-            document.getElementById('editTrNotes').value = m.notes;
-            document.getElementById('editTrDate').value = m.date || new Date().toISOString().split('T')[0];
-
-            if(m.amountAdd > 0) document.getElementById('editTypeAdd').checked = true;
-            else document.getElementById('editTypeDeduct').checked = true;
-
-            document.getElementById('editMovementModal').style.display = 'flex';
-        }
-
-        function saveEditedMovement() {
-            window.Utils.preventDoubleClick(event.target, async (btn) => {
-                let id = parseInt(document.getElementById('editTrId').value);
-                let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
-                let notes = document.getElementById('editTrNotes').value.trim() || 'بدون بيان';
-                let date = document.getElementById('editTrDate').value;
-                let isAdd = document.querySelector('input[name="editTrType"]:checked').value === 'add';
-
-                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
-
-                let index = treasuryMovements.findIndex(x => x.id === id);
-                if(index === -1) return;
-
-                let oldM = treasuryMovements[index];
-                let vaultKey = oldM.vault || 'main';
-
-                if(oldM.amountAdd > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - oldM.amountAdd;
-                else if(oldM.amountDeduct > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + oldM.amountDeduct;
-
-                if(isAdd) {
-                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + amount;
-                    oldM.amountAdd = amount; oldM.amountDeduct = 0;
-                } else {
-                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - amount;
-                    oldM.amountAdd = 0; oldM.amountDeduct = amount;
-                }
-
-                oldM.notes = notes; oldM.date = date;
-                oldM._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'غير معروف';
-
-                if (typeof DB !== 'undefined') {
-                    if (typeof DB.updateItem === 'function') {
-                        DB.updateItem('treasury_moves', id, oldM);
-                        if(typeof DB.recalculateVaultBalances === 'function') DB.recalculateVaultBalances();
-                    } else {
-                        DB.saveVaults(vaultsDB);
-                        DB.saveTreasuryMoves(treasuryMovements);
-                    }
-                }
-
-                document.getElementById('editMovementModal').style.display = 'none';
-                renderMovementsTable();
-                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
-                    renderExpensesList();
-                }
-                updateTreasuryUI();
-                await SerajAlert("تم تحديث وحفظ الحركة بنجاح!");
-            });
-        }
-
-        async function confirmDeleteMovement() {
-            document.getElementById('actionSheetModal').style.display = 'none';
-            if(!checkAdminPin()) return; 
-            
-            let isConfirmed = await SerajConfirm("هل أنت متأكد من حذف هذه الحركة؟ سيتم مسحها نهائياً من النظام والسحابة وتعديل رصيد الخزينة.");
-            if(!isConfirmed) return;
-
-            let index = treasuryMovements.findIndex(x => x.id === selectedMovementId);
-            if(index !== -1) {
-                let m = treasuryMovements[index];
-                
-                // استخدام دالة الحذف المركزي السحابي (Hard Delete)
-                if (typeof DB !== 'undefined' && typeof DB.deleteItem === 'function') {
-                    DB.deleteItem('treasury_moves', m.id, 'hard');
-                } else {
-                    // طريقة احتياطية قديمة لو الدالة غير متوفرة
-                    let vaultKey = m.vault || 'main';
-                    if(vaultsDB[vaultKey] !== undefined) {
-                        vaultsDB[vaultKey] -= (m.amountAdd || 0);
-                        vaultsDB[vaultKey] += (m.amountDeduct || 0);
-                    }
-                    treasuryMovements.splice(index, 1);
-                    DB.saveVaults(vaultsDB);
-                    DB.saveTreasuryMoves(treasuryMovements);
-                }
-
-                renderMovementsTable();
-                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
-                    renderExpensesList();
-                }
-                updateTreasuryUI();
-                await SerajAlert("تم حذف الحركة بنجاح من النظام والسحابة!");
-            }
-        }
-
+  
         // ==========================================
         // الإعدادات والمصنع والتلوين والطباعة
         // ==========================================

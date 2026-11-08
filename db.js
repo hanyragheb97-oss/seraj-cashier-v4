@@ -910,13 +910,18 @@ function startScheduledSyncTimer() {
     }
 }
 
+let _syncTargetTime = 0;
 function scheduleSyncQueue(customDelayMs = null) {
     let cfg = getSyncConfigInternal();
     if (cfg.autoSync === false && customDelayMs === null) return;
-    if (_syncTimer) clearTimeout(_syncTimer);
     let delay = customDelayMs !== null ? customDelayMs : (cfg.syncOnSaveDelayMs || CALM_SYNC_DELAY_MS);
+    let newTarget = Date.now() + delay;
+    if (_syncTimer && _syncTargetTime > Date.now() && newTarget >= _syncTargetTime) return;
+    if (_syncTimer) clearTimeout(_syncTimer);
+    _syncTargetTime = newTarget;
     _syncTimer = setTimeout(() => {
         _syncTimer = null;
+        _syncTargetTime = 0;
         processDeleteQueue();
         processSyncQueue();
     }, delay);
@@ -3365,6 +3370,7 @@ _hasTreasuryMoveForInvoice: function(inv, rawMoves) {
 
     return rawMoves.some(m => {
         if (!m) return false;
+        if (['customers', 'customer_receipt', 'customer_payment', 'suppliers', 'purchase_payment', 'supplier_receipt'].includes(m.type)) return false;
         let mInvNo = String(m.invoiceNo ?? '').trim();
         let mInvShort = mInvNo.length > 5 ? mInvNo.slice(-5) : mInvNo;
         let mId = String(m.id ?? '').trim();
