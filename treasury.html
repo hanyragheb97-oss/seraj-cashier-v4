@@ -917,10 +917,13 @@ let vaultsDB = {};
                     ? DB.getSalesInvoices()
                     : JSON.parse(localStorage.getItem('seraj_sales_invoices') || '[]');
 
-                sales.forEach(inv => {
-                    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation') return;
-                    let invIdStr = String(inv.id || '');
-                    let invKey = String(inv.invoiceNo || inv.id || '');
+                    sales.forEach(inv => {
+    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation') return;
+    let invIdStr = String(inv.id || '');
+    let invKey = String(inv.invoiceNo || inv.id || '');
+
+    // 🛑 حماية صارمة: إذا كانت الفاتورة أو رقمها مسجل مسبقاً في الخزينة، تجاهلها فوراً لمنع التكرار
+    if (seenIds.has(invIdStr) || linkedInvoiceKeys.has(invKey)) return;
                     let lowInvType = String(inv.type || '').toLowerCase();
                     let cName = inv.customer || inv.customerName || 'عميل نقدي';
                     let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
@@ -1020,10 +1023,13 @@ let vaultsDB = {};
                     ? DB.getPurchaseInvoices()
                     : JSON.parse(localStorage.getItem('seraj_purchase_invoices') || '[]');
 
-                purchases.forEach(inv => {
-                    if (!inv || inv.isCanceled || inv.type === 'canceled') return;
-                    let invIdStr = String(inv.id || '');
-                    let invKey = String(inv.invoiceNo || inv.id || '');
+                    purchases.forEach(inv => {
+    if (!inv || inv.isCanceled || inv.type === 'canceled') return;
+    let invIdStr = String(inv.id || '');
+    let invKey = String(inv.invoiceNo || inv.id || '');
+
+    // 🛑 حماية صارمة للمشتريات ضد التكرار
+    if (seenIds.has(invIdStr) || linkedInvoiceKeys.has(invKey)) return;
                     let lowInvType = String(inv.type || '').toLowerCase();
                     let sName = inv.supplier || inv.supplierName || 'مورد';
                     let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
