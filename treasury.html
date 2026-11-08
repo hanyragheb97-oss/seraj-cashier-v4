@@ -821,6 +821,15 @@ let vaultsDB = {};
             catch(e) { return []; }
         }
 
+        function syncSingleMoveToCloud(moveObj, isDelete = false) {
+            let storeId = localStorage.getItem('seraj_store_id') || '9999';
+            let safeId = String(moveObj.id).replace(/[.#$\[\]]/g, "_");
+            if (window.dbCloud && navigator.onLine) {
+                let ref = window.dbCloud.ref('test_Stores/' + storeId + '/treasury_moves/' + safeId);
+                if (isDelete) ref.remove().catch(e => console.error(e));
+                else ref.set(moveObj).catch(e => console.error(e));
+            }
+        }
 
         function buildUnifiedTreasuryMovements() {
             let rawMoves = [...getRawTreasuryMoves()];
@@ -917,13 +926,10 @@ let vaultsDB = {};
                     ? DB.getSalesInvoices()
                     : JSON.parse(localStorage.getItem('seraj_sales_invoices') || '[]');
 
-                    sales.forEach(inv => {
-    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation') return;
-    let invIdStr = String(inv.id || '');
-    let invKey = String(inv.invoiceNo || inv.id || '');
-
-    // 🛑 حماية صارمة: إذا كانت الفاتورة أو رقمها مسجل مسبقاً في الخزينة، تجاهلها فوراً لمنع التكرار
-    if (seenIds.has(invIdStr) || linkedInvoiceKeys.has(invKey)) return;
+                sales.forEach(inv => {
+                    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation') return;
+                    let invIdStr = String(inv.id || '');
+                    let invKey = String(inv.invoiceNo || inv.id || '');
                     let lowInvType = String(inv.type || '').toLowerCase();
                     let cName = inv.customer || inv.customerName || 'عميل نقدي';
                     let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
@@ -1014,6 +1020,23 @@ let vaultsDB = {};
                         });
                     }
 
+                    let extraPaid = Math.round((totalPaidOnInv - initPaid - sumEmbedded) * 100) / 100;
+                    if (extraPaid > 0.01) {
+                        let payTs = getSafeTime(inv.lastPaymentDate || inv._lastModified) || (ts + 1000);
+                        unified.push({
+                            id: `${inv.id}_vouch`,
+                            type: isRet ? 'customer_payment' : 'customer_receipt',
+                            vault: normalizeVaultKey(inv.lastPaymentVault || vKey),
+                            amountAdd: isRet ? 0 : extraPaid,
+                            amountDeduct: isRet ? extraPaid : 0,
+                            notes: `سند تسديد عميل - ${cName} (فاتورة #${invKey})`,
+                            date: getLocalDateStr(payTs),
+                            timestamp: payTs,
+                            invoiceNo: invKey,
+                            _device: inv._lastModifiedBy || inv._device || 'حسابات العملاء',
+                            _isInvoice: true
+                        });
+                    }
                 });
             }
 
@@ -1023,13 +1046,10 @@ let vaultsDB = {};
                     ? DB.getPurchaseInvoices()
                     : JSON.parse(localStorage.getItem('seraj_purchase_invoices') || '[]');
 
-                    purchases.forEach(inv => {
-    if (!inv || inv.isCanceled || inv.type === 'canceled') return;
-    let invIdStr = String(inv.id || '');
-    let invKey = String(inv.invoiceNo || inv.id || '');
-
-    // 🛑 حماية صارمة للمشتريات ضد التكرار
-    if (seenIds.has(invIdStr) || linkedInvoiceKeys.has(invKey)) return;
+                purchases.forEach(inv => {
+                    if (!inv || inv.isCanceled || inv.type === 'canceled') return;
+                    let invIdStr = String(inv.id || '');
+                    let invKey = String(inv.invoiceNo || inv.id || '');
                     let lowInvType = String(inv.type || '').toLowerCase();
                     let sName = inv.supplier || inv.supplierName || 'مورد';
                     let vKey = normalizeVaultKey(inv.vault || inv.treasury || inv.paymentMethod);
@@ -1126,6 +1146,23 @@ let vaultsDB = {};
                         });
                     }
 
+                    let extraPaid = Math.round((totalPaidOnInv - initPaid - sumEmbedded) * 100) / 100;
+                    if (extraPaid > 0.01) {
+                        let payTs = getSafeTime(inv.lastPaymentDate || inv._lastModified) || (ts + 1000);
+                        unified.push({
+                            id: `${inv.id}_vouch`,
+                            type: isRet ? 'supplier_receipt' : 'supplier_payment',
+                            vault: normalizeVaultKey(inv.lastPaymentVault || vKey),
+                            amountAdd: isRet ? extraPaid : 0,
+                            amountDeduct: isRet ? 0 : extraPaid,
+                            notes: `سند سداد مورد - ${sName} (فاتورة #${invKey})`,
+                            date: getLocalDateStr(payTs),
+                            timestamp: payTs,
+                            invoiceNo: invKey,
+                            _device: inv._lastModifiedBy || inv._device || 'حسابات الموردين',
+                            _isInvoice: true
+                        });
+                    }
                 });
             }
 
@@ -1278,6 +1315,56 @@ let vaultsDB = {};
             renderExpensesList(true);
         });
 
+        // دمج ذكي مع السحابة يحافظ على السندات المحلية ويرفعها دون مسحها
+        let treasuryCloudHooked = false;
+        setInterval(() => {
+            if (!treasuryCloudHooked && window.dbCloud) {
+                treasuryCloudHooked = true;
+                let sId = localStorage.getItem('seraj_store_id') || '9999';
+                ['treasury_moves', 'sales_invoices', 'purchase_invoices', 'customers', 'suppliers'].forEach(col => {
+                    window.dbCloud.ref('test_Stores/' + sId + '/' + col).on('value', snap => {
+                        if (snap.exists()) {
+                            let valObj = snap.val();
+                            let cloudArr = Array.isArray(valObj) ? valObj.filter(Boolean) : Object.values(valObj);
+                            let localArr = [];
+                            try { localArr = JSON.parse(localStorage.getItem('seraj_' + col) || '[]'); } catch(e) {}
+
+                            let mergedMap = new Map();
+                            cloudArr.forEach((item, idx) => {
+                                if (item) {
+                                    let k = String(item.id !== undefined ? item.id : `c_${idx}`);
+                                    mergedMap.set(k, item);
+                                }
+                            });
+                            localArr.forEach((localItem, idx) => {
+                                if (localItem) {
+                                    let k = String(localItem.id !== undefined ? localItem.id : `l_${idx}_${localItem.timestamp || ''}`);
+                                    if (!mergedMap.has(k)) {
+                                        mergedMap.set(k, localItem);
+                                        if (col === 'treasury_moves' && navigator.onLine) {
+                                            let safeId = k.replace(/[.#$\[\]]/g, "_");
+                                            window.dbCloud.ref('test_Stores/' + sId + '/treasury_moves/' + safeId).set(localItem).catch(()=>{});
+                                        }
+                                    } else {
+                                        let cItem = mergedMap.get(k);
+                                        let lTime = localItem._lastModified || localItem.timestamp || 0;
+                                        let cTime = cItem._lastModified || cItem.timestamp || 0;
+                                        if (lTime >= cTime || (parseFloat(localItem.paid) || 0) > (parseFloat(cItem.paid) || 0)) {
+                                            mergedMap.set(k, localItem);
+                                        }
+                                    }
+                                }
+                            });
+
+                            localStorage.setItem('seraj_' + col, JSON.stringify(Array.from(mergedMap.values())));
+                            refreshVaultCardsDOM();
+                            renderMovementsTable(true);
+                            renderExpensesList(true);
+                        }
+                    });
+                });
+            }
+        }, 1200);
 
         // ==========================================
         // الدوال الحساسة للتحكم في القوائم المنسدلة
@@ -1353,62 +1440,46 @@ let vaultsDB = {};
         }
 
         function saveTreasuryTransaction() {
-    let amount = parseFloat(document.getElementById('trAmount').value) || 0;
-    let notes = document.getElementById('trNotes').value.trim() || 'حركة خزينة مباشرة';
-    let date = document.getElementById('trDate').value || new Date().toISOString().split('T')[0];
-    let isAdd = document.querySelector('input[name="trType"]:checked').value === 'add';
+            let amount = parseFloat(document.getElementById('trAmount').value) || 0;
+            let notes = document.getElementById('trNotes').value.trim() || 'حركة خزينة مباشرة';
+            let date = document.getElementById('trDate').value || getLocalDateStr(Date.now());
+            let isAdd = document.querySelector('input[name="trType"]:checked').value === 'add';
 
-    if(amount <= 0) return safeAlert("برجاء إدخال مبلغ صحيح!", "error");
+            if(amount <= 0) return safeAlert("برجاء إدخال مبلغ صحيح!", "error");
 
-    let moveObj = {
-        type: 'direct',
-        vault: currentSelectedVault,
-        amountAdd: isAdd ? amount : 0,
-        amountDeduct: isAdd ? 0 : amount,
-        amount: amount,
-        notes: notes,
-        date: date
-    };
+            let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+            let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId() : (typeof window.generateUniqueId === 'function' ? window.generateUniqueId() : Date.now());
 
-    // الاعتماد على المحرك المركزي في التسجيل والتزامن السحابي
-    if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-        DB.recordTreasuryTransaction(moveObj);
-    }
+            let moveObj = {
+                id: newId,
+                type: 'direct',
+                vault: currentSelectedVault,
+                treasury: currentSelectedVault,
+                amountAdd: isAdd ? amount : 0,
+                amountDeduct: isAdd ? 0 : amount,
+                amount: amount,
+                notes: notes,
+                date: date,
+                timestamp: Date.now(),
+                _device: dName
+            };
 
-    document.getElementById('trAmount').value = '';
-    document.getElementById('trNotes').value = '';
-    updateTreasuryUI();
-    renderMovementsTable();
-    safeAlert("تم حفظ الحركة ومزامنتها بنجاح!", "success");
-}
+            let rawMoves = getRawTreasuryMoves();
+            rawMoves.unshift(moveObj);
+            if (typeof DB !== 'undefined' && typeof DB.saveTreasuryMoves === 'function') {
+                DB.saveTreasuryMoves(rawMoves);
+            } else {
+                localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
+            }
+            syncSingleMoveToCloud(moveObj, false);
 
-function saveFullExpense() {
-    let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
-    let destination = document.getElementById('fullExpDestination').value.trim();
-    let date = document.getElementById('fullExpDate').value || new Date().toISOString().split('T')[0];
-
-    if(!destination) return safeAlert("برجاء إدخال جهة الصرف (خانة إجبارية)!", "error");
-    if(amount <= 0) return safeAlert("أدخل مبلغ صحيح!", "error");
-
-    let moveObj = {
-        type: 'expenses',
-        vault: currentExpVault,
-        amountAdd: 0,
-        amountDeduct: amount,
-        amount: amount,
-        notes: destination,
-        date: date
-    };
-
-    if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-        DB.recordTreasuryTransaction(moveObj);
-    }
-
-    updateExpenseVaultUI();
-    renderMovementsTable();
-    switchView('treasury-expense-list-view');
-    safeAlert("تم حفظ المصروف ومزامنته بنجاح!", "success");
-}
+            document.getElementById('trAmount').value = '';
+            document.getElementById('trNotes').value = '';
+            updateTreasuryUI();
+            if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
+            renderMovementsTable();
+            safeAlert("تم حفظ الحركة ومزامنتها بنجاح!", "success");
+        }
 
         function saveFullExpense() {
             let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
@@ -1431,7 +1502,7 @@ function saveFullExpense() {
                 amount: amount,
                 notes: destination,
                 date: date,
-                timestamp: window.Utils.alignTimestampWithDate ? window.Utils.alignTimestampWithDate(date) : Date.now(),
+                timestamp: Date.now(),
                 _device: dName
             };
 
@@ -1442,7 +1513,7 @@ function saveFullExpense() {
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
             }
-
+            syncSingleMoveToCloud(moveObj, false);
 
             updateExpenseVaultUI();
             if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
@@ -1591,22 +1662,139 @@ function saveFullExpense() {
 
 
 // ==========================================
-function refreshVaultCardsDOM() {
-    // جلب الأرصدة المحدثة مباشرة من الـ DB
-    vaultsDB = (typeof DB !== 'undefined' && typeof DB.getVaults === 'function') 
-        ? DB.getVaults() 
-        : JSON.parse(localStorage.getItem('seraj_vaults_v2') || '{"main":0,"insta":0,"wallet":0}');
+        // 1. دالة عرض حركات الخزينة الشاملة (مربوطة بالدمج الفوري)
+        // ==========================================
+        function renderMovementsTable(fromSync = false) {
+            refreshVaultCardsDOM();
 
-    if (document.getElementById('vaultMainBal')) document.getElementById('vaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
-    if (document.getElementById('vaultInstaBal')) document.getElementById('vaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
-    if (document.getElementById('vaultWalletBal')) document.getElementById('vaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
-    if (document.getElementById('currentSelectedVaultBalance')) document.getElementById('currentSelectedVaultBalance').innerText = (vaultsDB[currentSelectedVault] || 0).toFixed(2);
+            const tbody = document.getElementById('movementsTableBody');
+            if(!tbody) return;
 
-    if (document.getElementById('expVaultMainBal')) document.getElementById('expVaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
-    if (document.getElementById('expVaultInstaBal')) document.getElementById('expVaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
-    if (document.getElementById('expVaultWalletBal')) document.getElementById('expVaultWalletBal').innerText = (vaultsDB.wallet || 0).toFixed(2);
-    if (document.getElementById('expSelectedVaultBalance')) document.getElementById('expSelectedVaultBalance').innerText = (vaultsDB[currentExpVault] || 0).toFixed(2);
-}
+            let list = [...treasuryMovements];
+
+            list.sort((a, b) => {
+                let timeA = getSafeTime(a.timestamp || a.date);
+                let timeB = getSafeTime(b.timestamp || b.date);
+                if (timeB !== timeA) return timeB - timeA;
+                return String(b.id).localeCompare(String(a.id));
+            });
+
+            if(currentMovementFilter !== 'all') {
+                if(currentMovementFilter === 'customers') {
+                    list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+                } else if (currentMovementFilter === 'suppliers') {
+                    list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+                } else {
+                    list = list.filter(m => m.type === currentMovementFilter);
+                }
+            }
+
+            if(currentVaultFilter !== 'all') {
+                list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
+            }
+
+            const now = new Date();
+            const todayStr = getLocalDateStr(now);
+            let yestDate = new Date(); yestDate.setDate(yestDate.getDate() - 1);
+            const yestStr = getLocalDateStr(yestDate);
+
+            list = list.filter(m => {
+                let itemTime = getSafeTime(m.date || m.timestamp);
+                let itemDateStr = getLocalDateStr(itemTime);
+
+                if(currentDurationFilter === 'today') return itemDateStr === todayStr;
+                if(currentDurationFilter === 'yesterday') return itemDateStr === yestStr;
+                if(currentDurationFilter === '7days') { 
+                    let d = new Date(); d.setDate(d.getDate()-7); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime(); 
+                }
+                if(currentDurationFilter === 'thisMonth') {
+                    let d = new Date(itemTime);
+                    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+                }
+                if(currentDurationFilter === '30days') {
+                    let d = new Date(); d.setDate(d.getDate()-30); d.setHours(0,0,0,0);
+                    return itemTime >= d.getTime();
+                }
+                if(currentDurationFilter === 'lastMonth') {
+                    let d = new Date(itemTime);
+                    let lastM = new Date(); lastM.setMonth(lastM.getMonth() - 1);
+                    return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
+                }
+                if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
+                    let sTime = getSafeTime(customStartDate) - 43200000;
+                    let eTime = getSafeTime(customEndDate) + 43200000;
+                    return itemTime >= sTime && itemTime <= eTime;
+                }
+                return true;
+            });
+
+            let totalAdd = list.reduce((sum, m) => sum + (parseFloat(m.amountAdd) || 0), 0);
+            let totalDeduct = list.reduce((sum, m) => sum + (parseFloat(m.amountDeduct) || 0), 0);
+
+            document.getElementById('sumAddVal').innerText = totalAdd.toFixed(2);
+            document.getElementById('sumDeductVal').innerText = totalDeduct.toFixed(2);
+            let net = totalAdd - totalDeduct;
+            let netEl = document.getElementById('sumNetVal');
+            netEl.innerText = net.toFixed(2);
+            netEl.style.color = net >= 0 ? '#00ff66' : '#ff1a40';
+
+            tbody.innerHTML = '';
+            if(list.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="3" style="padding:30px;">لا توجد حركات مسجلة للفترة المحددة</td></tr>`;
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            let paginatedList = list.slice(0, renderLimitMovements);
+
+            paginatedList.forEach(m => {
+                const tr = document.createElement('tr');
+                let lastTap = 0;
+                tr.onclick = () => {
+                    let nowTap = Date.now();
+                    if (nowTap - lastTap < 350) {
+                        selectedMovementId = m.id;
+                        document.getElementById('actionSheetModal').style.display = 'flex';
+                        lastTap = 0;
+                    } else {
+                        lastTap = nowTap;
+                    }
+                };
+
+                let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
+                let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
+                
+                let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
+                let typeStr = typeLabels[m.type] || 'حركة خزينة';
+                let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
+                let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
+
+                tr.innerHTML = `
+                    <td style="text-align: right;">
+                        <div style="font-size:14px; color:#c084fc; font-weight:bold; margin-bottom:4px;">${typeStr}${invNoStr}</div>
+                        <div style="font-size:15px; color:#ffffff;">${m.notes}</div>
+                        <div style="font-size:11.5px; opacity:0.75; margin-top:3px;">⌚ ${m.date} - (${m.vault || 'main'})</div>
+                        <div style="font-size:12px; color:#38bdf8; margin-top:5px; font-weight:normal;">📱 ${deviceName} ${editTag}</div>
+                    </td>
+                    <td class="total-add">${(m.amountAdd || 0).toFixed(2)}</td>
+                    <td class="total-deduct">${(m.amountDeduct || 0).toFixed(2)}</td>
+                `;
+                fragment.appendChild(tr);
+            });
+
+            if (list.length > renderLimitMovements) {
+                const moreTr = document.createElement('tr');
+                moreTr.innerHTML = `<td colspan="3" style="padding:15px; color:#a855f7; background:rgba(168, 85, 247, 0.1); border-radius:10px;">⏬ عرض 50 حركة أقدم... (${list.length - renderLimitMovements} متبقي)</td>`;
+                moreTr.onclick = () => { renderLimitMovements += 50; renderMovementsTable(); };
+                fragment.appendChild(moreTr);
+            }
+
+            tbody.appendChild(fragment);
+            if (!fromSync && document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                renderExpensesList(true);
+            }
+        }
 
         // ==========================================
         // 2. دالة عرض المصروفات
@@ -1774,6 +1962,7 @@ function refreshVaultCardsDOM() {
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(rawMoves));
             }
+            syncSingleMoveToCloud(targetMove, false);
 
             document.getElementById('editMovementModal').style.display = 'none';
             updateTreasuryUI();
@@ -1802,6 +1991,7 @@ function refreshVaultCardsDOM() {
             } else {
                 localStorage.setItem('seraj_treasury_moves', JSON.stringify(filteredMoves));
             }
+            syncSingleMoveToCloud(m, true);
 
             updateTreasuryUI();
             if (typeof DB !== 'undefined' && typeof DB.saveVaults === 'function') DB.saveVaults(vaultsDB);
@@ -1811,7 +2001,108 @@ function refreshVaultCardsDOM() {
         }
 
 
-  
+        function openEditMovementModal() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            let m = treasuryMovements.find(x => x.id === selectedMovementId);
+            if(!m) return;
+
+            document.getElementById('editTrId').value = m.id;
+            document.getElementById('editTrAmount').value = m.amountAdd > 0 ? m.amountAdd : m.amountDeduct;
+            document.getElementById('editTrNotes').value = m.notes;
+            document.getElementById('editTrDate').value = m.date || new Date().toISOString().split('T')[0];
+
+            if(m.amountAdd > 0) document.getElementById('editTypeAdd').checked = true;
+            else document.getElementById('editTypeDeduct').checked = true;
+
+            document.getElementById('editMovementModal').style.display = 'flex';
+        }
+
+        function saveEditedMovement() {
+            window.Utils.preventDoubleClick(event.target, async (btn) => {
+                let id = parseInt(document.getElementById('editTrId').value);
+                let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
+                let notes = document.getElementById('editTrNotes').value.trim() || 'بدون بيان';
+                let date = document.getElementById('editTrDate').value;
+                let isAdd = document.querySelector('input[name="editTrType"]:checked').value === 'add';
+
+                if(amount <= 0) return await SerajAlert("أدخل مبلغ صحيح!");
+
+                let index = treasuryMovements.findIndex(x => x.id === id);
+                if(index === -1) return;
+
+                let oldM = treasuryMovements[index];
+                let vaultKey = oldM.vault || 'main';
+
+                if(oldM.amountAdd > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - oldM.amountAdd;
+                else if(oldM.amountDeduct > 0) vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + oldM.amountDeduct;
+
+                if(isAdd) {
+                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) + amount;
+                    oldM.amountAdd = amount; oldM.amountDeduct = 0;
+                } else {
+                    vaultsDB[vaultKey] = (vaultsDB[vaultKey] || 0) - amount;
+                    oldM.amountAdd = 0; oldM.amountDeduct = amount;
+                }
+
+                oldM.notes = notes; oldM.date = date;
+                oldM._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'غير معروف';
+
+                if (typeof DB !== 'undefined') {
+                    if (typeof DB.updateItem === 'function') {
+                        DB.updateItem('treasury_moves', id, oldM);
+                        if(typeof DB.recalculateVaultBalances === 'function') DB.recalculateVaultBalances();
+                    } else {
+                        DB.saveVaults(vaultsDB);
+                        DB.saveTreasuryMoves(treasuryMovements);
+                    }
+                }
+
+                document.getElementById('editMovementModal').style.display = 'none';
+                renderMovementsTable();
+                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                    renderExpensesList();
+                }
+                updateTreasuryUI();
+                await SerajAlert("تم تحديث وحفظ الحركة بنجاح!");
+            });
+        }
+
+        async function confirmDeleteMovement() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            if(!checkAdminPin()) return; 
+            
+            let isConfirmed = await SerajConfirm("هل أنت متأكد من حذف هذه الحركة؟ سيتم مسحها نهائياً من النظام والسحابة وتعديل رصيد الخزينة.");
+            if(!isConfirmed) return;
+
+            let index = treasuryMovements.findIndex(x => x.id === selectedMovementId);
+            if(index !== -1) {
+                let m = treasuryMovements[index];
+                
+                // استخدام دالة الحذف المركزي السحابي (Hard Delete)
+                if (typeof DB !== 'undefined' && typeof DB.deleteItem === 'function') {
+                    DB.deleteItem('treasury_moves', m.id, 'hard');
+                } else {
+                    // طريقة احتياطية قديمة لو الدالة غير متوفرة
+                    let vaultKey = m.vault || 'main';
+                    if(vaultsDB[vaultKey] !== undefined) {
+                        vaultsDB[vaultKey] -= (m.amountAdd || 0);
+                        vaultsDB[vaultKey] += (m.amountDeduct || 0);
+                    }
+                    treasuryMovements.splice(index, 1);
+                    DB.saveVaults(vaultsDB);
+                    DB.saveTreasuryMoves(treasuryMovements);
+                }
+
+                renderMovementsTable();
+                if(document.getElementById('treasury-expense-list-view').classList.contains('active-view')) {
+                    renderExpensesList();
+                }
+                updateTreasuryUI();
+                await SerajAlert("تم حذف الحركة بنجاح من النظام والسحابة!");
+            }
+        }
+
         // ==========================================
         // الإعدادات والمصنع والتلوين والطباعة
         // ==========================================
