@@ -886,12 +886,12 @@ function emitSerajUpdate(collectionName, source = 'local') {
 let _syncTimer = null;
 let _scheduledSyncInterval = null;
 let _inFlightSyncKeys = new Set();
-const CALM_SYNC_DELAY_MS = 180000; // 3 دقائق افتراضياً للرفع الهادئ بعد استقرار التعديلات
+const CALM_SYNC_DELAY_MS = 1000; // ⚡ ثانية واحدة فقط للرفع الهادئ لضمان سرعة الأجهزة
 
 function getSyncConfigInternal() {
     return safeParseJSON(localStorage.getItem('seraj_sync_settings'), {
         autoSync: true,
-        intervalMs: 300000, // 5 دقائق للفحص الدوري
+        intervalMs: 15000, // فحص دوري كل 15 ثانية بدلاً من 5 دقائق
         syncOnSaveDelayMs: CALM_SYNC_DELAY_MS
     });
 }
@@ -4312,11 +4312,11 @@ applySavedTheme: function() {
 function checkAndRunAutoCloudBackup() {
     if (!cloudReady || !navigator.onLine || !window.dbCloud) return;
 
-    // 1. مسح النسخة الاحتياطية المكررة القديمة التي كانت تملأ الفايربيز
+    // مسح النسخة الاحتياطية المكررة القديمة التي كانت تملأ الفايربيز
     let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
     window.dbCloud.ref('test_Stores/' + activeStoreId + '/system_backup').remove().catch(() => {});
 
-    // 2. تشغيل التفريغ التلقائي الصامت كل 7 أيام (أو إذا زادت الفواتير عن 500 فاتورة) على الجهاز الرئيسي
+    // تشغيل التفريغ التلقائي الصامت كل 7 أيام (أو إذا زادت الفواتير عن 500 فاتورة)
     let lastArchiveTime = parseInt(localStorage.getItem('seraj_last_auto_archive_ts') || '0', 10);
     let now = Date.now();
     let sevenDaysMillis = 7 * 24 * 60 * 60 * 1000;
@@ -4325,9 +4325,10 @@ function checkAndRunAutoCloudBackup() {
     if ((now - lastArchiveTime) > sevenDaysMillis || currentSalesCount > 500) {
         setTimeout(() => {
             if (window.DB && typeof window.DB.archiveSmartData === 'function') {
+                // استدعاء האرشفة في وضع صامت true
                 window.DB.archiveSmartData(true);
             }
-        }, 25000); // يعمل بهدوء بعد 25 ثانية من فتح البرنامج دون أي إزعاج
+        }, 25000); // يعمل بهدوء بعد 25 ثانية من فتح البرنامج
     }
 }
 
@@ -4852,6 +4853,31 @@ if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
 }, true);
 
 // 🔄 مستمع التزامن المحلي اللحظي بين التبويبات والصفحات المفتوحة (Cross-Tab Instant Sync)
+window.addEventListener('storage', (e) => {
+    if (!e.key || !e.key.startsWith('seraj_') || e.key.startsWith('seraj_cloud_cache_') || e.key.includes('_queue')) return;
+    let col = e.key.replace(/^seraj_/, '');
+    if (['products', 'customers', 'suppliers', 'sales_invoices', 'purchase_invoices', 'treasury_moves', 'smart_notes', 'vaults_v2'].includes(col)) {
+        try {
+            let updatedArr = safeParseJSON(e.newValue, []);
+            localCollectionsCache[col] = updatedArr;
+            emitSerajUpdate(col, 'cross_tab');
+            if (col === 'sales_invoices' && typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
+            if (col === 'purchase_invoices') {
+                if (typeof renderPurchasesHistory === 'function') renderPurchasesHistory();
+                else if (typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
+            }
+            if (col === 'treasury_moves' || col === 'vaults_v2') {
+                if (typeof renderMovementsTable === 'function') renderMovementsTable();
+                if (typeof updateTreasuryUI === 'function') updateTreasuryUI();
+            }
+            if (col === 'customers' && typeof renderCustomersList === 'function') renderCustomersList();
+            if (col === 'suppliers' && typeof renderSuppliersList === 'function') renderSuppliersList();
+            if (col === 'products' && typeof renderInventoryTable === 'function') renderInventoryTable();
+        } catch (err) {}
+    }
+});
+
+// 🔄 مستمع التزامن المحلي اللحظي بين التبويبات والصفحات المفتوحة 
 window.addEventListener('storage', (e) => {
     if (!e.key || !e.key.startsWith('seraj_') || e.key.startsWith('seraj_cloud_cache_') || e.key.includes('_queue')) return;
     let col = e.key.replace(/^seraj_/, '');
