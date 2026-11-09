@@ -1747,7 +1747,7 @@ deleteItem: function(colName, id, mode = 'soft') {
                 let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
                 let invIdStr = String(canceledInvoiceObj.id);
                 let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
-                let alreadyLoggedReversal = rawMoves.some(m => m && m.type === 'correction' && (Date.now() - Number(m.timestamp || 0) < 8000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr) || String(m.notes || '').includes(shortId)));
+                let alreadyLoggedReversal = rawMoves.some(m => m && m.type === 'correction' && (Date.now() - Number(m._lastModified || m.timestamp || 0) < 8000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr) || String(m.notes || '').includes(shortId)));
 
                 if (!alreadyLoggedReversal) {
                     let isPurch = (cleanCol === 'purchase_invoices');
@@ -3332,7 +3332,7 @@ saveSalesInvoices: function(data) {
 
     // نظام كاميرا الخزينة: تسجيل أي فاتورة بيع جديدة (حتى لو آجلة بصفر) في الخزينة إذا لم تكن الشاشة قد سجلتها
 // نظام كاميرا الخزينة: تسجيل أي فاتورة بيع جديدة بعد 120ms لإعطاء الأولوية لحركة الشاشة ومنع التكرار
-if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
+if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0 && oldCache.length > 0) {
     setTimeout(() => {
         let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
         newlyCreatedInvoices.forEach(newInv => {
@@ -3466,7 +3466,7 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
     saveArrayToQueueSafely('purchase_invoices', cleanData);
 
 // نظام كاميرا الخزينة: تسجيل أي فاتورة شراء جديدة بعد 120ms لإعطاء الأولوية لحركة الشاشة ومنع التكرار
-if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
+if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0 && oldCache.length > 0) {
     setTimeout(() => {
         let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
         newlyCreatedInvoices.forEach(newInv => {
@@ -3587,8 +3587,8 @@ getTreasuryMoves: function(includeCanceled = true, rawOnly = false) {
     });
 
     return includeCanceled
-        ? [...cleanedRaw]
-        : cleanedRaw.filter(m => !m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted');
+    ? [...cleanedRaw]
+    : cleanedRaw.filter(m => !m._isReversed && !m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted');
 },
 
 // حفظ حركات الخزينة الصافية (تقبل الحركات الصفرية وحركات العكس والتعديل وتطرد أي عناصر مدمجة وهمية)
@@ -3933,255 +3933,328 @@ saveSmartNotes: function(data) {
 
 // =========================================================
 // ☁️ محرك الأرشفة السحابية الذكي (Deep Archiving Engine)
-// يحتفظ بآخر 50 فاتورة نقدية (طياري) أو فواتير آخر يومين ويرحّل الباقي والقديم (>90 يوماً) للسحابة
-// =========================================================
-archiveSmartData: async function() {
+archiveSmartData: async function(isSilentAuto = false) {
     if (!cloudReady || !navigator.onLine || !window.dbCloud) {
-        SerajAlert("يجب الاتصال بالإنترنت لإجراء الأرشفة السحابية!", "error");
+        if (!isSilentAuto) SerajAlert("يجب الاتصال بالإنترنت لإجراء الأرشفة وتفريغ السحابة!", "error");
         return false;
     }
 
-    return new Promise((resolve) => {
-        SerajConfirm("سيتم أرشفة فواتير الكاش (الطياري) القديمة مع الاحتفاظ بآخر 50 فاتورة نقدية (أو فواتير آخر يومين)، وأرشفة الفواتير والحركات الأقدم من 90 يوماً للسحابة مع تثبيت الأرصدة الافتتاحية. هل أنت متأكد؟", async (confirm) => {
-            if (!confirm) return resolve(false);
+    const executeCleanup = async () => {
+        if (!isSilentAuto) showCloudStatus("⏳ جاري تفريغ السحابة وأرشفة البيانات القديمة محلياً...");
 
-            showCloudStatus("⏳ جاري أرشفة البيانات القديمة للسحابة... برجاء عدم إغلاق الصفحة.");
+        let now = Date.now();
+        let days2 = now - (2 * 24 * 60 * 60 * 1000);
+        let days90 = now - (90 * 24 * 60 * 60 * 1000);
 
-            let now = Date.now();
-            let days2 = now - (2 * 24 * 60 * 60 * 1000);
-            let days90 = now - (90 * 24 * 60 * 60 * 1000);
+        let sales = this.getSalesInvoices(true);
+        let purchases = this.getPurchaseInvoices(true);
+        let moves = this.getTreasuryMoves(true, true);
+        let customers = this.getCustomers(true);
+        let suppliers = this.getSuppliers(true);
 
-            let sales = this.getSalesInvoices(true);
-            let purchases = this.getPurchaseInvoices(true);
-            let moves = this.getTreasuryMoves(true, true);
-            let customers = this.getCustomers(true);
-            let suppliers = this.getSuppliers(true);
+        let archivedSalesForParty = [];
+        let archivedPurchasesForParty = [];
+        let deletedCashSales = [];
+        let archivedMoves = [];
+        let newSales = [], newPurchases = [], newMoves = [];
 
-            let archivePayload = { sales: {}, purchases: {}, treasury_moves: {} };
-            let newSales = [], newPurchases = [], newMoves = [];
+        let sortedSales = [...sales].sort((a, b) => {
+            let diff = window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date);
+            if (diff !== 0) return diff;
+            return window.Utils.extractSerialNum(b.id) - window.Utils.extractSerialNum(a.id);
+        });
 
-            let sortedSales = [...sales].sort((a, b) => {
-                let diff = window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date);
-                if (diff !== 0) return diff;
-                return window.Utils.extractSerialNum(b.id) - window.Utils.extractSerialNum(a.id);
-            });
+        let cashSalesKeptCount = 0;
 
-            let cashSalesKeptCount = 0;
+        sortedSales.forEach(inv => {
+            if (!inv) return;
+            let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
+            let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
+            let isAnonymous = (!inv.customerId && (!inv.customer || inv.customer.includes('طيار') || inv.customer.includes('نقد')));
 
-            sortedSales.forEach(inv => {
-                if (!inv) return;
-                let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
-                let isAnonymousOrCash = (!inv.customerId && (!inv.customer || inv.customer.includes('طيار') || inv.customer.includes('نقد'))) || (remVal <= 0.01 && (parseFloat(inv.initialRemaining) || 0) <= 0.01 && (!inv.customerId));
+            // 1. أي فاتورة عليها مديونية متبقية (remVal > 0.01) ممنوع أرشفتها أو حذفها من السحابة نهائياً
+            if (remVal > 0.01) {
+                newSales.push(inv);
+                return;
+            }
 
-                if (isAnonymousOrCash) {
-                    cashSalesKeptCount++;
-                    if (cashSalesKeptCount <= 50 || t >= days2) {
-                        newSales.push(inv);
-                    } else {
-                        archivePayload.sales[inv.id] = inv;
-                    }
-                } else if (t < days90 && remVal <= 0.01) {
-                    archivePayload.sales[inv.id] = inv;
-                } else {
+            // 2. فواتير الطياري (بدون اسم): نحتفظ بآخر 50 فاتورة أو آخر يومين، والباقي يُحذف نهائياً بعد ترحيل كاشه
+            if (isAnonymous) {
+                cashSalesKeptCount++;
+                if (cashSalesKeptCount <= 50 || t >= days2) {
                     newSales.push(inv);
-                }
-            });
-
-            purchases.forEach(inv => {
-                if (!inv) return;
-                let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
-                if (t < days90 && remVal <= 0.01) archivePayload.purchases[inv.id] = inv;
-                else newPurchases.push(inv);
-            });
-
-            let archivedVaultDelta = { main: 0, insta: 0, wallet: 0 };
-
-            Object.values(archivePayload.sales).forEach(inv => {
-                if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
-                if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
-                    let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                    if (checkoutPaid > 0) {
-                        let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-                        let vKey = inv.vault || inv.treasury || 'main';
-                        if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
-                        archivedVaultDelta[vKey] += isReturn ? -checkoutPaid : checkoutPaid;
-                    }
-                }
-            });
-
-            Object.values(archivePayload.purchases).forEach(inv => {
-                if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
-                if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
-                    let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                    if (checkoutPaid > 0) {
-                        let isReturn = (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
-                        let vKey = inv.vault || inv.treasury || 'main';
-                        if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
-                        archivedVaultDelta[vKey] += isReturn ? checkoutPaid : -checkoutPaid;
-                    }
-                }
-            });
-
-            moves.forEach(m => {
-                if (!m) return;
-                let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                if (t < days90 && !String(m.id).startsWith('arch_bal_')) {
-                    archivePayload.treasury_moves[m.id] = m;
-                    if (!m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted') {
-                        let vKey = m.vault || 'main';
-                        if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
-                        archivedVaultDelta[vKey] += ((parseFloat(m.amountAdd) || 0) - (parseFloat(m.amountDeduct) || 0));
-                    }
                 } else {
-                    newMoves.push(m);
+                    deletedCashSales.push(inv);
+                }
+            }
+            // 3. فواتير الزبائن المسددة بالكامل والأقدم من 90 يوماً: تُحفظ محلياً على هذا الجهاز فقط وتُحذف من السحابة
+            else if (t < days90) {
+                archivedSalesForParty.push(inv);
+            } else {
+                newSales.push(inv);
+            }
+        });
+
+        purchases.forEach(inv => {
+            if (!inv) return;
+            let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
+            let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
+            // الفواتير الآجلة غير المسددة تبقى على السحابة، والمسددة الأقدم من 90 يوماً تؤرشف محلياً وتُحذف من السحابة
+            if (remVal <= 0.01 && t < days90) {
+                archivedPurchasesForParty.push(inv);
+            } else {
+                newPurchases.push(inv);
+            }
+        });
+
+        let allRemovedSales = [...deletedCashSales, ...archivedSalesForParty];
+        let archivedVaultDelta = { main: 0, insta: 0, wallet: 0 };
+
+        allRemovedSales.forEach(inv => {
+            if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
+            if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
+                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                if (checkoutPaid > 0) {
+                    let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                    let vKey = inv.vault || inv.treasury || 'main';
+                    if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
+                    archivedVaultDelta[vKey] += isReturn ? -checkoutPaid : checkoutPaid;
+                }
+            }
+        });
+
+        archivedPurchasesForParty.forEach(inv => {
+            if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
+            if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
+                let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                if (checkoutPaid > 0) {
+                    let isReturn = (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
+                    let vKey = inv.vault || inv.treasury || 'main';
+                    if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
+                    archivedVaultDelta[vKey] += isReturn ? checkoutPaid : -checkoutPaid;
+                }
+            }
+        });
+
+        // عدم أرشفة أي سند مرتبط بفاتورة لا تزال مفتوحة
+        let activeSaleIds = new Set(newSales.map(i => String(i.id)));
+        let activePurchIds = new Set(newPurchases.map(i => String(i.id)));
+
+        moves.forEach(m => {
+            if (!m) return;
+            let t = window.Utils.getSafeTime(m.date || m.timestamp);
+            let linkedToActiveInv = (m.invoiceNo && (activeSaleIds.has(String(m.invoiceNo)) || activePurchIds.has(String(m.invoiceNo)))) ||
+                (Array.isArray(m.allocatedInvoices) && m.allocatedInvoices.some(a => activeSaleIds.has(String(a?.id ?? a?.invoiceId)) || activePurchIds.has(String(a?.id ?? a?.invoiceId))));
+
+            if (t < days90 && !String(m.id).startsWith('arch_bal_') && !linkedToActiveInv) {
+                archivedMoves.push(m);
+                if (!m.isCanceled && !m._isReversed && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted') {
+                    let vKey = m.vault || 'main';
+                    if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
+                    archivedVaultDelta[vKey] += ((parseFloat(m.amountAdd) || 0) - (parseFloat(m.amountDeduct) || 0));
+                }
+            } else {
+                newMoves.push(m);
+            }
+        });
+
+        // إذا لم يكن هناك أي عنصر قديم يستحق التفريغ نخرج بهدوء
+        if (allRemovedSales.length === 0 && archivedPurchasesForParty.length === 0 && archivedMoves.length === 0) {
+            _internalSetItem('seraj_last_auto_archive_ts', String(now));
+            if (!isSilentAuto) SerajAlert("قاعدة البيانات نظيفة بالفعل ولا توجد فواتير قديمة تحتاج للأرشفة حالياً.", "info");
+            return true;
+        }
+
+        // حفظ فواتير الزبائن والموردين المسددة في الأرشيف المحلي لهذا الجهاز فقط قبل مسحها من السحابة
+        if (archivedSalesForParty.length > 0) {
+            let localSalesArch = safeParseJSON(localStorage.getItem('seraj_local_archive_sales'), []);
+            let existingArchIds = new Set(localSalesArch.map(i => String(i?.id)));
+            archivedSalesForParty.forEach(inv => {
+                if (!existingArchIds.has(String(inv.id))) localSalesArch.push(inv);
+            });
+            _internalSetItem('seraj_local_archive_sales', JSON.stringify(localSalesArch));
+        }
+
+        if (archivedPurchasesForParty.length > 0) {
+            let localPurchArch = safeParseJSON(localStorage.getItem('seraj_local_archive_purchases'), []);
+            let existingArchIds = new Set(localPurchArch.map(i => String(i?.id)));
+            archivedPurchasesForParty.forEach(inv => {
+                if (!existingArchIds.has(String(inv.id))) localPurchArch.push(inv);
+            });
+            _internalSetItem('seraj_local_archive_purchases', JSON.stringify(localPurchArch));
+        }
+
+        // ترحيل صافي حركات الخزينة المحذوفة إلى حركة رصيد مرحل واحدة لكل خزنة
+        ['main', 'insta', 'wallet'].forEach(vKey => {
+            let delta = Math.round(archivedVaultDelta[vKey] * 100) / 100;
+            if (Math.abs(delta) < 0.01) return;
+            let existingArchMove = newMoves.find(m => m && String(m.id) === `arch_bal_${vKey}`);
+            if (existingArchMove) {
+                let netNow = ((parseFloat(existingArchMove.amountAdd) || 0) - (parseFloat(existingArchMove.amountDeduct) || 0)) + delta;
+                existingArchMove.amountAdd = netNow >= 0 ? Math.round(netNow * 100) / 100 : 0;
+                existingArchMove.amountDeduct = netNow < 0 ? Math.round(Math.abs(netNow) * 100) / 100 : 0;
+                existingArchMove.amount = Math.round(Math.abs(netNow) * 100) / 100;
+                existingArchMove._lastModified = now;
+            } else {
+                newMoves.push({
+                    id: `arch_bal_${vKey}`,
+                    type: 'direct',
+                    vault: vKey,
+                    treasury: vKey,
+                    amountAdd: delta >= 0 ? delta : 0,
+                    amountDeduct: delta < 0 ? Math.abs(delta) : 0,
+                    amount: Math.abs(delta),
+                    notes: 'رصيد مرحل بعد تفريغ الفواتير القديمة',
+                    date: window.Utils.getLocalDateString(days90),
+                    timestamp: days90,
+                    _device: myDeviceName,
+                    _lastModified: now,
+                    _lastModifiedBy: myDeviceName
+                });
+            }
+        });
+
+        let archivedMoveIds = new Set(archivedMoves.map(m => String(m.id)));
+
+        // ترحيل الأثر المالي لفواتير وسندات العملاء المؤرشفة إلى openingBalance
+        customers.forEach(c => {
+            let oldAleih = 0; let oldLeh = 0;
+            let cNorm = window.Utils.normalizeName(c.name || '');
+
+            archivedSalesForParty.forEach(inv => {
+                let invNorm = window.Utils.normalizeName(inv.customer || '');
+                if (!inv.isCanceled && (String(inv.customerId) === String(c.id) || (cNorm && invNorm === cNorm))) {
+                    let invTot = parseFloat(inv.total) || 0;
+                    let invDisc = parseFloat(inv.discount) || 0;
+                    let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                    let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
+                    let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
+                    if (req < 0) req = 0;
+
+                    let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                    if (!isReturn) { oldAleih += req; oldLeh += origPaid; }
+                    else { oldLeh += req; oldAleih += origPaid; }
                 }
             });
 
-            ['main', 'insta', 'wallet'].forEach(vKey => {
-                let delta = Math.round(archivedVaultDelta[vKey] * 100) / 100;
-                if (Math.abs(delta) < 0.01) return;
-                let existingArchMove = newMoves.find(m => m && String(m.id) === `arch_bal_${vKey}`);
-                if (existingArchMove) {
-                    let netNow = ((parseFloat(existingArchMove.amountAdd) || 0) - (parseFloat(existingArchMove.amountDeduct) || 0)) + delta;
-                    existingArchMove.amountAdd = netNow >= 0 ? Math.round(netNow * 100) / 100 : 0;
-                    existingArchMove.amountDeduct = netNow < 0 ? Math.round(Math.abs(netNow) * 100) / 100 : 0;
-                    existingArchMove.amount = Math.round(Math.abs(netNow) * 100) / 100;
-                    existingArchMove._lastModified = now;
-                } else {
-                    newMoves.push({
-                        id: `arch_bal_${vKey}`,
-                        type: 'direct',
-                        vault: vKey,
-                        treasury: vKey,
-                        amountAdd: delta >= 0 ? delta : 0,
-                        amountDeduct: delta < 0 ? Math.abs(delta) : 0,
-                        amount: Math.abs(delta),
-                        notes: 'رصيد مرحل من الأرشيف السحابي',
-                        date: window.Utils.getLocalDateString(days90),
-                        timestamp: days90,
-                        _device: myDeviceName,
-                        _lastModified: now,
-                        _lastModifiedBy: myDeviceName
-                    });
+            archivedMoves.forEach(m => {
+                let mNorm = window.Utils.normalizeName(m.customer || '');
+                if (!m.isCanceled && !m._isReversed && !m._isReversal && (String(m.customerId) === String(c.id) || (cNorm && mNorm === cNorm))) {
+                    let amt = parseFloat(m.amount) || 0;
+                    if (m.type === 'payment' || m.type === 'customer_payment') oldAleih += amt;
+                    else if (m.type === 'receipt' || m.type === 'customer_receipt') oldLeh += amt;
                 }
             });
 
-            customers.forEach(c => {
-                let oldAleih = 0; let oldLeh = 0;
-                let cNorm = window.Utils.normalizeName(c.name || '');
+            if (Array.isArray(c.transactions)) {
+                c.transactions = c.transactions.filter(tx => !tx || (!archivedMoveIds.has(String(tx.id)) && !archivedMoveIds.has(String(tx.rawTreasuryId || ''))));
+            }
+            c.openingBalance = Math.round(((parseFloat(c.openingBalance) || 0) + (oldAleih - oldLeh)) * 100) / 100;
+        });
 
-                Object.values(archivePayload.sales).forEach(inv => {
-                    let invNorm = window.Utils.normalizeName(inv.customer || '');
-                    if (!inv.isCanceled && (String(inv.customerId) === String(c.id) || (cNorm && invNorm === cNorm))) {
-                        let invTot = parseFloat(inv.total) || 0;
-                        let invDisc = parseFloat(inv.discount) || 0;
-                        let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                        let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
-                        let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
-                        if (req < 0) req = 0;
+        // ترحيل الأثر المالي لفواتير وسندات الموردين المؤرشفة إلى openingBalance
+        suppliers.forEach(s => {
+            let sTotalReq = 0; let sTotalPaid = 0;
+            let sNorm = window.Utils.normalizeName(s.name || '');
 
-                        let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-                        let checkoutPaid = origPaid;
+            archivedPurchasesForParty.forEach(inv => {
+                let invNorm = window.Utils.normalizeName(inv.supplier || '');
+                if (!inv.isCanceled && (String(inv.supplierId) === String(s.id) || (sNorm && invNorm === sNorm))) {
+                    let invTot = parseFloat(inv.total) || 0;
+                    let invDisc = parseFloat(inv.discount) || 0;
+                    let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
+                    let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
+                    let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
+                    if (req < 0) req = 0;
 
-                        if (!isReturn) { oldAleih += req; oldLeh += checkoutPaid; }
-                        else { oldLeh += req; oldAleih += checkoutPaid; }
-                    }
-                });
-
-                Object.values(archivePayload.treasury_moves).forEach(m => {
-                    let mNorm = window.Utils.normalizeName(m.customer || '');
-                    if (!m.isCanceled && !m._isReversed && !m._isReversal && (String(m.customerId) === String(c.id) || (cNorm && mNorm === cNorm))) {
-                        let amt = parseFloat(m.amount) || 0;
-                        if (m.type === 'payment' || m.type === 'customer_payment') oldAleih += amt;
-                        else if (m.type === 'receipt' || m.type === 'customer_receipt') oldLeh += amt;
-                    }
-                });
-
-                if (Array.isArray(c.transactions)) {
-                    c.transactions = c.transactions.filter(tx => !tx || !archivePayload.treasury_moves[tx.id]);
+                    let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+                    if (!isReturn) { sTotalReq += req; sTotalPaid += origPaid; }
+                    else { sTotalReq -= req; sTotalPaid -= origPaid; }
                 }
-
-                c.openingBalance = Math.round(((parseFloat(c.openingBalance) || 0) + (oldAleih - oldLeh)) * 100) / 100;
             });
 
-            suppliers.forEach(s => {
-                let sTotalReq = 0; let sTotalPaid = 0;
-                let sNorm = window.Utils.normalizeName(s.name || '');
-
-                Object.values(archivePayload.purchases).forEach(inv => {
-                    let invNorm = window.Utils.normalizeName(inv.supplier || '');
-                    if (!inv.isCanceled && (String(inv.supplierId) === String(s.id) || (sNorm && invNorm === sNorm))) {
-                        let invTot = parseFloat(inv.total) || 0;
-                        let invDisc = parseFloat(inv.discount) || 0;
-                        let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                        let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
-                        let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
-                        if (req < 0) req = 0;
-
-                        let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
-                        let checkoutPaid = origPaid;
-
-                        if (!isReturn) { sTotalReq += req; sTotalPaid += checkoutPaid; }
-                        else { sTotalReq -= req; sTotalPaid -= checkoutPaid; }
-                    }
-                });
-
-                Object.values(archivePayload.treasury_moves).forEach(m => {
-                    let mNorm = window.Utils.normalizeName(m.supplier || '');
-                    if (!m.isCanceled && !m._isReversed && !m._isReversal && (String(m.supplierId) === String(s.id) || (sNorm && mNorm === sNorm))) {
-                        let amt = parseFloat(m.amount) || 0;
-                        if (m.type === 'receipt' || m.type === 'supplier_receipt') sTotalReq += amt;
-                        else if (m.type === 'payment' || m.type === 'purchase_payment') sTotalPaid += amt;
-                    }
-                });
-
-                if (Array.isArray(s.transactions)) {
-                    s.transactions = s.transactions.filter(tx => !tx || !archivePayload.treasury_moves[tx.id]);
+            archivedMoves.forEach(m => {
+                let mNorm = window.Utils.normalizeName(m.supplier || '');
+                if (!m.isCanceled && !m._isReversed && !m._isReversal && (String(m.supplierId) === String(s.id) || (sNorm && mNorm === sNorm))) {
+                    let amt = parseFloat(m.amount) || 0;
+                    if (m.type === 'receipt' || m.type === 'supplier_receipt') sTotalReq += amt;
+                    else if (m.type === 'payment' || m.type === 'purchase_payment') sTotalPaid += amt;
                 }
-
-                s.openingBalance = Math.round(((parseFloat(s.openingBalance) || 0) + (sTotalReq - sTotalPaid)) * 100) / 100;
             });
 
-            try {
-                let currentYear = new Date().getFullYear();
-                let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
-                let archiveRef = window.dbCloud.ref('test_Stores/' + activeStoreId + '/Archive_' + currentYear);
-                await archiveRef.update(archivePayload);
+            if (Array.isArray(s.transactions)) {
+                s.transactions = s.transactions.filter(tx => !tx || (!archivedMoveIds.has(String(tx.id)) && !archivedMoveIds.has(String(tx.rawTreasuryId || ''))));
+            }
+            s.openingBalance = Math.round(((parseFloat(s.openingBalance) || 0) + (sTotalReq - sTotalPaid)) * 100) / 100;
+        });
 
-                Object.keys(archivePayload.sales).forEach(id => addToDeleteQueue('sales_invoices', id));
-                Object.keys(archivePayload.purchases).forEach(id => addToDeleteQueue('purchase_invoices', id));
-                Object.keys(archivePayload.treasury_moves).forEach(id => addToDeleteQueue('treasury_moves', id));
+        try {
+            // حذف فعلي (Hard Delete) من السحابة لتفريغ مساحة Firebase بالكامل
+            let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
+            let currentYear = new Date().getFullYear();
+            // مسح أي عقدة أرشيف سحابية قديمة كانت تملأ مساحة الفايربيز
+            window.dbCloud.ref('test_Stores/' + activeStoreId + '/Archive_' + currentYear).remove().catch(() => {});
+            window.dbCloud.ref('test_Stores/' + activeStoreId + '/system_backup').remove().catch(() => {});
 
-                this.saveCustomers(customers);
-                this.saveSuppliers(suppliers);
+            allRemovedSales.forEach(inv => addToDeleteQueue('sales_invoices', inv.id));
+            archivedPurchasesForParty.forEach(inv => addToDeleteQueue('purchase_invoices', inv.id));
+            archivedMoves.forEach(m => addToDeleteQueue('treasury_moves', m.id));
 
-                _internalSetItem('seraj_sales_invoices', JSON.stringify(newSales));
-                saveArrayToQueueSafely('sales_invoices', newSales);
+            this.saveCustomers(customers);
+            this.saveSuppliers(suppliers);
 
-                _internalSetItem('seraj_purchase_invoices', JSON.stringify(newPurchases));
-                saveArrayToQueueSafely('purchase_invoices', newPurchases);
+            _internalSetItem('seraj_sales_invoices', JSON.stringify(newSales));
+            saveArrayToQueueSafely('sales_invoices', newSales);
 
-                this.saveTreasuryMoves(newMoves);
-                await this.syncNow();
+            _internalSetItem('seraj_purchase_invoices', JSON.stringify(newPurchases));
+            saveArrayToQueueSafely('purchase_invoices', newPurchases);
 
-                SerajAlert("✅ تمت عملية الأرشفة الذكية بنجاح! تم الاحتفاظ بآخر 50 فاتورة نقدية وترحيل القديم للسحابة مع تثبيت الأرصدة.", "success", () => {
+            this.saveTreasuryMoves(newMoves);
+            _internalSetItem('seraj_last_auto_archive_ts', String(now));
+            await this.syncNow();
+
+            if (!isSilentAuto) {
+                SerajAlert("✅ تم تفريغ السحابة وحفظ أرشيف الزبائن محلياً على هذا الجهاز بنجاح!", "success", () => {
                     window.location.reload();
                 });
-                resolve(true);
-            } catch (e) {
-                console.error("Archive Error:", e);
-                SerajAlert("❌ خطأ أثناء الرفع للسحابة، لم يتم مسح الداتا المحلية لحمايتها من الضياع.", "error");
-                resolve(false);
+            } else {
+                showCloudStatus("🧹 تم تنظيف وتفريغ مساحة السحابة تلقائياً");
             }
+            return true;
+        } catch (e) {
+            console.error("Archive Error:", e);
+            return false;
+        }
+    };
+
+    if (isSilentAuto) {
+        return await executeCleanup();
+    }
+
+    return new Promise((resolve) => {
+        SerajConfirm("سيتم مسح فواتير الطياري القديمة (الاحتفاظ بآخر 50 فاتورة)، ونقل فواتير الزبائن المسددة بالكامل والأقدم من 90 يوماً إلى الأرشيف المحلي لهذا الجهاز فقط، وحذفها من السحابة لتفريغ المساحة (الفواتير الآجلة التي عليها فلوس لن تُمس). هل أنت متأكد؟", async (confirm) => {
+            if (!confirm) return resolve(false);
+            let res = await executeCleanup();
+            resolve(res);
         });
     });
 },
 
+getLocalArchivedInvoices: function(type = 'sales') {
+    let key = type === 'purchases' ? 'seraj_local_archive_purchases' : 'seraj_local_archive_sales';
+    return safeParseJSON(localStorage.getItem(key), []);
+},
+
 fetchArchivedData: async function(year = new Date().getFullYear()) {
+    let localSales = this.getLocalArchivedInvoices('sales');
+    let localPurchases = this.getLocalArchivedInvoices('purchases');
+    if (localSales.length > 0 || localPurchases.length > 0) {
+        showCloudStatus("📂 تم جلب الأرشيف المحلي من هذا الجهاز.");
+        return { sales: localSales, purchases: localPurchases };
+    }
+
     if (!cloudReady || !navigator.onLine || !window.dbCloud) {
-        SerajAlert("يجب الاتصال بالإنترنت للبحث في الأرشيف!", "error");
+        SerajAlert("يجب الاتصال بالإنترنت للبحث في الأرشيف السحابي!", "error");
         return null;
     }
     showCloudStatus("⏳ جاري سحب الأرشيف من السحابة... برجاء الانتظار.");
@@ -4234,34 +4307,28 @@ applySavedTheme: function() {
 };
 
 // ---------------------------------------------------------
-// 5. Cloud Backup (النسخ الاحتياطي السحابي التلقائي)
+// 5. Auto Cloud Space Cleaner (التفريغ التلقائي الصامت للسحابة كل 7 أيام)
 // ---------------------------------------------------------
 function checkAndRunAutoCloudBackup() {
-if (!cloudReady || !navigator.onLine || !window.dbCloud) return;
+    if (!cloudReady || !navigator.onLine || !window.dbCloud) return;
 
-let lastBackupTime = parseInt(localStorage.getItem('seraj_last_backup_timestamp') || '0', 10);
-let now = Date.now();
-let oneDayMillis = 24 * 60 * 60 * 1000;
-
-if ((now - lastBackupTime) > oneDayMillis) {
+    // 1. مسح النسخة الاحتياطية المكررة القديمة التي كانت تملأ الفايربيز
     let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
-    let fullSystemSnapshot = {
-        timestamp: now,
-        dateFormatted: new Date().toLocaleString('ar-EG'),
-        deviceName: myDeviceName,
-        storeId: activeStoreId,
-        ...window.DB.getAggregatedData(),
-        vaults: window.DB.getVaults()
-    };
+    window.dbCloud.ref('test_Stores/' + activeStoreId + '/system_backup').remove().catch(() => {});
 
-    let backupRef = window.dbCloud.ref('test_Stores/' + activeStoreId + '/system_backup/latest_snapshot');
-    backupRef.set(fullSystemSnapshot)
-        .then(() => {
-            _internalSetItem('seraj_last_backup_timestamp', now.toString());
-            console.log("☁️ تم تحديث النسخة الاحتياطية السحابية بنجاح.");
-        })
-        .catch(err => console.error("Auto Cloud Backup Error:", err));
-}
+    // 2. تشغيل التفريغ التلقائي الصامت كل 7 أيام (أو إذا زادت الفواتير عن 500 فاتورة) على الجهاز الرئيسي
+    let lastArchiveTime = parseInt(localStorage.getItem('seraj_last_auto_archive_ts') || '0', 10);
+    let now = Date.now();
+    let sevenDaysMillis = 7 * 24 * 60 * 60 * 1000;
+    let currentSalesCount = safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []).length;
+
+    if ((now - lastArchiveTime) > sevenDaysMillis || currentSalesCount > 500) {
+        setTimeout(() => {
+            if (window.DB && typeof window.DB.archiveSmartData === 'function') {
+                window.DB.archiveSmartData(true);
+            }
+        }, 25000); // يعمل بهدوء بعد 25 ثانية من فتح البرنامج دون أي إزعاج
+    }
 }
 
 // =========================================================================
@@ -4783,6 +4850,31 @@ if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
     }
 }
 }, true);
+
+// 🔄 مستمع التزامن المحلي اللحظي بين التبويبات والصفحات المفتوحة (Cross-Tab Instant Sync)
+window.addEventListener('storage', (e) => {
+    if (!e.key || !e.key.startsWith('seraj_') || e.key.startsWith('seraj_cloud_cache_') || e.key.includes('_queue')) return;
+    let col = e.key.replace(/^seraj_/, '');
+    if (['products', 'customers', 'suppliers', 'sales_invoices', 'purchase_invoices', 'treasury_moves', 'smart_notes', 'vaults_v2'].includes(col)) {
+        try {
+            let updatedArr = safeParseJSON(e.newValue, []);
+            localCollectionsCache[col] = updatedArr;
+            emitSerajUpdate(col, 'cross_tab');
+            if (col === 'sales_invoices' && typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
+            if (col === 'purchase_invoices') {
+                if (typeof renderPurchasesHistory === 'function') renderPurchasesHistory();
+                else if (typeof renderInvoicesHistory === 'function') renderInvoicesHistory();
+            }
+            if (col === 'treasury_moves' || col === 'vaults_v2') {
+                if (typeof renderMovementsTable === 'function') renderMovementsTable();
+                if (typeof updateTreasuryUI === 'function') updateTreasuryUI();
+            }
+            if (col === 'customers' && typeof renderCustomersList === 'function') renderCustomersList();
+            if (col === 'suppliers' && typeof renderSuppliersList === 'function') renderSuppliersList();
+            if (col === 'products' && typeof renderInventoryTable === 'function') renderInventoryTable();
+        } catch (err) {}
+    }
+});
 
 window.DB.migrateOldData();
 window.DB.applySavedTheme();
