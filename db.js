@@ -890,14 +890,20 @@ function emitSerajUpdate(collectionName, source = 'local') {
 let _syncTimer = null;
 let _scheduledSyncInterval = null;
 let _inFlightSyncKeys = new Set();
-const CALM_SYNC_DELAY_MS = 180000; // 3 دقائق افتراضياً للرفع الهادئ بعد استقرار التعديلات
+const CALM_SYNC_DELAY_MS = 3000; // ⚡ 3 ثواني فقط بدلاً من 3 دقائق للرفع الهادئ السريع
 
 function getSyncConfigInternal() {
-    return safeParseJSON(localStorage.getItem('seraj_sync_settings'), {
-        autoSync: true,
-        intervalMs: 300000, // 5 دقائق للفحص الدوري
-        syncOnSaveDelayMs: CALM_SYNC_DELAY_MS
-    });
+    let saved = safeParseJSON(localStorage.getItem('seraj_sync_settings'), null);
+    
+    // لو المتصفح لسة محتفظ بالإعدادات القديمة (5 دقائق)، هنمسحها ونجبره على السرعة الجديدة
+    if (!saved || saved.intervalMs >= 300000) {
+        return {
+            autoSync: true,
+            intervalMs: 15000, // ⚡ 15 ثانية للفحص الدوري التلقائي
+            syncOnSaveDelayMs: CALM_SYNC_DELAY_MS
+        };
+    }
+    return saved;
 }
 
 function startScheduledSyncTimer() {
