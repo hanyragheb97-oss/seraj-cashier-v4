@@ -369,6 +369,11 @@ animation: pulse-alert 2s infinite;
 <!-- الزر الجديد تمت إضافته هنا -->
 <button onclick="if(window.DB) window.DB.syncFromCloud(); toggleSidebar();" style="background:#8b5cf6; color:#fff; padding:12px; margin-bottom:10px; border-radius:8px; font-weight:bold; border:none; width:100%; cursor:pointer; font-size:16px; text-align:center; box-shadow:0 0 10px var(--neon-glow);">☁️ تحميل ومطابقة داتا المحل من السحابة</button>
 
+<!-- 📦 زر تشغيل الأرشفة السحابية المضاف حديثاً -->
+<button type="button" onclick="triggerSystemArchive()" style="width:100%; padding:12px; margin-bottom:10px; background:rgba(255, 51, 51, 0.2); color:#ff4444; border:1px solid #ff4444; border-radius:8px; font-size:15px; font-weight:bold; text-align:center; cursor:pointer; box-shadow:0 0 10px rgba(255, 68, 68, 0.3);">
+    📦 تشغيل الأرشفة السحابية (تفريغ مساحة)
+</button>
+
 <!-- تم مسح أزرار الخزينة المتكررة، وترك زر واحد فقط -->
 
 <button onclick="window.open('https://wa.me/201000000000', '_blank'); toggleSidebar();" style="width:100%; padding:12px; margin-bottom:10px; background:#128C7E; color:#fff; border:none; border-radius:8px; font-size:16px; text-align:right; cursor:pointer; font-weight:bold;">📞 الاتصال بالدعم الفني</button>
@@ -727,12 +732,38 @@ animation: pulse-alert 2s infinite;
                 });
             }
         }
+
+        function triggerSystemArchive() {
+    if (typeof toggleSidebar === 'function') toggleSidebar();
+
+    // 1. التأكد من توفر اتصال الإنترنت
+    if (!navigator.onLine) {
+        if (typeof SerajAlert === 'function') {
+            SerajAlert("⚠️ يجب توصيل الإنترنت أولاً لتشغيل الأرشفة السحابية.", "error");
+        } else {
+            alert("⚠️ يجب توصيل الإنترنت أولاً لتشغيل الأرشفة السحابية.");
+        }
+        return;
+    }
+    
+    // 2. التحقق من وجود واستدعاء محرك الأرشفة في db.js
+    if (window.DB && typeof window.DB.archiveSmartData === 'function') {
+        window.DB.archiveSmartData();
+    } else {
+        if (typeof SerajAlert === 'function') {
+            SerajAlert("❌ محرك الأرشفة غير متوفر حالياً في ملف db.js.", "error");
+        } else {
+            alert("❌ محرك الأرشفة غير متوفر حالياً في ملف db.js.");
+        }
+    }
+}    
         
         window.onload = () => {
             if(typeof DB !== 'undefined') DB.applySavedTheme();
         };
     </script>
 <script src="ai_brain.js"></script>
+
     
 </script>
 
