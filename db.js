@@ -42,10 +42,8 @@ if (!myDeviceName || !myDevicePrefix) {
 }
 
 // تثبيت معرف المتجر في الذاكرة المحلية منذ اللحظة الأولى لمنع تضارب المسار السحابي بين الصفحات (مثل treasury.html)
-let currentStoreId = localStorage.getItem('seraj_store_id') || 'DemoStore';
-if (!localStorage.getItem('seraj_store_id')) {
-    localStorage.setItem('seraj_store_id', currentStoreId);
-}
+let currentStoreId = 'Seraj_Main_Store';
+localStorage.setItem('seraj_store_id', currentStoreId);
 
 const _origSetItem = localStorage.setItem.bind(localStorage);
 let _isInternalSetItem = false;
@@ -1063,68 +1061,63 @@ function saveArrayToQueueSafely(colName, newArray) {
     localCollectionsCache[colName] = [...newArray];
     emitSerajUpdate(colName, 'local');
 
-    if (_bgSaveTimers[colName]) clearTimeout(_bgSaveTimers[colName]);
-    _bgSaveTimers[colName] = setTimeout(() => {
-        try {
-            let rawOldCache = localStorage.getItem('seraj_cloud_cache_' + colName);
+    try {
+        let rawOldCache = localStorage.getItem('seraj_cloud_cache_' + colName);
 
-            // إلغاء سقف الـ 25 عنصراً عند التزامن الأول لرفع جميع الأصناف عند استيراد إكسيل كامل أو تعديل شامل للأسعار
-            if (!rawOldCache) {
-                _internalSetItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
-                let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
-                newArray.forEach(item => {
-                    if (!item || item.id === undefined || item.id === null) return;
-                    let idStr = String(item.id);
-                    removeFromDeleteQueue(colName, idStr);
-                    queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
-                    queue.push({ col: colName, data: item });
-                });
-                _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
-                scheduleSyncQueue();
-                return;
+        if (!rawOldCache) {
+            _internalSetItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
+            let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
+            newArray.forEach(item => {
+                if (!item || item.id === undefined || item.id === null) return;
+                let idStr = String(item.id);
+                removeFromDeleteQueue(colName, idStr);
+                queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
+                queue.push({ col: colName, data: item });
+            });
+            _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
+            processSyncQueue(); // ⚡ رفع فوري للسحابة
+            return;
+        }
+
+        let oldArray = safeParseJSON(rawOldCache, []);
+        let oldMap = new Map(oldArray.map(i => [String(i?.id), i]));
+        let newMap = new Map(newArray.map(i => [String(i?.id), i]));
+        let changedItems = [];
+
+        newArray.forEach(newItem => {
+            if (!newItem || newItem.id === undefined) return;
+            let id = String(newItem.id);
+            let oldItem = oldMap.get(id);
+            if (!oldItem || JSON.stringify(_stripComputedFieldsForDiff(oldItem)) !== JSON.stringify(_stripComputedFieldsForDiff(newItem))) {
+                changedItems.push(newItem);
             }
+        });
 
-            let oldArray = safeParseJSON(rawOldCache, []);
-            let oldMap = new Map(oldArray.map(i => [String(i?.id), i]));
-            let newMap = new Map(newArray.map(i => [String(i?.id), i]));
-            let changedItems = [];
+        if (changedItems.length > 0) {
+            let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
+            changedItems.forEach(item => {
+                let idStr = String(item.id);
+                removeFromDeleteQueue(colName, idStr);
+                queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
+                queue.push({ col: colName, data: item });
+            });
+            _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
+            processSyncQueue(); // ⚡ رفع فوري للسحابة
+        }
 
-            newArray.forEach(newItem => {
-                if (!newItem || newItem.id === undefined) return;
-                let id = String(newItem.id);
-                let oldItem = oldMap.get(id);
-                if (!oldItem || JSON.stringify(_stripComputedFieldsForDiff(oldItem)) !== JSON.stringify(_stripComputedFieldsForDiff(newItem))) {
-                    changedItems.push(newItem);
+        if (colName === 'treasury_moves') {
+            oldArray.forEach(oldItem => {
+                if (!oldItem || oldItem.id === undefined) return;
+                if (!newMap.has(String(oldItem.id))) {
+                    addToDeleteQueue(colName, String(oldItem.id), true);
                 }
             });
-
-            if (changedItems.length > 0) {
-                let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
-                changedItems.forEach(item => {
-                    let idStr = String(item.id);
-                    removeFromDeleteQueue(colName, idStr);
-                    queue = queue.filter(q => !(q.col === colName && String(q.data?.id) === idStr));
-                    queue.push({ col: colName, data: item });
-                });
-                _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
-                scheduleSyncQueue();
-            }
-
-            if (colName === 'treasury_moves') {
-                oldArray.forEach(oldItem => {
-                    if (!oldItem || oldItem.id === undefined) return;
-                    let id = String(oldItem.id);
-                    if (!newMap.has(id)) {
-                        addToDeleteQueue(colName, id);
-                    }
-                });
-            }
-
-            _internalSetItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
-        } catch (e) {
-            console.error("Queue Sync Error:", e);
         }
-    }, 25);
+
+        _internalSetItem('seraj_cloud_cache_' + colName, JSON.stringify(newArray));
+    } catch (e) {
+        console.error("Queue Sync Error:", e);
+    }
 }
 
 function startSmartRadars() {
