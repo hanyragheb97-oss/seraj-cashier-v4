@@ -41,12 +41,16 @@ if (!myDeviceName || !myDevicePrefix) {
     localStorage.setItem('seraj_device_prefix', myDevicePrefix);
 }
 
-// تثبيت معرف المتجر في الذاكرة المحلية منذ اللحظة الأولى لمنع تضارب المسار السحابي بين الصفحات (مثل treasury.html)
-let currentStoreId = localStorage.getItem('seraj_store_id') || 'DemoStore';
-if (!localStorage.getItem('seraj_store_id')) {
+// تثبيت معرف المتجر في الذاكرة المحلية مع طلب الرقم إجبارياً عند مسح البيانات
+let currentStoreId = localStorage.getItem('seraj_store_id');
+if (!currentStoreId) {
+    while (!currentStoreId || currentStoreId.trim() === "") {
+        currentStoreId = prompt("🛑 إجباري: أدخل رقم أو كود المحل (مثال: 1234):");
+        if (currentStoreId === null) currentStoreId = "9999";
+    }
+    currentStoreId = currentStoreId.trim();
     localStorage.setItem('seraj_store_id', currentStoreId);
 }
-
 const _origSetItem = localStorage.setItem.bind(localStorage);
 let _isInternalSetItem = false;
 
