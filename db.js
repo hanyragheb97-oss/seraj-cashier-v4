@@ -889,11 +889,11 @@ let _inFlightSyncKeys = new Set();
 const CALM_SYNC_DELAY_MS = 1000; // ⚡ ثانية واحدة فقط للرفع الهادئ لضمان سرعة الأجهزة
 
 function getSyncConfigInternal() {
-    return safeParseJSON(localStorage.getItem('seraj_sync_settings'), {
+    return {
         autoSync: true,
-        intervalMs: 15000, // فحص دوري كل 15 ثانية بدلاً من 5 دقائق
-        syncOnSaveDelayMs: CALM_SYNC_DELAY_MS
-    });
+        intervalMs: 15000,
+        syncOnSaveDelayMs: 1000
+    };
 }
 
 function startScheduledSyncTimer() {
