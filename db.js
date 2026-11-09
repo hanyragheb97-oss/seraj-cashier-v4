@@ -23,44 +23,25 @@ const firebaseConfig = {
 };
 
 let cloudReady = false;
-let myDeviceName = localStorage.getItem('seraj_device_name');
-let myDevicePrefix = localStorage.getItem('seraj_device_prefix');
 
-if (!myDeviceName || !myDevicePrefix) {
-    while (!myDeviceName || myDeviceName.trim() === "") {
-        myDeviceName = prompt("مرحباً بك في (سراج كاشير V4) 🛠️\n🛑 إجباري: أدخل اسم هذا المستخدم/الجهاز (مثال: هاني أو كاشير 1):");
-        if (myDeviceName === null) myDeviceName = "كاشير 1";
-    }
-    while (!myDevicePrefix || !/^[a-zA-Z]$/.test(myDevicePrefix)) {
-        myDevicePrefix = prompt("🛑 إجباري: أدخل حرف إنجليزي واحد مميز ليكون بادئة فواتير هذا الجهاز (مثال: A أو B أو C):");
-        if (myDevicePrefix === null) myDevicePrefix = "A";
-    }
-    myDeviceName = myDeviceName.trim();
-    myDevicePrefix = myDevicePrefix.toUpperCase();
-    localStorage.setItem('seraj_device_name', myDeviceName);
-    localStorage.setItem('seraj_device_prefix', myDevicePrefix);
-}
-
-// تثبيت معرف المتجر في الذاكرة المحلية منذ اللحظة الأولى لمنع تضارب المسار السحابي بين الصفحات (مثل treasury.html)
+// 1. قراءة بيانات تسجيل الدخول من الذاكرة
 let currentStoreId = localStorage.getItem('seraj_store_id');
 let myDeviceName = localStorage.getItem('seraj_device_name');
 let myDevicePrefix = localStorage.getItem('seraj_device_prefix');
 
-// إذا كان أي بيان ناقصاً (مثل أول تشغيل أو تصفح خفي)، سيطلب البيانات الثلاثة
+// 2. إذا كان هناك بيان ناقص (مثل التصفح الخفي)، نطلبه من المستخدم
 if (!currentStoreId || !myDeviceName || !myDevicePrefix) {
     
-    // 1. طلب كود/رقم حساب المحل (Store ID)
     while (!currentStoreId || currentStoreId.trim() === "") {
         currentStoreId = prompt("🔑 إجباري: أدخل كود/رقم حساب المحل للاتصال بقاعدة البيانات الخاصة بك:");
+        if (currentStoreId === null) currentStoreId = "";
     }
     
-    // 2. طلب اسم الكاشير
     while (!myDeviceName || myDeviceName.trim() === "") {
         myDeviceName = prompt("مرحباً بك في سراج كاشير 🛠️\n🛑 إجباري: أدخل اسم هذا المستخدم/الجهاز (مثال: هاني أو كاشير 1):");
         if (myDeviceName === null) myDeviceName = "";
     }
     
-    // 3. طلب حرف الفواتير المميز
     while (!myDevicePrefix || !/^[a-zA-Z]$/.test(myDevicePrefix)) {
         myDevicePrefix = prompt("🛑 إجباري: أدخل حرف إنجليزي واحد مميز ليكون بادئة فواتير هذا الجهاز (مثال: A أو B أو C):");
         if (myDevicePrefix === null) myDevicePrefix = "";
@@ -75,7 +56,7 @@ if (!currentStoreId || !myDeviceName || !myDevicePrefix) {
     localStorage.setItem('seraj_device_prefix', myDevicePrefix);
 }
 
-// عزل عملية setItem الداخلية لمنع الحلقات اللانهائية
+// 3. عزل دوال الحفظ لمنع الحلقات اللانهائية
 const _origSetItem = localStorage.setItem.bind(localStorage);
 let _isInternalSetItem = false;
 function _internalSetItem(key, value) {
