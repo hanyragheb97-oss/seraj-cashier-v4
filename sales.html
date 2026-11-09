@@ -352,10 +352,12 @@ function normalizeText(text) {
 }
 
 let searchTimer;
-function smartSearch() {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => { searchProducts(); }, 150);
-}
+const smartSearch = (typeof window.debounce === 'function')
+    ? window.debounce(function() { searchProducts(); }, 200)
+    : function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { searchProducts(); }, 200);
+    };
 
 function searchProducts() {
     loadDB();
