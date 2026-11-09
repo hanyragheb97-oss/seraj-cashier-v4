@@ -42,53 +42,48 @@ if (!myDeviceName || !myDevicePrefix) {
 }
 
 // تثبيت معرف المتجر في الذاكرة المحلية منذ اللحظة الأولى لمنع تضارب المسار السحابي بين الصفحات (مثل treasury.html)
-let currentStoreId = 'Seraj_Main_Store';
-localStorage.setItem('seraj_store_id', currentStoreId);
+let currentStoreId = localStorage.getItem('seraj_store_id');
+let myDeviceName = localStorage.getItem('seraj_device_name');
+let myDevicePrefix = localStorage.getItem('seraj_device_prefix');
 
+// إذا كان أي بيان ناقصاً (مثل أول تشغيل أو تصفح خفي)، سيطلب البيانات الثلاثة
+if (!currentStoreId || !myDeviceName || !myDevicePrefix) {
+    
+    // 1. طلب كود/رقم حساب المحل (Store ID)
+    while (!currentStoreId || currentStoreId.trim() === "") {
+        currentStoreId = prompt("🔑 إجباري: أدخل كود/رقم حساب المحل للاتصال بقاعدة البيانات الخاصة بك:");
+    }
+    
+    // 2. طلب اسم الكاشير
+    while (!myDeviceName || myDeviceName.trim() === "") {
+        myDeviceName = prompt("مرحباً بك في سراج كاشير 🛠️\n🛑 إجباري: أدخل اسم هذا المستخدم/الجهاز (مثال: هاني أو كاشير 1):");
+        if (myDeviceName === null) myDeviceName = "";
+    }
+    
+    // 3. طلب حرف الفواتير المميز
+    while (!myDevicePrefix || !/^[a-zA-Z]$/.test(myDevicePrefix)) {
+        myDevicePrefix = prompt("🛑 إجباري: أدخل حرف إنجليزي واحد مميز ليكون بادئة فواتير هذا الجهاز (مثال: A أو B أو C):");
+        if (myDevicePrefix === null) myDevicePrefix = "";
+    }
+    
+    currentStoreId = currentStoreId.trim();
+    myDeviceName = myDeviceName.trim();
+    myDevicePrefix = myDevicePrefix.toUpperCase();
+    
+    localStorage.setItem('seraj_store_id', currentStoreId);
+    localStorage.setItem('seraj_device_name', myDeviceName);
+    localStorage.setItem('seraj_device_prefix', myDevicePrefix);
+}
+
+// عزل عملية setItem الداخلية لمنع الحلقات اللانهائية
 const _origSetItem = localStorage.setItem.bind(localStorage);
 let _isInternalSetItem = false;
-
 function _internalSetItem(key, value) {
     _isInternalSetItem = true;
     try {
         _origSetItem(key, value);
     } finally {
         _isInternalSetItem = false;
-    }
-}
-
-function initCloud() {
-    const startRealtimeDB = () => {
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        window.dbCloud = firebase.database();
-        cloudReady = true;
-        showCloudStatus('⚡ متصل بالسحابي: ' + currentStoreId);
-        scheduleSyncQueue(15000); // مزامنة هادئة بعد استقرار الاتصال بـ 15 ثانية عند فتح البرنامج
-        startScheduledSyncTimer();
-        startSmartRadars();
-        checkAndRunAutoCloudBackup();
-    };
-
-    const loadDatabaseSDK = () => {
-        if (typeof firebase !== 'undefined' && typeof firebase.database === 'function') {
-            startRealtimeDB();
-        } else {
-            let s2 = document.createElement('script');
-            s2.src = "https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js";
-            document.head.appendChild(s2);
-            s2.onload = startRealtimeDB;
-        }
-    };
-
-    if (typeof window.firebase !== 'undefined') {
-        loadDatabaseSDK();
-    } else {
-        let s1 = document.createElement('script');
-        s1.src = "https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js";
-        document.head.appendChild(s1);
-        s1.onload = loadDatabaseSDK;
     }
 }
 
