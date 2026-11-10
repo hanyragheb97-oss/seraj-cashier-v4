@@ -5,13 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>فاتورة بيع - سراج كاشير</title>
 <link rel="stylesheet" href="style.css">
+
+<link rel="stylesheet" href="style.css">
+<!-- أضف هذا السطر لربط ستايل المكتبة الصاروخية -->
+<link rel="stylesheet" href="clusterize.css">
 <link rel="manifest" href="manifest.json">
+
 <!-- لون شريط الموبايل العلوي والسفلي (كحلي غامق) -->
 <meta name="theme-color" content="#0b0d1e">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+
 </head>
 
 <body onclick="hideFabMenu(); closeAllMenus(event);">
@@ -34,9 +41,11 @@
             </svg>
         </button>
         
-        <div id="productResults" class="dropdown-list clusterize-scroll" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 999999; max-height: 400px; overflow-y: auto; background: var(--card-bg, #1a1a1a); border: 2px solid var(--neon-border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.9);" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
-            <div id="contentArea" class="clusterize-content"></div>
-        </div>
+<!-- منطقة التمرير لنتائج البحث السريعة -->
+<div id="productResults" class="dropdown-list clusterize-scroll" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 999999; max-height: 400px; overflow-y: auto; background: var(--card-bg, #1a1a1a); border: 2px solid var(--neon-border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.9);" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
+    <!-- منطقة المحتوى -->
+    <div id="contentArea" class="clusterize-content"></div>
+</div>
     </div>
     
     <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
@@ -261,6 +270,9 @@
 <div id="stockWarningToast" class="toast-warning" style="display: none; position: fixed !important; top: 20px !important; left: 50% !important; transform: translateX(-50%) !important; background: #dc2626 !important; color: #ffffff !important; padding: 12px 24px !important; border-radius: 12px !important; font-size: 16px !important; font-weight: bold !important; text-align: center !important; width: 90% !important; max-width: 420px !important; z-index: 999999 !important; box-shadow: 0 4px 25px rgba(220, 38, 38, 0.7) !important; border: 2px solid #ef4444 !important; border-right: 6px solid #7f1d1d !important; pointer-events: none !important;"></div>
 <div id="printReceiptArea" style="display: none;"></div>
 
+<!-- سطر المكتبة الصاروخية الجديد -->
+<script src="clusterize.min.js"></script>
+
 <script src="db.js"></script>
 
 <script>
@@ -404,8 +416,12 @@ function searchProducts() {
     filtered.sort((a, b) => b.score - a.score);
 
     if (filtered.length > 0) {
-        // إظهار المربع أولاً
+        // 1. إظهار المربع أولاً قبل تشغيل المكتبة
         resultsDiv.style.display = 'block';
+        
+        // 2. إجبار المتصفح على رسم المربع فوراً حتى لا تحسبه المكتبة كخط صغير
+        resultsDiv.offsetHeight; 
+
         let rowsHTML = [];
 
         filtered.forEach(item => {
@@ -415,9 +431,9 @@ function searchProducts() {
 
             let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
 
-            // تم إضافة تصميم ثابت للسطر ليظهر بشكل سليم
+            // وضعنا الكليك هنا مباشرة: onmousedown="selectClusterizeProduct(event, '${p.id}')"
             let row = `
-                <div class="dropdown-item clusterize-row" data-id="${p.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); min-height: 60px;">
+                <div class="dropdown-item clusterize-row" onmousedown="selectClusterizeProduct(event, '${p.id}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); min-height: 60px;">
                     <div style="flex: 2; display: flex; align-items: center; gap: 10px; text-align: right; word-break: break-word; line-height: 1.4;">
                         ${imgHtml}
                         <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
@@ -433,7 +449,7 @@ function searchProducts() {
             rowsHTML.push(row);
         });
 
-        // تأخير بسيط 10 ملي ثانية للسماح للمتصفح برسم المربع حتى لا تحسبه المكتبة كخط صغير
+        // 3. تأخير 50 ملي ثانية لضمان أن المربع ظهر بالكامل وطوله سليم 100%
         setTimeout(() => {
             if (!clusterizeInstance) {
                 clusterizeInstance = new Clusterize({
@@ -448,14 +464,40 @@ function searchProducts() {
                 clusterizeInstance.update(rowsHTML);
             }
             
-            // جلب الصور للمجموعة المعروضة فقط
-            setTimeout(() => { loadVisibleSearchImages(); }, 50);
+            loadVisibleSearchImages();
             resultsDiv.scrollTop = 0;
-        }, 10);
+        }, 50);
         
     } else {
         resultsDiv.style.display = 'none';
     }
+}
+
+// دالة اختيار الصنف وإضافته للفاتورة (بديلة للطريقة المعقدة السابقة)
+function selectClusterizeProduct(e, productId) {
+    e.preventDefault();
+    e.stopPropagation();
+    loadDB();
+    let p = productsDB.find(x => String(x.id) === String(productId));
+    if (p) {
+        addProduct(p, currentQueueQty);
+        currentQueueQty = 1;
+        processNextInQueue();
+    }
+}
+
+// دالة جلب الصور المتوافقة
+function loadVisibleSearchImages() {
+    if (!window.ImagesDB) return;
+    let images = document.querySelectorAll('#contentArea img[id^="search_img_"]');
+    images.forEach(img => {
+        if (!img.getAttribute('src')) {
+            let pId = img.id.replace('search_img_', '');
+            window.ImagesDB.getImage(pId).then(imgData => {
+                if(imgData) img.src = imgData;
+            });
+        }
+    });
 }
 
 // دالة جلب الصور المتوافقة
