@@ -1491,9 +1491,11 @@ function confirmInvoicePayment(e) {
 
     // 3. تأخير الحفظ لحظياً عشان المتصفح يلحق يخفي الشاشة ويكون سلس
     setTimeout(() => {
-        let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
-            ? window.Utils.generateUniqueId() // توليد ID نقي للخزينة
-            : Date.now().toString();
+// سحب حرف الجهاز المخصص، وتوليد رقم تسلسلي يدمج الحرف مع الرقم (مثال: A-1005)
+let devPrefix = localStorage.getItem('seraj_device_prefix') || 'V';
+let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generateUniqueId === 'function') 
+    ? window.Utils.generateUniqueId() 
+    : Date.now().toString());
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
         let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `تحصيل فاتورة رقم ${inv.id}`;
         let allocatedInvoices = [{ id: inv.id, deducted: pAmount }];
@@ -1574,9 +1576,11 @@ function saveTransaction(e) {
 
     setTimeout(() => {
         if(!c.transactions) c.transactions = [];
-        let receiptId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') 
-            ? window.Utils.generateUniqueId() // توليد ID نقي
-            : Date.now().toString();
+// سحب حرف الجهاز المخصص، وتوليد رقم تسلسلي يدمج الحرف مع الرقم (مثال: A-1005)
+let devPrefix = localStorage.getItem('seraj_device_prefix') || 'V';
+let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generateUniqueId === 'function') 
+    ? window.Utils.generateUniqueId() 
+    : Date.now().toString());
             
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
