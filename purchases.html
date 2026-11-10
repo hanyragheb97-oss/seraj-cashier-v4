@@ -1542,19 +1542,18 @@ function closeAllMenus(e) {
                         
                         // ⚡ قراءة المفتاح لمعرفة الوضع المختار ⚡
                         let insertMode = document.querySelector('input[name="voiceInsertMode"]:checked').value;
+                        
+                        let addedCount = 0;
+                        let leftoverQueue = []; // مصفوفة لتخزين الأصناف التي ستذهب للطابور
 
                         if (insertMode === 'direct') {
-                            // 🚀 الوضع الصاروخي: إدراج مباشر للفاتورة محملة بالأسعار 🚀
-                            let addedCount = 0;
-                            
+                            // 🚀 الوضع المباشر الذكي (مطابق = فاتورة، غير مطابق = طابور) 🚀
                             result.queue.forEach(item => {
-                                // البحث عن الصنف في المخزن لجلبه بكامل بياناته وأسعاره
                                 let p = safeProducts.find(x => String(x.name).trim() === String(item.name).trim() || String(x.cleanDisplay) === String(item.name).trim());
                                 
                                 if (p) {
+                                    // الصنف مطابق 100% -> ينزل في الفاتورة فوراً
                                     let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
-                                    
-                                    // تحديد السعر الهدف (سعر الشراء للمشتريات، وسعر البيع للمبيعات)
                                     let targetPrice = isPurchasePage ? (parseFloat(p.purchasePrice) || 0) : (parseFloat(p.price) || 0);
 
                                     if (existsIndex > -1) {
@@ -1567,7 +1566,6 @@ function closeAllMenus(e) {
                                             total: targetPrice * item.qty, 
                                             hasImage: p.hasImage 
                                         };
-                                        // ضبط السعر حسب نوع الصفحة
                                         if (isPurchasePage) {
                                             newItem.purchasePrice = targetPrice;
                                             newItem.sellPrice = parseFloat(p.price) || 0;
@@ -1579,29 +1577,42 @@ function closeAllMenus(e) {
                                     }
                                     addedCount++;
                                 } else {
-                                    // يتجاهل الصنف إذا لم يكن مطابقاً للمخزن (كمثال لو قال كلام عشوائي)
-                                    console.log("تم تجاهل الصنف لعدم وجود مطابقة تامة:", item.name);
+                                    // الصنف غير مطابق 100% -> تحويله للطابور للمراجعة اليدوية
+                                    leftoverQueue.push(item);
                                 }
                             });
-
-                            if (addedCount > 0) {
-                                saveDraft(); 
-                                renderTable(); // رسم الفاتورة فوراً
-                                document.getElementById('productSearch').value = '';
-                                document.getElementById('productResults').style.display = 'none';
-                            } else {
-                                SerajAlert("عفواً، لم يتم العثور على أي صنف مطابق تماماً في المخزن للإدراج المباشر.");
-                            }
-
                         } else {
-                            // 📝 وضع الطابور العادي (القديم) 📝
-                            searchQueue = result.queue;
-                            if (typeof updateQueueUI === 'function') {
-                                updateQueueUI();
-                            }
+                            // 📝 وضع الطابور العادي -> كل الأصناف تذهب للطابور 📝
+                            leftoverQueue = result.queue;
                         }
+
+                        // --- تحديث واجهة المستخدم بناءً على النتائج ---
+                        
+                        // 1. إذا تم إضافة أي صنف للفاتورة مباشرة
+                        if (addedCount > 0) {
+                            saveDraft(); 
+                            renderTable(); 
+                        }
+
+                        // 2. إذا كانت هناك أصناف متبقية للطابور (سواء بسبب الوضع أو لعدم المطابقة)
+                        if (leftoverQueue.length > 0) {
+                            searchQueue = leftoverQueue;
+                            if (typeof updateQueueUI === 'function') updateQueueUI();
+                            
+                            // تنبيه الكاشير في حالة انقسام الطلبات (جزء في الفاتورة وجزء في الطابور)
+                            if (addedCount > 0) {
+                                SerajAlert(`تم إدراج ${addedCount} صنف مطابق للفاتورة مباشرة، وتم تحويل ${leftoverQueue.length} صنف غير مطابق للطابور للمراجعة.`);
+                            }
+                        } else {
+                            // كل الأصناف نزلت في الفاتورة مباشرة ولم يتبق شيء للطابور
+                            searchQueue = [];
+                            if (typeof updateQueueUI === 'function') updateQueueUI();
+                            document.getElementById('productSearch').value = '';
+                            document.getElementById('productResults').style.display = 'none';
+                        }
+
                     } else {
-                        SerajAlert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.");
+                        SerajAlert("لم يتم العثور على أي أصناف قابلة للقراءة في هذه الجملة.");
                     }
 
                     if (loading) {
