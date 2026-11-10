@@ -492,7 +492,7 @@ animation: pulse-alert 2s infinite;
     </div>
 
     <!-- 🔐 شاشة تسجيل الدخول المركزية -->
-    <div id="seraj-login-screen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-dark-1, #121212); z-index:999999; display:flex; justify-content:center; align-items:center; flex-direction:column; font-family: 'Tajawal', sans-serif;">
+    <div id="seraj-login-screen" style="position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-dark-1, #121212); z-index:999999; display:none; justify-content:center; align-items:center; flex-direction:column; font-family: 'Tajawal', sans-serif;">
         <div style="background:var(--card-bg, #1e1e1e); padding:40px; border-radius:15px; border:1px solid var(--neon-border, #00ff66); box-shadow:0 0 20px var(--neon-glow, rgba(0,255,102,0.2)); text-align:center; width:90%; max-width:400px;">
             <div style="font-size: 50px; margin-bottom: 10px;">🛡️</div>
             <h2 style="color:var(--text-main, #fff); margin-bottom:5px;">سراج كاشير</h2>
@@ -651,8 +651,9 @@ animation: pulse-alert 2s infinite;
 
         document.addEventListener("DOMContentLoaded", () => {
             let savedStoreId = localStorage.getItem('seraj_store_id');
+            
             if(savedStoreId) {
-                document.getElementById('seraj-login-screen').style.display = 'none';
+                // المستخدم مسجل بالفعل (الشاشة مخفية أصلاً)، نقوم فقط بفحص حالة الحساب سحابياً
                 setTimeout(() => {
                     if (window.dbCloud) {
                         window.dbCloud.ref('Admin_Users/' + savedStoreId + '/status').on('value', (snapshot) => {
@@ -665,7 +666,12 @@ animation: pulse-alert 2s infinite;
                         });
                     }
                 }, 1000); 
+            } else {
+                // المستخدم غير مسجل دخول، نظهر له شاشة الدخول
+                let loginScreen = document.getElementById('seraj-login-screen');
+                if(loginScreen) loginScreen.style.display = 'flex';
             }
+
             if (!localStorage.getItem('seraj_store_name')) {
                 let menuBtn = document.getElementById('main-menu-btn');
                 if (menuBtn) menuBtn.classList.add('needs-setup');
