@@ -1330,7 +1330,7 @@ function confirmInvoicePayment(e) {
 
         let pAmount = Math.max(0, parseFloat(document.getElementById('payModalAmountInput').value) || 0);
         let customNotes = document.getElementById('payModalNotesInput').value.trim();
-        let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `سداد فاتورة مشتريات رقم ${String(inv.id || '').slice(-6)}`;
+        let notes = customNotes ? `${customNotes} (فاتورة ${String(inv.id).replace(/_.*$/, '')})` : `سداد فاتورة مشتريات رقم ${String(inv.id).slice(-6)}`;
         let date = document.getElementById('payModalDateInput').value;
         let treasuryKey = document.getElementById('payModalTreasurySelect').value;
 
@@ -1341,8 +1341,11 @@ function confirmInvoicePayment(e) {
         const s = suppliersDB.find(x => String(x.id) === String(currentActiveSupplierId));
         if(!s) return;
 
-        let txId = window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId('SUP_REC') : 'SUP_REC_' + Date.now();
+        // توليد رقم السند الموحد بالبادئة لمنع تهنيج المركز
+        let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
+        let txId = devPrefix + '-' + (window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now().toString().slice(-6));
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
+        
         let allocArray = [{ invoiceId: inv.id, amount: pAmount }];
 
         if(!s.transactions) s.transactions = [];
@@ -1360,33 +1363,32 @@ function confirmInvoicePayment(e) {
                     id: txId,
                     type: 'purchase_payment',
                     vault: treasuryKey,
+                    amount: pAmount,           // إجباري للمركز
                     amountAdd: 0,
-                    amountDeduct: pAmount,
-                    notes: `سند تسديد رقم ${String(txId).slice(-6)} للمورد: ${s.name} (${notes})`,
+                    amountDeduct: pAmount,     // إجباري للمركز
+                    notes: `سند تسديد رقم ${String(txId)} للمورد: ${s.name} (${notes})`,
                     date: date,
                     supplierId: s.id,
                     supplier: s.name,
-                    allocatedInvoices: allocArray, // تمرير التخصيص للمحرك المركزي
+                    allocatedInvoices: allocArray,
                     _device: dName
                 });
             }
-
-            // 🛑 تم حذف كود التدخل اليدوي في الفواتير نهائياً 🛑
-
             if (typeof saveActionToQueueSafely === 'function') {
                 saveActionToQueueSafely({ type: 'add_supplier_voucher', docId: String(s.id), voucher: newVoucher, timestamp: Date.now() });
             }
         }
 
+        if(typeof closeModals === 'function') closeModals(); // إغلاق فوري لمنع التهنيج
+
         let lastScroll = window.scrollY;
         setTimeout(() => {
-            if(typeof closeModals === 'function') closeModals();
-            recalculateSupplierBalances();
+            recalculateSupplierBalances(); // المركز يتكفل بخصم الفواتير
             suppliersDB = DB.getSuppliers() || [];
             openSupplierAccount(s.id);
             window.scrollTo(0, lastScroll);
-            typeof SerajAlert === 'function' ? SerajAlert(`تم السداد بنجاح! \n رقم السند: ${String(txId).slice(-6)}`, "success") : alert("تم السداد بنجاح!");
-        }, 300);
+            typeof SerajAlert === 'function' ? SerajAlert(`تم السداد بنجاح! \n رقم السند: ${txId}`, "success") : alert("تم السداد بنجاح!");
+        }, 100);
     }
 }
 
@@ -1501,17 +1503,16 @@ async function deleteVoucherFromInline(e) {
     let s = suppliersDB.find(x => String(x.id) === String(currentActiveSupplierId));
     if(!s) return;
 
-    let isConfirmed = typeof SerajConfirm === 'function' ? await SerajConfirm(`هل أنت متأكد من حذف السند رقم ${String(v.id).slice(-6)} بقيمة ${v.amount}؟`) : confirm(`حذف السند؟`);
+    let isConfirmed = typeof SerajConfirm === 'function' ? await SerajConfirm(`هل أنت متأكد من حذف السند رقم ${String(v.id)} بقيمة ${v.amount}؟`) : confirm(`حذف السند؟`);
     if(!isConfirmed) return;
 
-    // 1. حذف من مصفوفة المورد وحفظ المورد
+    // 1. حذف من مصفوفة المورد وحفظ المورد فقط
     s.transactions = s.transactions.filter(x => String(x.id) !== String(v.id));
+    
     if(typeof DB !== 'undefined') {
         DB.saveSuppliers(suppliersDB);
 
-        // 🛑 تم حذف بلوك التوزيع المعكوس (رد المبالغ للفواتير يدوياً) 🛑
-
-        // 2. الحذف المركزي من الخزينة
+        // 2. الحذف المركزي من الخزينة والسحابة
         if(typeof DB.deleteItem === 'function') {
             await DB.deleteItem('treasury_moves', v.id, 'hard');
         }
@@ -1523,12 +1524,12 @@ async function deleteVoucherFromInline(e) {
 
     let lastScroll = window.scrollY;
     setTimeout(() => {
-        recalculateSupplierBalances(); // db_2.js سيعيد حساب الفواتير بعد اختفاء السند
+        recalculateSupplierBalances(); // المركز سيعيد حسبة الفواتير من الصفر بدون السند المحذوف
         suppliersDB = DB.getSuppliers() || [];
         openSupplierAccount(s.id);
         window.scrollTo(0, lastScroll);
         typeof SerajAlert === 'function' ? SerajAlert("تم حذف السند وإرجاع القيود بنجاح!", "success") : alert("تم الحذف بنجاح!");
-    }, 300);
+    }, 100);
 }
 
 async function saveEditedVoucher(e) {
@@ -1549,34 +1550,35 @@ async function saveEditedVoucher(e) {
     let tIndex = s.transactions.findIndex(x => String(x.id) === String(v.id));
     let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
     
+    if(typeof closeModals === 'function') closeModals(); // إغلاق فوري
+
     if(typeof DB !== 'undefined') {
-        // 🛑 تم حذف بلوك التوزيع المعكوس وتعديل الفواتير يدوياً 🛑
-        
-        // تعديل تخصيص السند إذا تغير نوعه من دفع إلى استلام
+        // حماية مصفوفة التخصيص إذا تحول السند من دفع إلى استلام
         if(newType !== 'payment') {
             v.allocatedInvoices = [];
         } else if (v.allocatedInvoices && v.allocatedInvoices.length > 0) {
-            v.allocatedInvoices[0].amount = newAmount; // تحديث المبلغ المخصص ليتطابق مع المبلغ الجديد
+            v.allocatedInvoices[0].amount = newAmount; // مجرد تحديث قيمة التخصيص للسند
         }
 
         if(tIndex !== -1) {
             s.transactions[tIndex] = { id: v.id, type: newType, amount: newAmount, notes: newNotes, treasury: newTreasury, date: newDate, allocatedInvoices: v.allocatedInvoices, _device: v._device, _lastModifiedBy: dName };
         }
         
-        DB.saveSuppliers(suppliersDB);
+        DB.saveSuppliers(suppliersDB); // الحفظ أولاً
 
-        // تحديث الخزينة مركزياً
         if(typeof DB.deleteItem === 'function') {
             await DB.deleteItem('treasury_moves', v.id, 'hard');
         }
+        
         if(typeof DB.recordTreasuryTransaction === 'function') {
             DB.recordTreasuryTransaction({
                 id: v.id,
                 type: newType === 'receipt' ? 'supplier_receipt' : 'supplier_payment',
                 vault: newTreasury,
+                amount: newAmount, // إجباري
                 amountAdd: newType === 'receipt' ? newAmount : 0,
                 amountDeduct: newType === 'payment' ? newAmount : 0,
-                notes: `سند ${newType === 'receipt' ? 'إضافة مديونية' : 'تسديد'} رقم ${String(v.id).slice(-6)}: ${s.name} - ${newNotes}`,
+                notes: `سند ${newType === 'receipt' ? 'إضافة مديونية' : 'تسديد'} رقم ${String(v.id)}: ${s.name} - ${newNotes}`,
                 date: newDate,
                 supplierId: s.id,
                 supplier: s.name,
@@ -1592,13 +1594,12 @@ async function saveEditedVoucher(e) {
 
     let lastScroll = window.scrollY;
     setTimeout(() => {
-        closeModals();
-        recalculateSupplierBalances(); // db_2.js سيتولى إعادة ربط الأرصدة بالفواتير
+        recalculateSupplierBalances(); // المركز يعيد هندسة حساب الفواتير
         suppliersDB = DB.getSuppliers() || [];
         openSupplierAccount(s.id);
         window.scrollTo(0, lastScroll);
         typeof SerajAlert === 'function' ? SerajAlert("تم تعديل السند بنجاح!", "success") : alert("تم التعديل!");
-    }, 300);
+    }, 100);
 }
 
 function openAddTransactionModalDirect(e) {
@@ -1645,12 +1646,14 @@ function saveTransaction(e) {
         if(amount <= 0) return typeof SerajAlert === 'function' ? SerajAlert("أدخل مبلغ صحيح!", "error") : alert("مبلغ غير صحيح!");
         if(!s.transactions) s.transactions = [];
 
-        let txId = window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId('SUP_REC') : 'SUP_REC_' + Date.now();
+        // توليد رقم السند الموحد
+        let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
+        let txId = devPrefix + '-' + (window.Utils && window.Utils.generateUniqueId ? window.Utils.generateUniqueId() : Date.now().toString().slice(-6));
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
         let newVoucher = { 
             id: txId, type: txType, amount: amount, notes: notes, treasury: treasuryKey, date: date, 
-            allocatedInvoices: [], // تخصيص فارغ للأقدم فالأقدم
+            allocatedInvoices: [], // مصفوفة فارغة لتفعيل الأقدم فالأقدم
             _device: dName, _lastModifiedBy: dName 
         };
         s.transactions.push(newVoucher);
@@ -1663,13 +1666,14 @@ function saveTransaction(e) {
                     id: txId,
                     type: txType === 'receipt' ? 'supplier_receipt' : 'supplier_payment',
                     vault: treasuryKey,
+                    amount: amount, // إجباري للمركز
                     amountAdd: txType === 'receipt' ? amount : 0,
                     amountDeduct: txType === 'payment' ? amount : 0,
-                    notes: `سند ${txType === 'receipt' ? 'إضافة مديونية' : 'تسديد'} رقم ${String(txId).slice(-6)}: ${s.name} - ${notes}`,
+                    notes: `سند ${txType === 'receipt' ? 'إضافة مديونية' : 'تسديد'} رقم ${String(txId)}: ${s.name} - ${notes}`,
                     date: date,
                     supplierId: s.id,
                     supplier: s.name,
-                    allocatedInvoices: [], // تمرير للمحرك المركزي
+                    allocatedInvoices: [],
                     _device: dName
                 });
             }
@@ -1679,15 +1683,16 @@ function saveTransaction(e) {
             }
         }
 
+        if(typeof closeModals === 'function') closeModals();
+
         let lastScroll = window.scrollY;
         setTimeout(() => {
-            recalculateSupplierBalances();
+            recalculateSupplierBalances(); // المركز يوزع الدفعة تلقائياً
             suppliersDB = DB.getSuppliers() || [];
-            if(typeof closeModals === 'function') closeModals();
             openSupplierAccount(s.id);
             window.scrollTo(0, lastScroll);
-            typeof SerajAlert === 'function' ? SerajAlert(`تم الحفظ وتحديث الخزينة! \n رقم السند: ${String(txId).slice(-6)}`, "success") : alert("تم الحفظ!");
-        }, 300);
+            typeof SerajAlert === 'function' ? SerajAlert(`تم الحفظ وتحديث الخزينة! \n رقم السند: ${txId}`, "success") : alert("تم الحفظ!");
+        }, 100);
     }
 }
 
