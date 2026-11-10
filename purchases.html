@@ -104,9 +104,10 @@
     <div class="seraj-modal-overlay modal-overlay" id="aiModalOverlay" onclick="closeAiModal()">
         <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
             <div class="compact-header">
-                <h3>استماع المشتريات الذكي</h3>
+                <h3>استماع المساعد الذكي</h3>
                 <span class="stock-badge">أوفلاين ⚡</span>
             </div>
+            
             <div class="seraj-form-row compact-row">
                 <textarea id="aiInputText" placeholder="مثال: هاتلي 3 لمبة 9 وات و 2 شريط لحام..." rows="4"></textarea>
             </div>
@@ -116,12 +117,27 @@
                     🎤 اضغط هنا للبدء
                 </button>
             </div>
+
+            <!-- ⚡ التعديل الجديد: مفتاح اختيار طريقة الإدراج ⚡ -->
+            <div class="seraj-form-row compact-row" style="margin: 10px 0; background: rgba(19, 17, 44, 0.6); padding: 12px; border-radius: 8px; border: 1px solid var(--neon-border, #a855f7);">
+                <label style="display: block; text-align: center; margin-bottom: 10px; color: var(--neon-border, #a855f7); font-weight: bold; font-size: 14px;">طريقة الإدراج بعد الاستماع:</label>
+                <div style="display: flex; justify-content: space-around; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: white;">
+                        <input type="radio" name="voiceInsertMode" value="queue" checked style="width: 18px; height: 18px; accent-color: var(--neon-border, #a855f7);">
+                        <span style="font-weight: bold;">📝 إضافة للطابور</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: white;">
+                        <input type="radio" name="voiceInsertMode" value="direct" style="width: 18px; height: 18px; accent-color: #00ff66;">
+                        <span style="font-weight: bold;">⚡ مباشر للفاتورة</span>
+                    </label>
+                </div>
+            </div>
             
-            <div id="aiLoadingIndicator" class="queue-text" hidden>جاري دمج الأصناف للطابور... ⏳</div>
+            <div id="aiLoadingIndicator" class="queue-text" hidden>جاري معالجة الأصناف... ⏳</div>
             
             <div class="compact-btns">
                 <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeAiModal()">إلغاء</button>
-                <button type="button" id="sendAiBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => processLocalAI()); } else { processLocalAI(); }">إدراج في الطابور 🚀</button>
+                <button type="button" id="sendAiBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => processLocalAI()); } else { processLocalAI(); }">تنفيذ 🚀</button>
             </div>
         </div>
     </div>
@@ -1516,10 +1532,74 @@ function closeAllMenus(e) {
                         throw new Error("المحرك الصوتي غير متصل بشكل سليم بالصفحة.");
                     }
                     
-                    let result = engine.analyzeFullText(rawText, safeProducts, 'purchases');
+                    // تحديد البروفايل تلقائياً بناءً على الصفحة
+                    let isPurchasePage = window.location.pathname.includes('purchase');
+                    let activeProfile = isPurchasePage ? 'purchases' : 'sales';
+                    
+                    let result = engine.analyzeFullText(rawText, safeProducts, activeProfile);
 
                     if (result && Array.isArray(result.queue) && result.queue.length > 0) {
-                        searchQueue = result.queue;
+                        
+                        // ⚡ قراءة المفتاح لمعرفة الوضع المختار ⚡
+                        let insertMode = document.querySelector('input[name="voiceInsertMode"]:checked').value;
+
+                        if (insertMode === 'direct') {
+                            // 🚀 الوضع الصاروخي: إدراج مباشر للفاتورة محملة بالأسعار 🚀
+                            let addedCount = 0;
+                            
+                            result.queue.forEach(item => {
+                                // البحث عن الصنف في المخزن لجلبه بكامل بياناته وأسعاره
+                                let p = safeProducts.find(x => String(x.name).trim() === String(item.name).trim() || String(x.cleanDisplay) === String(item.name).trim());
+                                
+                                if (p) {
+                                    let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
+                                    
+                                    // تحديد السعر الهدف (سعر الشراء للمشتريات، وسعر البيع للمبيعات)
+                                    let targetPrice = isPurchasePage ? (parseFloat(p.purchasePrice) || 0) : (parseFloat(p.price) || 0);
+
+                                    if (existsIndex > -1) {
+                                        invoice[existsIndex].qty += item.qty;
+                                        invoice[existsIndex].total = targetPrice * invoice[existsIndex].qty;
+                                    } else {
+                                        let newItem = { 
+                                            ...p, 
+                                            qty: item.qty, 
+                                            total: targetPrice * item.qty, 
+                                            hasImage: p.hasImage 
+                                        };
+                                        // ضبط السعر حسب نوع الصفحة
+                                        if (isPurchasePage) {
+                                            newItem.purchasePrice = targetPrice;
+                                            newItem.sellPrice = parseFloat(p.price) || 0;
+                                        } else {
+                                            newItem.price = targetPrice;
+                                            newItem.purchasePrice = parseFloat(p.purchasePrice) || 0;
+                                        }
+                                        invoice.unshift(newItem);
+                                    }
+                                    addedCount++;
+                                } else {
+                                    // يتجاهل الصنف إذا لم يكن مطابقاً للمخزن (كمثال لو قال كلام عشوائي)
+                                    console.log("تم تجاهل الصنف لعدم وجود مطابقة تامة:", item.name);
+                                }
+                            });
+
+                            if (addedCount > 0) {
+                                saveDraft(); 
+                                renderTable(); // رسم الفاتورة فوراً
+                                document.getElementById('productSearch').value = '';
+                                document.getElementById('productResults').style.display = 'none';
+                            } else {
+                                SerajAlert("عفواً، لم يتم العثور على أي صنف مطابق تماماً في المخزن للإدراج المباشر.");
+                            }
+
+                        } else {
+                            // 📝 وضع الطابور العادي (القديم) 📝
+                            searchQueue = result.queue;
+                            if (typeof updateQueueUI === 'function') {
+                                updateQueueUI();
+                            }
+                        }
                     } else {
                         SerajAlert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.");
                     }
@@ -1531,16 +1611,13 @@ function closeAllMenus(e) {
                     if (sendBtn) sendBtn.disabled = false;
                     closeAiModal();
 
-                    if (typeof updateQueueUI === 'function') {
-                        updateQueueUI();
-                    }
                 } catch (error) {
                     if (loading) {
                         loading.hidden = true;
                         loading.style.display = 'none';
                     }
                     if (sendBtn) sendBtn.disabled = false;
-                    console.error("Purchases Voice Error:", error);
+                    console.error("Voice Error:", error);
                     SerajAlert("حدث خطأ أثناء معالجة البيانات: " + error.message, "error");
                 }
             }, 100);
