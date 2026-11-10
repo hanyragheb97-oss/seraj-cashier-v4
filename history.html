@@ -19,16 +19,16 @@
         <div class="history-container">
             <div class="filter-section">
                 <div class="filter-header-row">
-                    <div id="customFilterWrapper">
-                        <div class="filter-select-top" id="customFilterBtn" onclick="toggleCustomFilterMenu(event)">
-                            <span id="customFilterLabel">فواتير البيع</span>
-                            <span>▼</span>
+                    <div id="customFilterWrapper" style="flex: 1; margin-left: 15px;">
+                        <div class="filter-select-top" id="customFilterBtn" onclick="toggleCustomFilterMenu(event)" style="width: 100%; display: flex; justify-content: center; align-items: center; position: relative;">
+                            <span id="customFilterLabel" style="flex: 1; text-align: center; font-size: 16px; font-weight: bold;">فواتير البيع</span>
+                            <span style="position: absolute; left: 15px;">▼</span>
                         </div>
-                        <div class="dropdown-list" id="customFilterDropdown">
-                            <div class="list-search-item" onclick="applyCustomFilter('sales', 'فواتير البيع')">فواتير البيع</div>
-                            <div class="list-search-item val-red" onclick="applyCustomFilter('delayed', 'فواتير آجلة (غير مسددة)')">فواتير آجلة (غير مسددة)</div>
-                            <div class="list-search-item" onclick="applyCustomFilter('return', 'فواتير مرتجع')">فواتير مرتجع</div>
-                            <div class="list-search-item" onclick="applyCustomFilter('quotation', 'عروض أسعار')">عروض أسعار</div>
+                        <div class="dropdown-list" id="customFilterDropdown" style="width: 100%; text-align: center;">
+                            <div class="list-search-item" style="justify-content: center;" onclick="applyCustomFilter('sales', 'فواتير البيع')">فواتير البيع</div>
+                            <div class="list-search-item val-red" style="justify-content: center;" onclick="applyCustomFilter('delayed', 'فواتير آجلة (غير مسددة)')">فواتير آجلة (غير مسددة)</div>
+                            <div class="list-search-item" style="justify-content: center;" onclick="applyCustomFilter('return', 'فواتير مرتجع')">فواتير مرتجع</div>
+                            <div class="list-search-item" style="justify-content: center;" onclick="applyCustomFilter('quotation', 'عروض أسعار')">عروض أسعار</div>
                         </div>
                     </div>
                     <input type="hidden" id="invoiceTypeFilter" value="sales">
@@ -132,7 +132,7 @@
 
         <div class="bottom-capsules">
             <div class="capsule" onclick="toggleDurationMenu(event)">
-                📅 <span id="currentDurationLabelOutside">اليوم</span>
+                📅 <span id="currentDurationLabelOutside">أحدث 50 فاتورة</span>
                                 <div class="dropdown-menu" id="durationDropdownOutside">
                     <div class="dropdown-menu-item" onclick="filterByDate('أحدث 50 فاتورة')">أحدث 50 فاتورة</div>
                     <div class="dropdown-menu-item" onclick="filterByDate('اليوم')">اليوم</div>
@@ -436,7 +436,7 @@
         }
     }
 
-    let dateFilterRange = { type: 'all' }; 
+    let dateFilterRange = { type: 'latest50' }; 
     
         function filterByDate(rangeLabel) {
         if (window.event && (window.event.type === 'click' || window.event.type === 'touchstart')) {
