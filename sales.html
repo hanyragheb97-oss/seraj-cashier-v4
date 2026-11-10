@@ -41,7 +41,7 @@
         </button>
         
 <!-- منطقة التمرير لنتائج البحث السريعة -->
-<div id="productResults" class="dropdown-list clusterize-scroll" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 999999; max-height: 400px; overflow-y: auto; background: var(--card-bg, #1a1a1a); border: 2px solid var(--neon-border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.9);" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
+<div id="productResults" class="dropdown-list" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></div>
     <!-- منطقة المحتوى -->
     <div id="contentArea" class="clusterize-content"></div>
 </div>
@@ -374,9 +374,9 @@ const smartSearch = (typeof window.debounce === 'function')
         searchTimer = setTimeout(() => { searchProducts(); }, 200);
     };
 
-    let clusterizeInstance = null; // محرك القائمة الصاروخية
 
-function searchProducts() {
+
+    function searchProducts() {
     loadDB();
     const rawQuery = document.getElementById('productSearch').value.trim();
     const resultsDiv = document.getElementById('productResults'); 
@@ -414,59 +414,69 @@ function searchProducts() {
 
     filtered.sort((a, b) => b.score - a.score);
 
-    if (filtered.length > 0) {
-        // 1. إظهار المربع أولاً قبل تشغيل المكتبة
-        resultsDiv.style.display = 'block';
+    // 🚀 السر هنا: هناخد أفضل 50 نتيجة فقط، ده بيخلي المتصفح ميهنجش والبحث يبقى طلقة!
+    let topResults = filtered.slice(0, 50);
+
+    if (topResults.length > 0) {
+        resultsDiv.innerHTML = ''; 
         
-        // 2. إجبار المتصفح على رسم المربع فوراً حتى لا تحسبه المكتبة كخط صغير
-        resultsDiv.offsetHeight; 
+        // استخدام DocumentFragment بيرسم الداتا كلها في جزء من الثانية دفعة واحدة
+        let fragment = document.createDocumentFragment();
 
-        let rowsHTML = [];
-
-        filtered.forEach(item => {
+        topResults.forEach(item => {
             let p = item.product;
             let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
             let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
 
-            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
+            const div = document.createElement('div');
+            div.className = 'dropdown-item';
+            
+            // إضافة مساحة للصورة لضمان عدم اهتزاز السطر
+            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : `<div style="width: 35px; height: 35px; flex-shrink: 0;"></div>`;
 
-            // وضعنا الكليك هنا مباشرة: onmousedown="selectClusterizeProduct(event, '${p.id}')"
-            let row = `
-                <div class="dropdown-item clusterize-row" onmousedown="selectClusterizeProduct(event, '${p.id}')" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); min-height: 60px;">
-                    <div style="flex: 2; display: flex; align-items: center; gap: 10px; text-align: right; word-break: break-word; line-height: 1.4;">
-                        ${imgHtml}
-                        <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
-                    </div>
-                    <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
-                        ${parseFloat(dispPrice || 0).toFixed(2)}
-                    </div>
-                    <div style="flex: 1; text-align: left; white-space: nowrap;">
-                        <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
-                    </div>
+            div.innerHTML = `
+                <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
+                    ${imgHtml}
+                    <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
+                </div>
+                <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
+                    ${parseFloat(dispPrice || 0).toFixed(2)}
+                </div>
+                <div style="flex: 1; text-align: left; white-space: nowrap;">
+                    <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
                 </div>
             `;
-            rowsHTML.push(row);
-        });
 
-        // 3. تأخير 50 ملي ثانية لضمان أن المربع ظهر بالكامل وطوله سليم 100%
-        setTimeout(() => {
-            if (!clusterizeInstance) {
-                clusterizeInstance = new Clusterize({
-                    rows: rowsHTML,
-                    scrollId: 'productResults',
-                    contentId: 'contentArea',
-                    callbacks: {
-                        clusterChanged: function() { loadVisibleSearchImages(); }
+            let isHandled = false;
+            const selectItem = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isHandled) return;
+                isHandled = true;
+                addProduct(p, currentQueueQty);
+                currentQueueQty = 1;
+                processNextInQueue();
+                resultsDiv.style.display = 'none'; // إخفاء القائمة تلقائياً بعد الاختيار
+            };
+
+            div.onmousedown = selectItem;
+
+            fragment.appendChild(div);
+
+            // الطريقة الصحيحة لجلب الصور المتوافقة مع ملف db.js
+            if (p.hasImage && window.ImagesDB) {
+                window.ImagesDB.getImage(p.id).then(imgData => {
+                    if(imgData) {
+                        let imgEl = div.querySelector(`#search_img_${p.id}`);
+                        if(imgEl) imgEl.src = imgData;
                     }
                 });
-            } else {
-                clusterizeInstance.update(rowsHTML);
             }
-            
-            loadVisibleSearchImages();
-            resultsDiv.scrollTop = 0;
-        }, 50);
-        
+        });
+
+        resultsDiv.appendChild(fragment);
+        resultsDiv.style.display = 'block';
+        setTimeout(() => { resultsDiv.scrollTop = 0; }, 10);
     } else {
         resultsDiv.style.display = 'none';
     }
