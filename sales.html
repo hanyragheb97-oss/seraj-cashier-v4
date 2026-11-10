@@ -26,7 +26,7 @@
 <!-- 2. حاوية المبيعات ومربع البحث مباشرة أسفل الهيدر -->
 <div class="sales-container">
     <div class="search-container">
-        <input type="text" id="productSearch" class="search-input" placeholder="ابحث بالاسم أو الباركود..." oninput="smartSearch()" onclick="event.stopPropagation()">
+        <button type="button" id="confirmSaveBtn" class="btn-save-ai">✔ حفظ</button>
         
         <button type="button" id="aiAssistantBtn" class="mic-btn-search" onclick="event.stopPropagation(); openAiModal()" title="إضافة سريعة بالصوت">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -353,58 +353,47 @@ function normalizeText(text) {
     return txt;
 }
 
-let searchTimer;
-const smartSearch = (typeof window.debounce === 'function')
-    ? window.debounce(function() { searchProducts(); }, 200)
-    : function() {
-        clearTimeout(searchTimer);
-        searchTimer = setTimeout(() => { searchProducts(); }, 200);
-    };
-
-function searchProducts() {
-    loadDB();
-    const rawQuery = document.getElementById('productSearch').value.trim();
-    if (!rawQuery) {
-        document.getElementById('productResults').style.display = 'none';
-        return;
+// ربط الفرملة الذكية بمربع البحث وحماية زر الحفظ
+window.addEventListener('DOMContentLoaded', () => {
+    const searchInput = document.getElementById('productSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', window.debounce(function(e) {
+            searchProducts(e.target.value);
+        }, 200));
     }
 
-    const cleanQuery = normalizeText(rawQuery);
-    const searchWords = cleanQuery.split(' ').filter(word => word.length > 0);
+    const saveBtn = document.getElementById('confirmSaveBtn');
+    if (saveBtn) {
+        saveBtn.onclick = function(e) {
+            if (window.Utils && window.Utils.preventDoubleClick) {
+                window.Utils.preventDoubleClick(e, confirmSave);
+            } else {
+                confirmSave();
+            }
+        };
+    }
+});
 
+    function searchProducts(query) {
+    loadDB();
+    const rawQuery = query !== undefined ? query : document.getElementById('productSearch').value.trim();
     const resultsDiv = document.getElementById('productResults');
+    
     resultsDiv.innerHTML = '';
     resultsDiv.scrollTop = 0;
 
-    let filtered = productsDB.map(p => {
-        let pNameNorm = normalizeText(p.name);
-        let pBarcode = String(p.barcode || '');
-        let score = 0;
+    if (!rawQuery) {
+        resultsDiv.style.display = 'none';
+        return;
+    }
 
-        if (pBarcode.includes(rawQuery)) score += 100;
+    // الاعتماد على المحرك الصاروخي وتحديد 30 نتيجة كحد أقصى لتخفيف DOM
+    let filtered = window.fastSearch(productsDB, rawQuery, ['name', 'barcode', 'category'], 30);
 
-        let matchedWordsCount = 0;
-        searchWords.forEach(searchWord => {
-            if (pNameNorm.includes(searchWord)) {
-                score += 10;
-                matchedWordsCount++;
-                if (pNameNorm.startsWith(searchWord)) score += 5;
-            }
-        });
-
-        if (matchedWordsCount === searchWords.length && searchWords.length > 1) {
-            score += 50;
-        }
-
-        return { product: p, score: score, matchedWords: matchedWordsCount };
-    }).filter(item => item.score > 0 && !item.product.isDeleted && !item.product.isArchived);
-
-    filtered.sort((a, b) => b.score - a.score);
-
-    if (filtered.length > 0) {
+    if (filtered && filtered.length > 0) {
         resultsDiv.style.display = 'block';
-        filtered.forEach(item => {
-            let p = item.product;
+        
+        filtered.forEach(p => {
             let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
             let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
 
@@ -413,7 +402,6 @@ function searchProducts() {
 
             let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
 
-            // 🌟 تنسيق 3 أعمدة مرنة: اسم (يمين) - سعر (منتصف) - رصيد (يسار)
             div.innerHTML = `
                 <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
                     ${imgHtml}
@@ -440,12 +428,10 @@ function searchProducts() {
 
             div.onmousedown = selectItem;
             div.onclick = selectItem;
-
             resultsDiv.appendChild(div);
 
             if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
         });
-        setTimeout(function() { resultsDiv.scrollTop = 0; }, 10);
     } else {
         resultsDiv.style.display = 'none';
     }
@@ -890,17 +876,18 @@ function confirmSave() {
     let custInputEl = document.getElementById('customerSearchInput');
     let custName = custInputEl ? custInputEl.value.trim() : "";
     let vaultKey = document.getElementById('modalVaultSelect')?.value || 'main';
-    
+
+    // ضبط التاريخ المحلي
     let nowDate = new Date();
     let localTodayStr = nowDate.getFullYear() + '-' + String(nowDate.getMonth() + 1).padStart(2, '0') + '-' + String(nowDate.getDate()).padStart(2, '0');
     let invDate = document.getElementById('modalDate')?.value || localTodayStr;
     let notes = (document.getElementById('modalNotes')?.value || "").trim();
-    
+
     let actualPaid = inputPaid;
     if (custName === "" && inputPaid > finalReq) {
         actualPaid = finalReq;
     }
-    
+
     let remaining = parseFloat((finalReq - actualPaid).toFixed(2));
     if (remaining > 0 && custName === "" && currentInvoiceType !== 'quotation') {
         return SerajAlert("تنبيه: الفاتورة آجل! يجب إدخال اسم العميل.", "error");
@@ -908,10 +895,13 @@ function confirmSave() {
 
     _isConfirmingSave = true;
 
+    // 1. إخفاء الشاشة وتفريغ الفاتورة فوراً لراحة العين والتسريع
+    closeModals();
     let itemsSnapshot = invoice.map(item => ({
         ...item,
         total: parseFloat(((parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0)).toFixed(2))
     }));
+    
     let invoiceTypeSnapshot = currentInvoiceType;
     let customerIdSnapshot = selectedCustomerId;
     let newInvoiceId = typeof getNextInvoiceNumber === 'function' ? getNextInvoiceNumber(invoicesDB) : window.Utils.generateInvoiceId();
@@ -931,7 +921,6 @@ function confirmSave() {
         paid: actualPaid,
         initialPaid: actualPaid,
         vault: vaultKey,
-        treasury: vaultKey,
         notes: notes,
         items: itemsSnapshot,
         prevBalance: 0,
@@ -948,24 +937,20 @@ function confirmSave() {
     if (custInputEl) custInputEl.value = "";
     invoice = [];
     renderTable();
-    closeModals();
 
     let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
     let printModalEl = document.getElementById('postSavePrintModal');
-    if (printSetting === 'ask' && printModalEl) {
-        history.pushState({ modalOpen: true }, '');
-        printModalEl.style.display = 'flex';
-    }
 
+    // 2. معالجة الحفظ الثقيل في الخلفية بعد 50 ملي ثانية (لكي لا تُهنج الشاشة)
     setTimeout(() => {
         try {
             loadDB();
             let prevBal = 0, currBal = 0;
 
-            // 1. مطابقة وحفظ العميل عبر window.Utils.normalizeName دون لمس c.transactions
+            // حفظ بيانات العميل
             if (custName !== "" && invoiceTypeSnapshot !== 'quotation') {
-                let c = customerIdSnapshot 
-                    ? customersDB.find(x => x && String(x.id) === String(customerIdSnapshot)) 
+                let c = customerIdSnapshot
+                    ? customersDB.find(x => x && String(x.id) === String(customerIdSnapshot))
                     : null;
 
                 if (!c) {
@@ -1006,10 +991,10 @@ function confirmSave() {
                 if (typeof DB !== 'undefined') DB.saveCustomers(customersDB);
             }
 
-            // 2. خصم أو رد المخزن بنظام (FIFO) والدفعة السالبة وختم الوقت
+            // خصم المخزن
             if (invoiceTypeSnapshot !== 'quotation') {
                 let isReturn = (invoiceTypeSnapshot === 'return');
-                
+
                 itemsSnapshot.forEach(item => {
                     let p = productsDB.find(x => x && String(x.id) === String(item.id));
                     if (p) {
@@ -1088,11 +1073,14 @@ function confirmSave() {
                 if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
             }
 
-            // 3. الحفظ المركزي للفاتورة فقط (ملف db.js سيتولى تسجيل حركة الخزينة تلقائياً)
+            // الحفظ المركزي للفاتورة فقط
             invoicesDB.push(lastSavedInvoice);
             if (typeof DB !== 'undefined') DB.saveSalesInvoices(invoicesDB);
 
-            if (printSetting === 'print') {
+            // الطباعة
+            if (printSetting === 'ask' && printModalEl) {
+                printModalEl.style.display = 'flex';
+            } else if (printSetting === 'print') {
                 if (typeof PrintManager !== 'undefined') {
                     PrintManager.printThermalReceipt(lastSavedInvoice);
                 } else if (typeof printLastInvoice === 'function') {
@@ -1104,7 +1092,7 @@ function confirmSave() {
         } finally {
             _isConfirmingSave = false;
         }
-    }, 15);
+    }, 50);
 }
 
 function toggleCustomSelect(e, dropdownId) {
