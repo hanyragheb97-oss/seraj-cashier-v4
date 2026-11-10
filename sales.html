@@ -34,9 +34,9 @@
             </svg>
         </button>
         
-        <div id="productResults" class="dropdown-list clusterize-scroll" style="display: none; max-height: 400px; overflow-y: auto;" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
-    <div id="contentArea" class="clusterize-content"></div>
-</div>
+        <div id="productResults" class="dropdown-list clusterize-scroll" style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 999999; max-height: 400px; overflow-y: auto; background: var(--card-bg, #1a1a1a); border: 2px solid var(--neon-border); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.9);" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
+            <div id="contentArea" class="clusterize-content"></div>
+        </div>
     </div>
     
     <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
@@ -368,7 +368,7 @@ const smartSearch = (typeof window.debounce === 'function')
 function searchProducts() {
     loadDB();
     const rawQuery = document.getElementById('productSearch').value.trim();
-    const resultsDiv = document.getElementById('productResults'); // يمثل الآن الـ scrollArea
+    const resultsDiv = document.getElementById('productResults'); 
 
     if (!rawQuery) {
         resultsDiv.style.display = 'none';
@@ -404,6 +404,7 @@ function searchProducts() {
     filtered.sort((a, b) => b.score - a.score);
 
     if (filtered.length > 0) {
+        // إظهار المربع أولاً
         resultsDiv.style.display = 'block';
         let rowsHTML = [];
 
@@ -414,10 +415,10 @@ function searchProducts() {
 
             let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
 
-            // تم إضافة data-id للسطر حتى نتعرف على الصنف عند الضغط عليه
+            // تم إضافة تصميم ثابت للسطر ليظهر بشكل سليم
             let row = `
-                <div class="dropdown-item" data-id="${p.id}" style="cursor: pointer;">
-                    <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
+                <div class="dropdown-item clusterize-row" data-id="${p.id}" style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid rgba(255,255,255,0.05); min-height: 60px;">
+                    <div style="flex: 2; display: flex; align-items: center; gap: 10px; text-align: right; word-break: break-word; line-height: 1.4;">
                         ${imgHtml}
                         <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
                     </div>
@@ -432,29 +433,43 @@ function searchProducts() {
             rowsHTML.push(row);
         });
 
-        if (!clusterizeInstance) {
-            clusterizeInstance = new Clusterize({
-                rows: rowsHTML,
-                scrollId: 'productResults',
-                contentId: 'contentArea',
-                callbacks: {
-                    // تحميل الصور للأصناف التي تظهر على الشاشة فقط أثناء التمرير
-                    clusterChanged: function() {
-                        loadVisibleSearchImages();
+        // تأخير بسيط 10 ملي ثانية للسماح للمتصفح برسم المربع حتى لا تحسبه المكتبة كخط صغير
+        setTimeout(() => {
+            if (!clusterizeInstance) {
+                clusterizeInstance = new Clusterize({
+                    rows: rowsHTML,
+                    scrollId: 'productResults',
+                    contentId: 'contentArea',
+                    callbacks: {
+                        clusterChanged: function() { loadVisibleSearchImages(); }
                     }
-                }
-            });
-        } else {
-            clusterizeInstance.update(rowsHTML);
-        }
-
-        // استدعاء جلب صور المجموعة الأولى فوراً
-        setTimeout(() => { loadVisibleSearchImages(); }, 50);
+                });
+            } else {
+                clusterizeInstance.update(rowsHTML);
+            }
+            
+            // جلب الصور للمجموعة المعروضة فقط
+            setTimeout(() => { loadVisibleSearchImages(); }, 50);
+            resultsDiv.scrollTop = 0;
+        }, 10);
         
-        resultsDiv.scrollTop = 0;
     } else {
         resultsDiv.style.display = 'none';
     }
+}
+
+// دالة جلب الصور المتوافقة
+function loadVisibleSearchImages() {
+    if (!window.ImagesDB) return;
+    let images = document.querySelectorAll('#contentArea img[id^="search_img_"]');
+    images.forEach(img => {
+        if (!img.getAttribute('src')) {
+            let pId = img.id.replace('search_img_', '');
+            window.ImagesDB.getImage(pId).then(imgData => {
+                if(imgData) img.src = imgData;
+            });
+        }
+    });
 }
 
 // دالة مساعدة لجلب وعرض الصور (متوافقة مع db.js)
