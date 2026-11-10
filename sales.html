@@ -4,20 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>فاتورة بيع - سراج كاشير</title>
-
 <link rel="stylesheet" href="style.css">
-<!-- أضف هذا السطر لربط ستايل المكتبة الصاروخية -->
-<link rel="stylesheet" href="clusterize.css">
 <link rel="manifest" href="manifest.json">
-
 <!-- لون شريط الموبايل العلوي والسفلي (كحلي غامق) -->
 <meta name="theme-color" content="#0b0d1e">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-
-
 </head>
 
 <body onclick="hideFabMenu(); closeAllMenus(event);">
@@ -40,11 +34,7 @@
             </svg>
         </button>
         
-<!-- منطقة التمرير لنتائج البحث السريعة -->
-<div id="productResults" class="dropdown-list" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></div>
-    <!-- منطقة المحتوى -->
-    <div id="contentArea" class="clusterize-content"></div>
-</div>
+        <div id="productResults" class="dropdown-list" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></div>
     </div>
     
     <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
@@ -269,9 +259,6 @@
 <div id="stockWarningToast" class="toast-warning" style="display: none; position: fixed !important; top: 20px !important; left: 50% !important; transform: translateX(-50%) !important; background: #dc2626 !important; color: #ffffff !important; padding: 12px 24px !important; border-radius: 12px !important; font-size: 16px !important; font-weight: bold !important; text-align: center !important; width: 90% !important; max-width: 420px !important; z-index: 999999 !important; box-shadow: 0 4px 25px rgba(220, 38, 38, 0.7) !important; border: 2px solid #ef4444 !important; border-right: 6px solid #7f1d1d !important; pointer-events: none !important;"></div>
 <div id="printReceiptArea" style="display: none;"></div>
 
-<!-- سطر المكتبة الصاروخية الجديد -->
-<script src="clusterize.min.js"></script>
-
 <script src="db.js"></script>
 
 <script>
@@ -374,20 +361,20 @@ const smartSearch = (typeof window.debounce === 'function')
         searchTimer = setTimeout(() => { searchProducts(); }, 200);
     };
 
-
-
-    function searchProducts() {
+function searchProducts() {
     loadDB();
     const rawQuery = document.getElementById('productSearch').value.trim();
-    const resultsDiv = document.getElementById('productResults'); 
-
     if (!rawQuery) {
-        resultsDiv.style.display = 'none';
+        document.getElementById('productResults').style.display = 'none';
         return;
     }
 
     const cleanQuery = normalizeText(rawQuery);
     const searchWords = cleanQuery.split(' ').filter(word => word.length > 0);
+
+    const resultsDiv = document.getElementById('productResults');
+    resultsDiv.innerHTML = '';
+    resultsDiv.scrollTop = 0;
 
     let filtered = productsDB.map(p => {
         let pNameNorm = normalizeText(p.name);
@@ -410,30 +397,23 @@ const smartSearch = (typeof window.debounce === 'function')
         }
 
         return { product: p, score: score, matchedWords: matchedWordsCount };
-    }).filter(item => item.score > 0 && !item.product.isDeleted);
+    }).filter(item => item.score > 0 && !item.product.isDeleted && !item.product.isArchived);
 
     filtered.sort((a, b) => b.score - a.score);
 
-    // 🚀 السر هنا: هناخد أفضل 50 نتيجة فقط، ده بيخلي المتصفح ميهنجش والبحث يبقى طلقة!
-    let topResults = filtered.slice(0, 50);
-
-    if (topResults.length > 0) {
-        resultsDiv.innerHTML = ''; 
-        
-        // استخدام DocumentFragment بيرسم الداتا كلها في جزء من الثانية دفعة واحدة
-        let fragment = document.createDocumentFragment();
-
-        topResults.forEach(item => {
+    if (filtered.length > 0) {
+        resultsDiv.style.display = 'block';
+        filtered.forEach(item => {
             let p = item.product;
             let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
             let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
 
             const div = document.createElement('div');
             div.className = 'dropdown-item';
-            
-            // إضافة مساحة للصورة لضمان عدم اهتزاز السطر
-            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : `<div style="width: 35px; height: 35px; flex-shrink: 0;"></div>`;
 
+            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
+
+            // 🌟 تنسيق 3 أعمدة مرنة: اسم (يمين) - سعر (منتصف) - رصيد (يسار)
             div.innerHTML = `
                 <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
                     ${imgHtml}
@@ -456,112 +436,20 @@ const smartSearch = (typeof window.debounce === 'function')
                 addProduct(p, currentQueueQty);
                 currentQueueQty = 1;
                 processNextInQueue();
-                resultsDiv.style.display = 'none'; // إخفاء القائمة تلقائياً بعد الاختيار
             };
 
             div.onmousedown = selectItem;
+            div.onclick = selectItem;
 
-            fragment.appendChild(div);
+            resultsDiv.appendChild(div);
 
-            // الطريقة الصحيحة لجلب الصور المتوافقة مع ملف db.js
-            if (p.hasImage && window.ImagesDB) {
-                window.ImagesDB.getImage(p.id).then(imgData => {
-                    if(imgData) {
-                        let imgEl = div.querySelector(`#search_img_${p.id}`);
-                        if(imgEl) imgEl.src = imgData;
-                    }
-                });
-            }
+            if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
         });
-
-        resultsDiv.appendChild(fragment);
-        resultsDiv.style.display = 'block';
-        setTimeout(() => { resultsDiv.scrollTop = 0; }, 10);
+        setTimeout(function() { resultsDiv.scrollTop = 0; }, 10);
     } else {
         resultsDiv.style.display = 'none';
     }
 }
-
-// دالة اختيار الصنف وإضافته للفاتورة (بديلة للطريقة المعقدة السابقة)
-function selectClusterizeProduct(e, productId) {
-    e.preventDefault();
-    e.stopPropagation();
-    loadDB();
-    let p = productsDB.find(x => String(x.id) === String(productId));
-    if (p) {
-        addProduct(p, currentQueueQty);
-        currentQueueQty = 1;
-        processNextInQueue();
-    }
-}
-
-// دالة جلب الصور المتوافقة
-function loadVisibleSearchImages() {
-    if (!window.ImagesDB) return;
-    let images = document.querySelectorAll('#contentArea img[id^="search_img_"]');
-    images.forEach(img => {
-        if (!img.getAttribute('src')) {
-            let pId = img.id.replace('search_img_', '');
-            window.ImagesDB.getImage(pId).then(imgData => {
-                if(imgData) img.src = imgData;
-            });
-        }
-    });
-}
-
-// دالة جلب الصور المتوافقة
-function loadVisibleSearchImages() {
-    if (!window.ImagesDB) return;
-    let images = document.querySelectorAll('#contentArea img[id^="search_img_"]');
-    images.forEach(img => {
-        if (!img.getAttribute('src')) {
-            let pId = img.id.replace('search_img_', '');
-            window.ImagesDB.getImage(pId).then(imgData => {
-                if(imgData) img.src = imgData;
-            });
-        }
-    });
-}
-
-// دالة مساعدة لجلب وعرض الصور (متوافقة مع db.js)
-function loadVisibleSearchImages() {
-    if (!window.ImagesDB) return;
-    let images = document.querySelectorAll('#contentArea img[id^="search_img_"]');
-    images.forEach(img => {
-        if (!img.getAttribute('src')) {
-            let pId = img.id.replace('search_img_', '');
-            window.ImagesDB.getImage(pId).then(imgData => {
-                if(imgData) img.src = imgData;
-            });
-        }
-    });
-}
-
-
-// التقاط الضغط على أي صنف داخل قائمة البحث السريعة وإضافته للفاتورة
-document.addEventListener('DOMContentLoaded', () => {
-    let contentArea = document.getElementById('contentArea');
-    if(contentArea) {
-        contentArea.addEventListener('mousedown', function(e) {
-            let itemDiv = e.target.closest('.dropdown-item');
-            if (!itemDiv) return;
-            
-            let productId = itemDiv.getAttribute('data-id');
-            if (productId) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                loadDB();
-                let p = productsDB.find(x => String(x.id) === productId);
-                if (p) {
-                    addProduct(p, currentQueueQty);
-                    currentQueueQty = 1;
-                    processNextInQueue();
-                }
-            }
-        });
-    }
-});
 
 function updateQueueUI() {
     const qContainer = document.getElementById('queueContainer');
