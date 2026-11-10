@@ -4687,29 +4687,35 @@ analyzeFullText: function(rawText, customInventoryDB, profileOverride) {
             }
         });
 
-        if (bestCand && bestScore >= (cfg.searchThreshold || 50)) {
-            let pObj = bestCand.itemObj || {};
-            let sellP = parseFloat(pObj.sellPrice ?? pObj.price ?? 0) || 0;
-            let buyP = parseFloat(pObj.purchasePrice ?? pObj.buyPrice ?? pObj.costPrice ?? pObj.cost ?? 0) || 0;
-            if (Array.isArray(pObj.lots) && pObj.lots.length > 0) {
-                let lastLot = pObj.lots[pObj.lots.length - 1];
-                if (!sellP) sellP = parseFloat(lastLot.sellPrice ?? lastLot.price ?? 0) || 0;
-                if (!buyP) buyP = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0) || 0;
-            }
-            extractedQueue.push({
-                id: bestCand.id,
-                product: pObj,
-                qty: qty,
-                displayQty: activeProfile === 'inventory' ? "" : qty,
-                name: bestCand.cleanDisplay,
-                cleanName: bestCand.cleanDisplay,
-                price: activeProfile === 'purchases' ? (buyP || sellP) : (sellP || buyP),
-                sellPrice: sellP,
-                purchasePrice: buyP,
-                score: bestScore
-            });
-        }
-    });
+// --- التعديل الجديد: نعتمد الكلام المنطوق دائماً ولا نلغيه أبداً، ولا نؤلف باقي الاسم ---
+let isMatch = bestCand && bestScore >= (cfg.searchThreshold || 50);
+let pObj = isMatch ? (bestCand.itemObj || {}) : null;
+let sellP = 0, buyP = 0;
+
+if (pObj) {
+    sellP = parseFloat(pObj.sellPrice ?? pObj.price ?? 0) || 0;
+    buyP = parseFloat(pObj.purchasePrice ?? pObj.buyPrice ?? pObj.costPrice ?? pObj.cost ?? 0) || 0;
+    if (Array.isArray(pObj.lots) && pObj.lots.length > 0) {
+        let lastLot = pObj.lots[pObj.lots.length - 1];
+        if (!sellP) sellP = parseFloat(lastLot.sellPrice ?? lastLot.price ?? 0) || 0;
+        if (!buyP) buyP = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0) || 0;
+    }
+}
+
+extractedQueue.push({
+    id: isMatch ? bestCand.id : null,
+    product: pObj,
+    qty: qty,
+    displayQty: activeProfile === 'inventory' ? "" : qty,
+    // هنا السر: نرجع الكلام اللي الزبون قاله بالظبط في خانة البحث (بدون تأليف)
+    name: spokenName, 
+    cleanName: isMatch ? bestCand.cleanDisplay : spokenName,
+    price: activeProfile === 'purchases' ? (buyP || sellP) : (sellP || buyP),
+    sellPrice: sellP,
+    purchasePrice: buyP,
+    score: isMatch ? bestScore : 0
+});
+});
 
     if (cfg.mergeDuplicates !== false && activeProfile !== 'inventory') {
         let mergedMap = new Map();
