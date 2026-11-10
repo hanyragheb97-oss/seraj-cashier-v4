@@ -34,7 +34,9 @@
             </svg>
         </button>
         
-        <div id="productResults" class="dropdown-list" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()"></div>
+        <div id="productResults" class="dropdown-list clusterize-scroll" style="display: none; max-height: 400px; overflow-y: auto;" onclick="event.stopPropagation()" onmousedown="event.stopPropagation()">
+    <div id="contentArea" class="clusterize-content"></div>
+</div>
     </div>
     
     <div id="queueContainer" class="queue-container" onclick="event.stopPropagation()">
@@ -374,68 +376,138 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-    function searchProducts(query) {
+let clusterizeInstance = null; // محرك القائمة الصاروخية
+
+function searchProducts() {
     loadDB();
-    const rawQuery = query !== undefined ? query : document.getElementById('productSearch').value.trim();
-    const resultsDiv = document.getElementById('productResults');
-    
-    resultsDiv.innerHTML = '';
-    resultsDiv.scrollTop = 0;
+    const rawQuery = document.getElementById('productSearch').value.trim();
+    const resultsDiv = document.getElementById('productResults'); // يمثل الآن الـ scrollArea
 
     if (!rawQuery) {
         resultsDiv.style.display = 'none';
         return;
     }
 
-    // الاعتماد على المحرك الصاروخي وتحديد 30 نتيجة كحد أقصى لتخفيف DOM
-    let filtered = window.fastSearch(productsDB, rawQuery, ['name', 'barcode', 'category'], 30);
+    const cleanQuery = normalizeText(rawQuery);
+    const searchWords = cleanQuery.split(' ').filter(word => word.length > 0);
 
-    if (filtered && filtered.length > 0) {
+    let filtered = productsDB.map(p => {
+        let pNameNorm = normalizeText(p.name);
+        let pBarcode = String(p.barcode || '');
+        let score = 0;
+
+        if (pBarcode.includes(rawQuery)) score += 100;
+
+        let matchedWordsCount = 0;
+        searchWords.forEach(searchWord => {
+            if (pNameNorm.includes(searchWord)) {
+                score += 10;
+                matchedWordsCount++;
+                if (pNameNorm.startsWith(searchWord)) score += 5;
+            }
+        });
+
+        if (matchedWordsCount === searchWords.length && searchWords.length > 1) {
+            score += 50;
+        }
+
+        return { product: p, score: score, matchedWords: matchedWordsCount };
+    }).filter(item => item.score > 0 && !item.product.isDeleted);
+
+    filtered.sort((a, b) => b.score - a.score);
+
+    if (filtered.length > 0) {
         resultsDiv.style.display = 'block';
-        
-        filtered.forEach(p => {
+        let rowsHTML = [];
+
+        filtered.forEach(item => {
+            let p = item.product;
             let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
             let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
 
-            const div = document.createElement('div');
-            div.className = 'dropdown-item';
-
             let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
 
-            div.innerHTML = `
-                <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
-                    ${imgHtml}
-                    <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
-                </div>
-                <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
-                    ${parseFloat(dispPrice || 0).toFixed(2)}
-                </div>
-                <div style="flex: 1; text-align: left; white-space: nowrap;">
-                    <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
+            // تم إضافة data-id للسطر حتى نتعرف على الصنف عند الضغط عليه
+            let row = `
+                <div class="dropdown-item" data-id="${p.id}" style="cursor: pointer;">
+                    <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
+                        ${imgHtml}
+                        <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
+                    </div>
+                    <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
+                        ${parseFloat(dispPrice || 0).toFixed(2)}
+                    </div>
+                    <div style="flex: 1; text-align: left; white-space: nowrap;">
+                        <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
+                    </div>
                 </div>
             `;
-
-            let isHandled = false;
-            const selectItem = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (isHandled) return;
-                isHandled = true;
-                addProduct(p, currentQueueQty);
-                currentQueueQty = 1;
-                processNextInQueue();
-            };
-
-            div.onmousedown = selectItem;
-            div.onclick = selectItem;
-            resultsDiv.appendChild(div);
-
-            if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
+            rowsHTML.push(row);
         });
+
+        if (!clusterizeInstance) {
+            clusterizeInstance = new Clusterize({
+                rows: rowsHTML,
+                scrollId: 'productResults',
+                contentId: 'contentArea',
+                callbacks: {
+                    // تحميل الصور للأصناف التي تظهر على الشاشة فقط أثناء التمرير
+                    clusterChanged: function() {
+                        loadVisibleSearchImages();
+                    }
+                }
+            });
+        } else {
+            clusterizeInstance.update(rowsHTML);
+        }
+
+        // استدعاء جلب صور المجموعة الأولى فوراً
+        setTimeout(() => { loadVisibleSearchImages(); }, 50);
+        
+        resultsDiv.scrollTop = 0;
     } else {
         resultsDiv.style.display = 'none';
     }
 }
+
+// دالة مساعدة لجلب وعرض الصور (متوافقة مع db.js)
+function loadVisibleSearchImages() {
+    if (!window.ImagesDB) return;
+    let images = document.querySelectorAll('#contentArea img[id^="search_img_"]');
+    images.forEach(img => {
+        if (!img.getAttribute('src')) {
+            let pId = img.id.replace('search_img_', '');
+            window.ImagesDB.getImage(pId).then(imgData => {
+                if(imgData) img.src = imgData;
+            });
+        }
+    });
+}
+
+// التقاط الضغط على أي صنف داخل قائمة البحث السريعة وإضافته للفاتورة
+document.addEventListener('DOMContentLoaded', () => {
+    let contentArea = document.getElementById('contentArea');
+    if(contentArea) {
+        contentArea.addEventListener('mousedown', function(e) {
+            let itemDiv = e.target.closest('.dropdown-item');
+            if (!itemDiv) return;
+            
+            let productId = itemDiv.getAttribute('data-id');
+            if (productId) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                loadDB();
+                let p = productsDB.find(x => String(x.id) === productId);
+                if (p) {
+                    addProduct(p, currentQueueQty);
+                    currentQueueQty = 1;
+                    processNextInQueue();
+                }
+            }
+        });
+    }
+});
 
 function updateQueueUI() {
     const qContainer = document.getElementById('queueContainer');

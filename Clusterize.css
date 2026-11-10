@@ -1,0 +1,4 @@
+/* Clusterize.js - v0.18.1 - 2018-01-02
+* http://NeXTs.github.com/Clusterize.js/
+* Copyright (c) 2015 Denis Lukov; Licensed GPLv3 */
+.clusterize-scroll{max-height:200px;overflow:auto}.clusterize-extra-row{margin-top:0!important;margin-bottom:0!important}.clusterize-extra-row.clusterize-keep-parity{display:none}.clusterize-content{outline:0;counter-reset:clusterize-counter}.clusterize-no-data td{text-align:center}
