@@ -4473,272 +4473,78 @@ _syncVoiceConfigToCloud: function() {
 });
 
 const SmartVoice = {
-_shadowCache: null,
-_shadowCacheCount: 0,
+    _shadowCache: null,
+    _shadowCacheCount: 0,
 
-_invalidateShadowCache: function() {
-    this._shadowCache = null;
-    this._shadowCacheCount = 0;
-},
+    _invalidateShadowCache: function() {
+        this._shadowCache = null;
+        this._shadowCacheCount = 0;
+    },
 
-wordNumbers: {
-    "واحد": 1, "واحده": 1, "اتنين": 2, "اثنين": 2, "تنين": 2, "جوز": 2, "حتتين": 2, "قطعتين": 2, "حبتين": 2,
-    "تلاته": 3, "ثلاثه": 3, "تلات": 3, "ثلاث": 3,
-    "اربعه": 4, "اربعة": 4, "اربع": 4,
-    "خمسه": 5, "خمسة": 5, "خمس": 5,
-    "سته": 6, "ستة": 6, "ست": 6,
-    "سبعه": 7, "سبعة": 7, "سبع": 7,
-    "تمانيه": 8, "ثمانيه": 8, "تمان": 8,
-    "تسعه": 9, "تسعة": 9, "تسع": 9,
-    "عشره": 10, "عشرة": 10, "عشر": 10,
-    "حداشر": 11, "احداشر": 11, "اتناشر": 12, "اثناشر": 12, "دسته": 12, "دستة": 12,
-    "تلتاشر": 13, "اربعتاشر": 14, "خمستاشر": 15, "ستاشر": 16, "سبعتاشر": 17, "تمنتاشر": 18, "تسعتاشر": 19,
-    "عشرين": 20, "تلاتين": 30, "ثلاثين": 30, "اربعين": 40, "خمسين": 50, "ستين": 60, "سبعين": 70, "تمانين": 80, "تسعين": 90,
-    "ميه": 100, "مائه": 100, "مائة": 100, "متين": 200, "تلتوميه": 300, "ربعميه": 400, "خمسميه": 500, "نص": 0.5, "نصف": 0.5, "ربع": 0.25
-},
+    // دالة التقشير أصبحت وهمية (ترجع الكلام كما هو لحماية أي صفحة تستدعيها)
+    peeler: function(text) {
+        return text ? String(text).trim() : "";
+    },
 
-pluralMap: {
-    "لمبات": "لمبه", "مفاتيح": "مفتاح", "فيش": "فيشه", "علب": "علبه", "بواطات": "بواط",
-    "كشافات": "كشاف", "بريزات": "بريزه", "دوايات": "دوايه", "وصلات": "وصله", "شواحن": "شاحن", "مراوح": "مروحه"
-},
+    // تحضير المخزن أصبح وهمياً لأننا لن نبحث فيه ولن نقارن الكلمات
+    prepareInventoryShadow: function(inventoryDB) {
+        return [];
+    },
 
-peeler: function(text, applyDict = true) {
-    if (!text) return "";
-    let t = window.cleanExcelText(text).toLowerCase();
-    t = t.replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
-    t = t.replace(/(\d+(?:\.\d+)?)\s*w\b/gi, '$1 وات')
-         .replace(/(\d+(?:\.\d+)?)\s*a\b/gi, '$1 امبير')
-         .replace(/(\d+(?:\.\d+)?)\s*v\b/gi, '$1 فولت')
-         .replace(/(\d+)\s*[\*×x]\s*(\d+)/gi, '$1×$2');
-    t = t.replace(/(\d+(?:\.\d+)?)([^\d\s\.×\+\/])/g, '$1 $2')
-         .replace(/([^\d\s\.×\+\/])(\d+(?:\.\d+)?)/g, '$1 $2');
+    // المايسترو الجديد (الكوبري): يأخذ الكلام كوبي بيست بدون أي اجتهاد أو تأليف
+    analyzeFullText: function(rawText, customInventoryDB, profileOverride) {
+        let activeProfile = profileOverride || (window.DB && typeof window.DB.getActiveVoiceProfile === 'function' ? window.DB.getActiveVoiceProfile() : 'sales');
+        if (!rawText || !String(rawText).trim()) return { queue: [], logsHTML: "", activeProfile: activeProfile };
 
-    if (applyDict && window.DB && typeof window.DB.getVoiceDictionary === 'function') {
-        let dict = window.DB.getVoiceDictionary();
-        for (let key in dict) {
-            let escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            t = t.replace(new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'gi'), `$1${dict[key]}`);
-        }
-    }
+        // 1. تجهيز الفواصل: استبدال "زائد" والواو المستقلة بعلامة +
+        // نستخدم \s+و\s+ لكي نفصل بالواو المستقلة فقط دون قص حرف الواو من بداية الكلمات
+        let working = String(rawText)
+            .replace(/(?:زائد|[\.،,؛\-!\?؟])/g, ' + ')
+            .replace(/\s+و\s+/g, ' + ');
 
-    t = t.replace(/[أإآءئؤ]/g, 'ا')
-         .replace(/ة/g, 'ه')
-         .replace(/ى/g, 'ي')
-         .replace(/[صث]/g, 'س')
-         .replace(/ط/g, 'ت')
-         .replace(/[ظذ]/g, 'ز')
-         .replace(/ق/g, 'ك')
-         .replace(/ض/g, 'د');
+        let chunks = working.split('+').map(c => c.trim()).filter(Boolean);
+        let extractedQueue = [];
 
-    t = t.split(/\s+/).map(w => (w.startsWith("ال") && w.length > 4) ? w.substring(2) : w).join(" ");
-    return t.replace(/\s+/g, ' ').trim();
-},
+        chunks.forEach(chunk => {
+            let words = chunk.split(/\s+/).filter(Boolean);
+            if (words.length === 0) return;
 
-fuzzyMatch: function(w1, w2) {
-    if (!w1 || !w2) return 0;
-    if (w1 === w2) return 100;
-    if (w1.includes(w2) || w2.includes(w1)) {
-        let ratio = Math.min(w1.length, w2.length) / Math.max(w1.length, w2.length);
-        if (ratio >= 0.65) return Math.round(ratio * 100);
-    }
-    let matches = 0;
-    let charArray = w2.split('');
-    for (let char of w1) {
-        let index = charArray.indexOf(char);
-        if (index !== -1) { matches++; charArray.splice(index, 1); }
-    }
-    return (matches / Math.max(w1.length, w2.length)) * 100;
-},
+            let qty = 1;
+            // نحول الأرقام الهندية لإنجليزية في "ذاكرة النظام فقط" لنعرف هل الكلمة الأولى رقم أم لا
+            let firstWordNormalized = words[0].replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
 
-prepareInventoryShadow: function(inventoryDB) {
-    if (!Array.isArray(inventoryDB)) inventoryDB = [];
-    if (this._shadowCache && this._shadowCacheCount === inventoryDB.length) {
-        return this._shadowCache;
-    }
-    this._shadowCache = inventoryDB.filter(Boolean).map(item => {
-        let rawName = item.name || String(item);
-        let cleanDisplay = window.cleanExcelText(rawName);
-        let peeled = this.peeler(cleanDisplay);
-        let words = peeled.split(" ").filter(Boolean);
-        return {
-            itemObj: item,
-            id: item.id,
-            original: rawName,
-            cleanDisplay: cleanDisplay,
-            peeled: peeled,
-            words: words,
-            numbers: words.filter(w => !isNaN(w)).map(Number),
-            textWords: words.filter(w => isNaN(w))
-        };
-    });
-    this._shadowCacheCount = inventoryDB.length;
-    return this._shadowCache;
-},
-
-analyzeFullText: function(rawText, customInventoryDB, profileOverride) {
-    if (!rawText || !String(rawText).trim()) return { queue: [], logsHTML: "", activeProfile: profileOverride || 'sales' };
-
-    let activeProfile = profileOverride || (window.DB ? window.DB.getActiveVoiceProfile() : 'sales');
-    let inventoryDB = Array.isArray(customInventoryDB) ? customInventoryDB : (window.DB ? window.DB.getProducts() : []);
-    let cfg = window.DB ? window.DB.getVoiceSettings(activeProfile) : DefaultVoiceConfig.settings;
-    let unitsList = (window.DB ? window.DB.getVoiceUnits() : DefaultVoiceConfig.units).map(u => this.peeler(u, false));
-    let shadowList = this.prepareInventoryShadow(inventoryDB);
-
-    let working = window.cleanExcelText(rawText)
-        .replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d))
-        .replace(/(\d+)\s+في\s+(\d+)/g, '$1×$2')
-        .replace(/(?:وعندك|وكمان|ومعاك|زائد|غيره|بعده|[\.،,؛\-!\?؟])/g, ' + ')
-        .replace(/\s+و(?=\d)/g, ' + ')
-        .replace(/\s+و\s+/g, ' + ')
-        .replace(/(^|\s)(?:اديني|هاتلي|عايز|محتاج|لو سمحت|هات|ضيف)(?=\s|$)/g, ' ');
-
-    let chunks = working.split('+').map(c => c.trim()).filter(Boolean);
-    let extractedQueue = [];
-
-    chunks.forEach(chunk => {
-        let words = this.peeler(chunk, true).split(/\s+/).filter(Boolean);
-        if (words.length === 0) return;
-
-        let dualQty = null;
-        for (let i = 0; i < words.length; i++) {
-            let w = words[i];
-            let noWaw = (w.startsWith("و") && w.length > 2) ? w.substring(1) : w;
-            if (this.wordNumbers[w] !== undefined) {
-                words[i] = String(this.wordNumbers[w]);
-            } else if (this.wordNumbers[noWaw] !== undefined) {
-                words[i] = String(this.wordNumbers[noWaw]);
-            } else if (this.pluralMap[w]) {
-                words[i] = this.pluralMap[w];
-            } else if (w.length > 4 && w.endsWith("ين") && !this.wordNumbers[w] && !this.wordNumbers[noWaw]) {
-                dualQty = 2;
-                words[i] = w.endsWith("تين") ? (w.slice(0, -3) + "ه") : w.slice(0, -2);
+            // إذا كانت الكلمة الأولى رقماً، نسحبها للكمية ونحذفها من اسم الصنف
+            if (!isNaN(firstWordNormalized)) {
+                qty = parseFloat(firstWordNormalized) || 1;
+                words.shift(); 
             }
-        }
-        if (words.length >= 2 && !isNaN(words[0]) && !isNaN(words[1])) {
-            let n1 = parseFloat(words[0]), n2 = parseFloat(words[1]);
-            if ((n1 < 10 && n2 >= 20 && n2 <= 90) || (n1 >= 100 && n2 < 100)) {
-                words[0] = String(n1 + n2);
-                words.splice(1, 1);
-            }
-        }
 
-        let qty = dualQty || 1;
-        let firstIsProtectedUnit = (words.length > 1 && !isNaN(words[0]) && unitsList.includes(words[1]));
+            // الصنف: باقي الكلام يتم تجميعه كما جاء تماماً (كوبي بيست)
+            let spokenName = words.join(" ");
+            if (!spokenName) return; 
 
-        if (cfg.ignoreQuantitiesMode || activeProfile === 'inventory') {
-            if (words.length > 1 && !isNaN(words[0]) && !firstIsProtectedUnit) words.shift();
-            qty = 1;
-        } else if (words.length > 1 && !isNaN(words[0]) && !firstIsProtectedUnit) {
-            qty = parseFloat(words[0]) || 1;
-            words.shift();
-        }
-
-        let spokenName = words.join(" ").trim();
-        if (!spokenName) return;
-
-        if (shadowList.length === 0) {
             extractedQueue.push({
-                id: null,
+                id: null, // لا يوجد ID لأننا لم نربطه بالمخزن
                 product: null,
                 qty: qty,
                 displayQty: activeProfile === 'inventory' ? "" : qty,
-                name: spokenName,
+                name: spokenName, // الصنف ينزل صورة طبق الأصل
                 cleanName: spokenName,
                 price: 0,
                 sellPrice: 0,
                 purchasePrice: 0,
-                score: 100
+                score: 100 // نعطيه 100% دائماً لكي تقبله الفاتورة فوراً
             });
-            return;
-        }
-
-        let spokenNums = words.filter(w => !isNaN(w)).map(Number);
-        let spokenText = words.filter(w => isNaN(w) && !unitsList.includes(w));
-
-        let bestCand = null;
-        let bestScore = 0;
-
-        shadowList.forEach(dbItem => {
-            if (dbItem.peeled === spokenName) {
-                bestScore = 100;
-                bestCand = dbItem;
-                return;
-            }
-            let wordScoreSum = 0;
-            spokenText.forEach(sw => {
-                let maxW = 0;
-                dbItem.textWords.forEach(dw => {
-                    let s = this.fuzzyMatch(sw, dw);
-                    if (s > maxW) maxW = s;
-                });
-                wordScoreSum += maxW;
-            });
-            let avgScore = spokenText.length > 0 ? (wordScoreSum / spokenText.length) : 0;
-            if (avgScore < 45) return;
-
-            let numBonus = 0;
-            if (spokenNums.length > 0) {
-                numBonus = spokenNums.every(n => dbItem.numbers.includes(n)) ? 20 : -10;
-            }
-            let total = Math.min(100, Math.max(0, Math.round(avgScore * 0.85 + numBonus)));
-            if (total > bestScore) {
-                bestScore = total;
-                bestCand = dbItem;
-            }
         });
 
-// --- التعديل الجديد: نعتمد الكلام المنطوق دائماً ولا نلغيه أبداً، ولا نؤلف باقي الاسم ---
-let isMatch = bestCand && bestScore >= (cfg.searchThreshold || 50);
-let pObj = isMatch ? (bestCand.itemObj || {}) : null;
-let sellP = 0, buyP = 0;
+        // إرجاع الطابور الجاهز للصفحة
+        return { queue: extractedQueue, logsHTML: "", activeProfile: activeProfile };
+    },
 
-if (pObj) {
-    sellP = parseFloat(pObj.sellPrice ?? pObj.price ?? 0) || 0;
-    buyP = parseFloat(pObj.purchasePrice ?? pObj.buyPrice ?? pObj.costPrice ?? pObj.cost ?? 0) || 0;
-    if (Array.isArray(pObj.lots) && pObj.lots.length > 0) {
-        let lastLot = pObj.lots[pObj.lots.length - 1];
-        if (!sellP) sellP = parseFloat(lastLot.sellPrice ?? lastLot.price ?? 0) || 0;
-        if (!buyP) buyP = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0) || 0;
+    parseCommand: function(rawChunk, inventoryDB, profileOverride) {
+        let res = this.analyzeFullText(rawChunk, inventoryDB, profileOverride);
+        return (res.queue && res.queue.length > 0) ? res.queue[0] : null;
     }
-}
-
-extractedQueue.push({
-    id: isMatch ? bestCand.id : null,
-    product: pObj,
-    qty: qty,
-    displayQty: activeProfile === 'inventory' ? "" : qty,
-    // هنا السر: نرجع الكلام اللي الزبون قاله بالظبط في خانة البحث (بدون تأليف)
-    name: spokenName, 
-    cleanName: isMatch ? bestCand.cleanDisplay : spokenName,
-    price: activeProfile === 'purchases' ? (buyP || sellP) : (sellP || buyP),
-    sellPrice: sellP,
-    purchasePrice: buyP,
-    score: isMatch ? bestScore : 0
-});
-});
-
-    if (cfg.mergeDuplicates !== false && activeProfile !== 'inventory') {
-        let mergedMap = new Map();
-        extractedQueue.forEach(item => {
-            let k = String(item.id || item.name);
-            if (mergedMap.has(k)) {
-                let ex = mergedMap.get(k);
-                ex.qty += item.qty;
-                ex.displayQty = ex.qty;
-            } else {
-                mergedMap.set(k, { ...item });
-            }
-        });
-        extractedQueue = Array.from(mergedMap.values());
-    }
-
-    return { queue: extractedQueue, logsHTML: "", activeProfile: activeProfile };
-},
-
-parseCommand: function(rawChunk, inventoryDB, profileOverride) {
-    let res = this.analyzeFullText(rawChunk, inventoryDB, profileOverride);
-    return (res.queue && res.queue.length > 0) ? res.queue[0] : null;
-}
 };
 
 window.SmartVoice = SmartVoice;
