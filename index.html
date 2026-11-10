@@ -26,9 +26,9 @@
 
 <!-- استدعاء ملفات السحابة (Firebase) -->
 
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" defer></script>
 
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" defer></script>
 
 
 <style>
@@ -331,10 +331,6 @@ animation: pulse-alert 2s infinite;
 </head> 
 <body>
 
-    <!-- 🌌 الشاشة الافتتاحية -->
-    <div id="splash-screen" style="position:fixed; top:0; left:0; width:100%; height:100%; background-color:#000; z-index:9999999; display:flex; justify-content:center; align-items:center; transition: opacity 0.5s ease;">
-        <img src="icon.png" alt="سراج كاشير" style="width:100%; height:100%; object-fit:cover;">
-    </div>
 
     <!-- ☰ زر القائمة الجانبية -->
     <button id="main-menu-btn" onclick="toggleSidebar()" class="menu-btn-themed">☰</button>
@@ -513,22 +509,7 @@ animation: pulse-alert 2s infinite;
     <script src="ai_brain.js?v=600"></script>
     
     <script>
-        window.addEventListener('load', () => {
-            let splash = document.getElementById('splash-screen');
-            if (!splash) return;
-            if (sessionStorage.getItem('splash_seen_already')) {
-                splash.style.display = 'none';
-            } else {
-                splash.style.display = 'flex';
-                setTimeout(() => {
-                    splash.style.opacity = '0';
-                    setTimeout(() => {
-                        splash.style.display = 'none';
-                        sessionStorage.setItem('splash_seen_already', 'true');
-                    }, 500);
-                }, 3000);
-            }
-        });
+
 
         function toggleSidebar() {
             let sidebar = document.getElementById('main-sidebar');
@@ -761,10 +742,7 @@ animation: pulse-alert 2s infinite;
         window.onload = () => {
             if(typeof DB !== 'undefined') DB.applySavedTheme();
         };
-    </script>
-<script src="ai_brain.js"></script>
 
-    
 </script>
 
 </body>
