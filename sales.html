@@ -211,37 +211,47 @@
     </div>
 </div>
 
-<!-- نافذة المايك المنبثقة (SmartVoice Lite) -->
-<div class="modal-overlay" id="aiModalOverlay" onclick="closeAiModal()">
-    <div class="compact-modal" onclick="event.stopPropagation()">
-        <div class="compact-header">
-            <h3>استماع البيع الذكي</h3>
-            <span class="stock-badge">أوفلاين ⚡</span>
-        </div>
-        
-        <div class="compact-row">
-            <label>الفلترة: <span id="quickSensitivityVal">60%</span></label>
-            <input type="range" id="quickSensitivitySlider" min="10" max="100" step="5" oninput="updateQuickSensitivity(this.value)" onchange="saveQuickSensitivity(this.value)">
-        </div>
+<!-- نافذة المايك المنبثقة -->
+    <div class="seraj-modal-overlay modal-overlay" id="aiModalOverlay" onclick="closeAiModal()">
+        <div class="seraj-modal compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header">
+                <h3>استماع المساعد الذكي</h3>
+                <span class="stock-badge">أوفلاين ⚡</span>
+            </div>
+            
+            <div class="seraj-form-row compact-row">
+                <textarea id="aiInputText" placeholder="مثال: هاتلي 3 لمبة 9 وات و 2 شريط لحام..." rows="4"></textarea>
+            </div>
+            
+            <div class="seraj-form-row compact-row">
+                <button type="button" onclick="startAiMic()" id="aiMicBtn" class="seraj-btn-save">
+                    🎤 اضغط هنا للبدء
+                </button>
+            </div>
 
-        <div class="compact-row">
-            <textarea id="aiInputText" placeholder="مثال: 3 لمبة 9 وات + 2 شريط لحام..."></textarea>
-        </div>
-        
-        <div class="compact-row">
-            <button type="button" onclick="startAiMic()" id="aiMicBtn" class="details-toggle-btn seraj-btn-secondary">
-                🎤 اضغط هنا للبدء
-            </button>
-        </div>
-        
-        <div id="aiLoadingIndicator" class="hidden-details">جاري معالجة الطلبات... ⏳</div>
-        
-        <div class="compact-btns">
-            <button type="button" class="btn-close-ai seraj-btn-secondary" onclick="closeAiModal()">إلغاء</button>
-            <button type="button" id="sendAiBtn" class="btn-save-ai" onclick="processLocalAI()">تنفيذ الطلبات 🚀</button>
+            <!-- ⚡ التعديل الجديد: مفتاح اختيار طريقة الإدراج ⚡ -->
+            <div class="seraj-form-row compact-row" style="margin: 10px 0; background: rgba(19, 17, 44, 0.6); padding: 12px; border-radius: 8px; border: 1px solid var(--neon-border, #a855f7);">
+                <label style="display: block; text-align: center; margin-bottom: 10px; color: var(--neon-border, #a855f7); font-weight: bold; font-size: 14px;">طريقة الإدراج بعد الاستماع:</label>
+                <div style="display: flex; justify-content: space-around; align-items: center;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: white;">
+                        <input type="radio" name="voiceInsertMode" value="queue" checked style="width: 18px; height: 18px; accent-color: var(--neon-border, #a855f7);">
+                        <span style="font-weight: bold;">📝 إضافة للطابور</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: white;">
+                        <input type="radio" name="voiceInsertMode" value="direct" style="width: 18px; height: 18px; accent-color: #00ff66;">
+                        <span style="font-weight: bold;">⚡ مباشر للفاتورة</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div id="aiLoadingIndicator" class="queue-text" hidden>جاري معالجة الأصناف... ⏳</div>
+            
+            <div class="compact-btns">
+                <button type="button" class="seraj-btn-cancel btn-close-ai" onclick="closeAiModal()">إلغاء</button>
+                <button type="button" id="sendAiBtn" class="seraj-btn-save btn-save-ai" onclick="if(window.Utils && window.Utils.preventDoubleClick) { window.Utils.preventDoubleClick(this, () => processLocalAI()); } else { processLocalAI(); }">تنفيذ 🚀</button>
+            </div>
         </div>
     </div>
-</div>
 
 <!-- نافذة قراءة الباركود -->
 <div class="modal-overlay" id="scannerModal">
@@ -1327,76 +1337,127 @@ function stopAiMicUI() {
 }
 
 function processLocalAI() {
-    if (isAiMicRecording && aiMicRecognition) {
-        try { aiMicRecognition.stop(); } catch (e) {}
-        stopAiMicUI();
-    }
+            let rawText = document.getElementById('aiInputText').value.trim();
+            if (!rawText) return SerajAlert("الرجاء التحدث أو كتابة الطلبات أولاً!");
 
-    let text = document.getElementById('aiInputText').value.trim();
-    if (!text) {
-        return (typeof SerajAlert === 'function')
-            ? SerajAlert("الرجاء التحدث أو كتابة الطلبات أولاً!")
-            : alert("الرجاء التحدث أو كتابة الطلبات أولاً!");
-    }
+            let loading = document.getElementById('aiLoadingIndicator');
+            let sendBtn = document.getElementById('sendAiBtn');
+            if (loading) {
+                loading.hidden = false;
+                loading.style.display = 'block';
+            }
+            if (sendBtn) sendBtn.disabled = true;
 
-    document.getElementById('aiLoadingIndicator').style.display = 'block';
-    document.getElementById('sendAiBtn').disabled = true;
-
-    setTimeout(() => {
-        try {
-            loadDB();
-            let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) 
-                ? productsDB 
-                : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts(true) : []);
-
-            let result = null;
-            if (window.SmartVoice && typeof window.SmartVoice.analyzeFullText === 'function') {
+            setTimeout(() => {
                 try {
-                    result = window.SmartVoice.analyzeFullText(text, safeProducts, 'sales');
-                } catch (e) {
-                    result = window.SmartVoice.analyzeFullText(text, safeProducts);
-                }
-            } else if (typeof SmartVoice !== 'undefined' && typeof SmartVoice.analyzeFullText === 'function') {
-                try {
-                    result = SmartVoice.analyzeFullText(text, safeProducts, 'sales');
-                } catch (e) {
-                    result = SmartVoice.analyzeFullText(text, safeProducts);
-                }
-            } else {
-                throw new Error("محرك المساعد الصوتي غير متصل.");
-            }
+                    let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) ? productsDB : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts(true) : []);
+                    let engine = window.SmartVoice || (typeof SmartVoice !== 'undefined' ? SmartVoice : null);
+                    
+                    if (!engine || typeof engine.analyzeFullText !== 'function') {
+                        throw new Error("المحرك الصوتي غير متصل بشكل سليم بالصفحة.");
+                    }
+                    
+                    // تحديد البروفايل تلقائياً بناءً على الصفحة
+                    let isPurchasePage = window.location.pathname.includes('purchase');
+                    let activeProfile = isPurchasePage ? 'purchases' : 'sales';
+                    
+                    let result = engine.analyzeFullText(rawText, safeProducts, activeProfile);
 
-            let queueArr = result ? (result.queue || result) : [];
-            if (Array.isArray(queueArr) && queueArr.length > 0) {
-                queueArr.forEach(item => {
-                    searchQueue.push({
-                        name: item.name,
-                        qty: item.qty || 1
-                    });
-                });
-            } else {
-                if (typeof SerajAlert === 'function') {
-                    SerajAlert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.", "error");
-                } else {
-                    alert("لم يتم العثور على أصناف مطابقة للمخزن في هذه الجملة.");
+                    if (result && Array.isArray(result.queue) && result.queue.length > 0) {
+                        
+                        // ⚡ قراءة المفتاح لمعرفة الوضع المختار ⚡
+                        let insertMode = document.querySelector('input[name="voiceInsertMode"]:checked').value;
+                        
+                        let addedCount = 0;
+                        let leftoverQueue = []; // مصفوفة لتخزين الأصناف التي ستذهب للطابور
+
+                        if (insertMode === 'direct') {
+                            // 🚀 الوضع المباشر الذكي (مطابق = فاتورة، غير مطابق = طابور) 🚀
+                            result.queue.forEach(item => {
+                                let p = safeProducts.find(x => String(x.name).trim() === String(item.name).trim() || String(x.cleanDisplay) === String(item.name).trim());
+                                
+                                if (p) {
+                                    // الصنف مطابق 100% -> ينزل في الفاتورة فوراً
+                                    let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
+                                    let targetPrice = isPurchasePage ? (parseFloat(p.purchasePrice) || 0) : (parseFloat(p.price) || 0);
+
+                                    if (existsIndex > -1) {
+                                        invoice[existsIndex].qty += item.qty;
+                                        invoice[existsIndex].total = targetPrice * invoice[existsIndex].qty;
+                                    } else {
+                                        let newItem = { 
+                                            ...p, 
+                                            qty: item.qty, 
+                                            total: targetPrice * item.qty, 
+                                            hasImage: p.hasImage 
+                                        };
+                                        if (isPurchasePage) {
+                                            newItem.purchasePrice = targetPrice;
+                                            newItem.sellPrice = parseFloat(p.price) || 0;
+                                        } else {
+                                            newItem.price = targetPrice;
+                                            newItem.purchasePrice = parseFloat(p.purchasePrice) || 0;
+                                        }
+                                        invoice.unshift(newItem);
+                                    }
+                                    addedCount++;
+                                } else {
+                                    // الصنف غير مطابق 100% -> تحويله للطابور للمراجعة اليدوية
+                                    leftoverQueue.push(item);
+                                }
+                            });
+                        } else {
+                            // 📝 وضع الطابور العادي -> كل الأصناف تذهب للطابور 📝
+                            leftoverQueue = result.queue;
+                        }
+
+                        // --- تحديث واجهة المستخدم بناءً على النتائج ---
+                        
+                        // 1. إذا تم إضافة أي صنف للفاتورة مباشرة
+                        if (addedCount > 0) {
+                            saveDraft(); 
+                            renderTable(); 
+                        }
+
+                        // 2. إذا كانت هناك أصناف متبقية للطابور (سواء بسبب الوضع أو لعدم المطابقة)
+                        if (leftoverQueue.length > 0) {
+                            searchQueue = leftoverQueue;
+                            if (typeof updateQueueUI === 'function') updateQueueUI();
+                            
+                            // تنبيه الكاشير في حالة انقسام الطلبات (جزء في الفاتورة وجزء في الطابور)
+                            if (addedCount > 0) {
+                                SerajAlert(`تم إدراج ${addedCount} صنف مطابق للفاتورة مباشرة، وتم تحويل ${leftoverQueue.length} صنف غير مطابق للطابور للمراجعة.`);
+                            }
+                        } else {
+                            // كل الأصناف نزلت في الفاتورة مباشرة ولم يتبق شيء للطابور
+                            searchQueue = [];
+                            if (typeof updateQueueUI === 'function') updateQueueUI();
+                            document.getElementById('productSearch').value = '';
+                            document.getElementById('productResults').style.display = 'none';
+                        }
+
+                    } else {
+                        SerajAlert("لم يتم العثور على أي أصناف قابلة للقراءة في هذه الجملة.");
+                    }
+
+                    if (loading) {
+                        loading.hidden = true;
+                        loading.style.display = 'none';
+                    }
+                    if (sendBtn) sendBtn.disabled = false;
+                    closeAiModal();
+
+                } catch (error) {
+                    if (loading) {
+                        loading.hidden = true;
+                        loading.style.display = 'none';
+                    }
+                    if (sendBtn) sendBtn.disabled = false;
+                    console.error("Voice Error:", error);
+                    SerajAlert("حدث خطأ أثناء معالجة البيانات: " + error.message, "error");
                 }
-            }
-
-            document.getElementById('aiLoadingIndicator').style.display = 'none';
-            document.getElementById('sendAiBtn').disabled = false;
-            closeAiModal();
-
-            if (typeof updateQueueUI === 'function') updateQueueUI();
-        } catch (error) {
-            document.getElementById('aiLoadingIndicator').style.display = 'none';
-            document.getElementById('sendAiBtn').disabled = false;
-            console.error("Voice Error:", error);
-            if (typeof SerajAlert === 'function') {
-                SerajAlert("تم معالجة الطلب محلياً بنجاح.", "success");
-            }
+            }, 100);
         }
-    }, 100);
-}
 
 // ================= الطباعة والباركود =================
 function printLastInvoice() {
