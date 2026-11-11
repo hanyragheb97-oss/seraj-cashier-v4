@@ -364,18 +364,18 @@ function normalizeText(text) {
 }
 
 let searchTimer;
-let renderLimit = 50; // السر كله هنا: تحميل 50 نتيجة كحد أقصى لتسريع الشاشة
+let renderLimit = 50; 
 
 function smartSearch() {
     clearTimeout(searchTimer);
-    // مؤقت 150 ملي ثانية زي المخزن بالظبط لمنع التهنيج
+    // رفعنا المؤقت لـ 200 ملي ثانية عشان يدي مساحة مريحة جداً لكيبورد الموبايل
     searchTimer = setTimeout(() => {
         renderLimit = 50; 
         const resultsDiv = document.getElementById('productResults');
-        if (resultsDiv) resultsDiv.scrollTop = 0; // تصفير السكرول لأعلى
+        if (resultsDiv) resultsDiv.scrollTop = 0; 
         
         searchProducts();
-    }, 150); 
+    }, 200); 
 }
 
 function searchProducts() {
@@ -392,7 +392,7 @@ function searchProducts() {
 
     const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
 
-    // 1. نفس خوارزمية الفلترة والتقييم بتاعت المخزن بالظبط
+    // 1. الفلترة السريعة
     let filtered = productsDB.map(p => {
         let pName = String(p.name || '').toLowerCase();
         let pCat = String(p.category || '').toLowerCase();
@@ -400,14 +400,13 @@ function searchProducts() {
         let fullString = pName + " " + pCat + " " + pBar;
 
         let score = 0;
-        if (pBar === rawQuery) score += 100; // أولوية قصوى للباركود
+        if (pBar === rawQuery) score += 100;
 
         searchWords.forEach(word => { 
             if (fullString.includes(word)) score += 1; 
         });
 
         if (score > 0) {
-            // بونص لو الكلمة في بداية الاسم
             if (pName.startsWith(rawQuery)) score += 5;
             else if (pName.startsWith(searchWords[0])) score += 2;
         }
@@ -427,7 +426,7 @@ function searchProducts() {
 
     resultsDiv.style.display = 'block';
     
-    // 2. تطبيق الحماية: رسم 50 نتيجة فقط باستخدام الذاكرة الوهمية (DocumentFragment)
+    // 2. الذاكرة المخفية (DocumentFragment) وقص النتائج لـ 50 كحد أقصى
     const visibleItems = filtered.slice(0, renderLimit); 
     const fragment = document.createDocumentFragment(); 
 
@@ -439,12 +438,9 @@ function searchProducts() {
         const div = document.createElement('div');
         div.className = 'dropdown-item';
 
-        // رجعنا استدعاء الصورة زي ما طلبت لأن تحديد العدد بـ 50 حل مشكلة التهنيج
-        let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
-
+        // 🛑 التعديل الأهم: إزالة استدعاء الصور من هنا لتخفيف الحمل تماماً على الموبايل 🛑
         div.innerHTML = `
             <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
-                ${imgHtml}
                 <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
             </div>
             <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
@@ -469,13 +465,11 @@ function searchProducts() {
         div.onmousedown = selectItem;
         div.onclick = selectItem;
         
+        // حقن العنصر في الذاكرة المخفية
         fragment.appendChild(div);
-
-        // استدعاء الصورة هنا أصبح آمناً جداً وخفيفاً لأننا نسأل عن 50 صورة بحد أقصى
-        if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
     });
 
-    // ضخ النتائج للشاشة دفعة واحدة
+    // 3. ضخ النتائج للشاشة دفعة واحدة
     resultsDiv.appendChild(fragment);
 }
 
