@@ -364,116 +364,104 @@ function normalizeText(text) {
 }
 
 let searchTimer;
-let renderLimit = 50; 
+const smartSearch = (typeof window.debounce === 'function')
+    ? window.debounce(function() { searchProducts(); }, 200)
+    : function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { searchProducts(); }, 200);
+    };
 
-function smartSearch() {
-    clearTimeout(searchTimer);
-    // رفعنا المؤقت لـ 200 ملي ثانية عشان يدي مساحة مريحة جداً لكيبورد الموبايل
-    searchTimer = setTimeout(() => {
-        renderLimit = 50; 
-        const resultsDiv = document.getElementById('productResults');
-        if (resultsDiv) resultsDiv.scrollTop = 0; 
-        
-        searchProducts();
-    }, 200); 
-}
-
-function searchProducts() {
-    loadDB();
-    const rawQuery = String(document.getElementById('productSearch').value || '').trim().toLowerCase();
+    function searchProducts() {
+    // ❌ تم إزالة loadDB(); من هنا تماماً لمنع التشنج المحاسبي
+    
+    const rawQuery = document.getElementById('productSearch').value.trim();
     const resultsDiv = document.getElementById('productResults');
-    
-    resultsDiv.innerHTML = '';
-    
+
     if (!rawQuery) {
         resultsDiv.style.display = 'none';
         return;
     }
 
-    const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
+    const cleanQuery = normalizeText(rawQuery);
+    const searchWords = cleanQuery.split(' ').filter(word => word.length > 0);
 
-    // 1. الفلترة السريعة
+    resultsDiv.innerHTML = '';
+    
+    // استخدام مصفوفة productsDB المحملة مسبقاً في الذاكرة
     let filtered = productsDB.map(p => {
-        let pName = String(p.name || '').toLowerCase();
-        let pCat = String(p.category || '').toLowerCase();
-        let pBar = String(p.barcode || '').toLowerCase();
-        let fullString = pName + " " + pCat + " " + pBar;
-
+        let pNameNorm = normalizeText(p.name);
+        let pBarcode = String(p.barcode || '');
         let score = 0;
-        if (pBar === rawQuery) score += 100;
 
-        searchWords.forEach(word => { 
-            if (fullString.includes(word)) score += 1; 
+        if (pBarcode.includes(rawQuery)) score += 100;
+
+        let matchedWordsCount = 0;
+        searchWords.forEach(searchWord => {
+            if (pNameNorm.includes(searchWord)) {
+                score += 10;
+                matchedWordsCount++;
+                if (pNameNorm.startsWith(searchWord)) score += 5;
+            }
         });
 
-        if (score > 0) {
-            if (pName.startsWith(rawQuery)) score += 5;
-            else if (pName.startsWith(searchWords[0])) score += 2;
+        if (matchedWordsCount === searchWords.length && searchWords.length > 1) {
+            score += 50;
         }
-        return { product: p, score: score };
+
+        return { product: p, score: score, matchedWords: matchedWordsCount };
     }).filter(item => item.score > 0 && !item.product.isDeleted && !item.product.isArchived);
 
-    // ترتيب النتائج
-    filtered.sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        return String(a.product.name).localeCompare(String(b.product.name), 'ar');
-    });
+    filtered.sort((a, b) => b.score - a.score);
 
-    if (filtered.length === 0) {
+    if (filtered.length > 0) {
+        resultsDiv.style.display = 'block';
+        filtered.forEach(item => {
+            let p = item.product;
+            let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
+            let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
+
+            const div = document.createElement('div');
+            div.className = 'dropdown-item';
+
+            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
+
+            div.innerHTML = `
+                <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
+                    ${imgHtml}
+                    <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
+                </div>
+                <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
+                    ${parseFloat(dispPrice || 0).toFixed(2)}
+                </div>
+                <div style="flex: 1; text-align: left; white-space: nowrap;">
+                    <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
+                </div>
+            `;
+
+            let isHandled = false;
+            const selectItem = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (isHandled) return;
+                isHandled = true;
+                addProduct(p, currentQueueQty);
+                currentQueueQty = 1;
+                processNextInQueue();
+            };
+
+            div.onmousedown = selectItem;
+            div.onclick = selectItem;
+
+            resultsDiv.appendChild(div);
+
+            // استدعاء الصورة من الـ IndexedDB مباشرة
+            if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
+        });
+        setTimeout(function() { resultsDiv.scrollTop = 0; }, 10);
+    } else {
         resultsDiv.style.display = 'none';
-        return;
     }
-
-    resultsDiv.style.display = 'block';
-    
-    // 2. الذاكرة المخفية (DocumentFragment) وقص النتائج لـ 50 كحد أقصى
-    const visibleItems = filtered.slice(0, renderLimit); 
-    const fragment = document.createDocumentFragment(); 
-
-    visibleItems.forEach(item => {
-        let p = item.product;
-        let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
-        let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
-
-        const div = document.createElement('div');
-        div.className = 'dropdown-item';
-
-        // 🛑 التعديل الأهم: إزالة استدعاء الصور من هنا لتخفيف الحمل تماماً على الموبايل 🛑
-        div.innerHTML = `
-            <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
-                <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
-            </div>
-            <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
-                ${parseFloat(dispPrice || 0).toFixed(2)}
-            </div>
-            <div style="flex: 1; text-align: left; white-space: nowrap;">
-                <span class="stock-badge" dir="ltr" style="font-size: 14px;">${totalStock}</span>
-            </div>
-        `;
-
-        let isHandled = false;
-        const selectItem = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (isHandled) return;
-            isHandled = true;
-            addProduct(p, currentQueueQty);
-            currentQueueQty = 1;
-            processNextInQueue();
-        };
-
-        div.onmousedown = selectItem;
-        div.onclick = selectItem;
-        
-        // حقن العنصر في الذاكرة المخفية
-        fragment.appendChild(div);
-    });
-
-    // 3. ضخ النتائج للشاشة دفعة واحدة
-    resultsDiv.appendChild(fragment);
 }
-
-
 
 function updateQueueUI() {
     const qContainer = document.getElementById('queueContainer');
