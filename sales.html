@@ -680,50 +680,9 @@ function openEditModal(index) {
     document.getElementById('editModalOverlay').style.display = 'flex';
 }
 
-function saveItemEdit() {
-    let idx = document.getElementById('editItemIndex').value;
-    let newQty = parseFloat(document.getElementById('editQty').value) || 1;
-    let p = productsDB.find(x => x.id === invoice[idx].id);
-    let totalStock = (p && p.lots) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? p.stock : 0);
-    if (p && newQty > totalStock) showStockWarning(invoice[idx].name, totalStock);
-
-    invoice[idx].price = parseFloat(document.getElementById('editPrice').value) || 0;
-    invoice[idx].qty = newQty;
-    invoice[idx].total = invoice[idx].price * newQty;
-    saveDraft();
-    closeModals();
-    renderTable();
-}
-
-function openSaveModal() {
-    if (invoice.length === 0) return SerajAlert("الفاتورة فارغة!");
-    history.pushState({ modalOpen: true }, '');
-    let sub = parseFloat(document.getElementById('mainTotal').innerText) || 0;
-    document.getElementById('modalTotal').value = sub.toFixed(2);
-    document.getElementById('modalDiscount').value = 0;
-    document.getElementById('modalNotes').value = '';
-
-    // إرجاع الخزينة للقيمة الافتراضية (كاش)
-    let vaultInput = document.getElementById('modalVaultSelect');
-    if (vaultInput) vaultInput.value = 'main';
-    let vaultLabel = document.getElementById('customVaultLabel');
-    if (vaultLabel) vaultLabel.innerText = 'الخزينة (كاش)';
-
-    let draftCust = localStorage.getItem('seraj_draft_customer') || '';
-    document.getElementById('customerSearchInput').value = draftCust;
-    handleCustomerInput();
-
-    let t = new Date();
-    document.getElementById('modalDate').value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-    document.getElementById('modalPaid').value = document.getElementById('modalTotal').value;
-    calculateModalTotals();
-    document.getElementById('saveModalOverlay').style.display = 'flex';
-}
-
-let selectedCustomerId = null;
-
 function handleCustomerInput() {
-    loadDB();
+    // ❌ تم إزالة loadDB(); من هنا تماماً لمنع التشنج المحاسبي وتجميد الكيبورد
+    
     const rawVal = document.getElementById('customerSearchInput').value.trim();
     const resultsDiv = document.getElementById('customerResults');
     resultsDiv.innerHTML = '';
@@ -742,6 +701,7 @@ function handleCustomerInput() {
 
     const normQuery = norm(rawVal);
 
+    // استخدام مصفوفة customersDB المحملة مسبقاً في الذاكرة
     const activeCustomers = customersDB.filter(c => {
         return c && !(c.isDeleted === true || String(c.isDeleted).toLowerCase() === 'true' || c.archived === true || String(c.archived).toLowerCase() === 'true');
     });
@@ -750,6 +710,7 @@ function handleCustomerInput() {
     selectedCustomerId = exactMatch ? exactMatch.id : null;
     updateLiveCustomerBalanceUI(exactMatch);
 
+    // عرض أول 30 نتيجة فقط لتسريع الأداء أكثر
     const filtered = activeCustomers.filter(c => norm(c.name).includes(normQuery)).slice(0, 30);
 
     if (filtered.length > 0) {
@@ -777,7 +738,6 @@ function handleCustomerInput() {
 
             div.innerHTML = `<span>${c.name}</span>${balHtml}`;
 
-            div.innerHTML = `<span>${c.name}</span>${balHtml}`;
             div.onmousedown = (e) => {
                 e.preventDefault();
                 selectedCustomerId = c.id;
