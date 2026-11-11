@@ -26,7 +26,7 @@
 <!-- 2. حاوية المبيعات ومربع البحث مباشرة أسفل الهيدر -->
 <div class="sales-container">
     <div class="search-container">
-        <input type="text" id="productSearch" class="search-input" placeholder="ابحث بالاسم أو الباركود..." onclick="event.stopPropagation()">
+        <input type="text" id="productSearch" class="search-input" placeholder="ابحث بالاسم أو الباركود..." oninput="smartSearch()" onclick="event.stopPropagation()">
         
         <button type="button" id="aiAssistantBtn" class="mic-btn-search" onclick="event.stopPropagation(); openAiModal()" title="إضافة سريعة بالصوت">
             <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -364,10 +364,11 @@ function normalizeText(text) {
 }
 
 let searchTimer;
-let renderLimit = 50; // تحميل 50 نتيجة فقط مبدئياً لتسريع الشاشة
+let renderLimit = 50; // السر كله هنا: تحميل 50 نتيجة كحد أقصى لتسريع الشاشة
 
 function smartSearch() {
     clearTimeout(searchTimer);
+    // مؤقت 150 ملي ثانية زي المخزن بالظبط لمنع التهنيج
     searchTimer = setTimeout(() => {
         renderLimit = 50; 
         const resultsDiv = document.getElementById('productResults');
@@ -377,9 +378,9 @@ function smartSearch() {
     }, 150); 
 }
 
-function searchProducts(query) {
+function searchProducts() {
     loadDB();
-    const rawQuery = String(query !== undefined ? query : document.getElementById('productSearch').value).trim().toLowerCase();
+    const rawQuery = String(document.getElementById('productSearch').value || '').trim().toLowerCase();
     const resultsDiv = document.getElementById('productResults');
     
     resultsDiv.innerHTML = '';
@@ -391,7 +392,7 @@ function searchProducts(query) {
 
     const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
 
-    // 1. خوارزمية الفلترة السريعة
+    // 1. نفس خوارزمية الفلترة والتقييم بتاعت المخزن بالظبط
     let filtered = productsDB.map(p => {
         let pName = String(p.name || '').toLowerCase();
         let pCat = String(p.category || '').toLowerCase();
@@ -406,12 +407,14 @@ function searchProducts(query) {
         });
 
         if (score > 0) {
+            // بونص لو الكلمة في بداية الاسم
             if (pName.startsWith(rawQuery)) score += 5;
             else if (pName.startsWith(searchWords[0])) score += 2;
         }
         return { product: p, score: score };
     }).filter(item => item.score > 0 && !item.product.isDeleted && !item.product.isArchived);
 
+    // ترتيب النتائج
     filtered.sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
         return String(a.product.name).localeCompare(String(b.product.name), 'ar');
@@ -422,9 +425,10 @@ function searchProducts(query) {
         return;
     }
 
-    // 2. الذاكرة الوهمية السريعة وعرض 30 نتيجة فقط (لإنهاء التشنج)
     resultsDiv.style.display = 'block';
-    const visibleItems = filtered.slice(0, 30); 
+    
+    // 2. تطبيق الحماية: رسم 50 نتيجة فقط باستخدام الذاكرة الوهمية (DocumentFragment)
+    const visibleItems = filtered.slice(0, renderLimit); 
     const fragment = document.createDocumentFragment(); 
 
     visibleItems.forEach(item => {
@@ -435,9 +439,12 @@ function searchProducts(query) {
         const div = document.createElement('div');
         div.className = 'dropdown-item';
 
-        // 🛑 السر هنا: أوقفنا تحميل الصور في القائمة المنسدلة فقط لتكون سريعة كالمخزن
+        // رجعنا استدعاء الصورة زي ما طلبت لأن تحديد العدد بـ 50 حل مشكلة التهنيج
+        let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" style="width: 35px; height: 35px; border-radius: 6px; border: 1px solid var(--neon-border); object-fit: cover; flex-shrink: 0;">` : '';
+
         div.innerHTML = `
             <div style="flex: 2; display: flex; align-items: center; gap: 8px; text-align: right; word-break: break-word; line-height: 1.4;">
+                ${imgHtml}
                 <strong style="color: var(--text-white); font-size: 16px;">${p.name}</strong>
             </div>
             <div style="flex: 1; text-align: center; font-weight: bold; color: #00ff66; font-size: 17px; white-space: nowrap;">
@@ -461,12 +468,18 @@ function searchProducts(query) {
 
         div.onmousedown = selectItem;
         div.onclick = selectItem;
+        
         fragment.appendChild(div);
+
+        // استدعاء الصورة هنا أصبح آمناً جداً وخفيفاً لأننا نسأل عن 50 صورة بحد أقصى
+        if (p.hasImage && window.ImagesDB) window.ImagesDB.getImage(p.id, `search_img_${p.id}`);
     });
 
     // ضخ النتائج للشاشة دفعة واحدة
     resultsDiv.appendChild(fragment);
 }
+
+
 
 function updateQueueUI() {
     const qContainer = document.getElementById('queueContainer');
