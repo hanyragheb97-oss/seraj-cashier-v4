@@ -376,84 +376,96 @@ window.addEventListener('seraj:updated', (e) => {
             else window.location.href = 'index.html';
         }
 
-        function searchProducts() {
-            loadDB(); 
-            const rawQuery = document.getElementById('productSearch').value.trim().toLowerCase();
-            const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
-            const resultsDiv = document.getElementById('productResults');
-            resultsDiv.innerHTML = ''; 
+// الاعتماد على دالة debounce المركزية من db.js لمنع تهنيج الكيبورد
+const smartSearch = (window.Utils && window.Utils.debounce) 
+    ? window.Utils.debounce(searchProducts, 250) 
+    : function() {
+        clearTimeout(window._searchTimer);
+        window._searchTimer = setTimeout(searchProducts, 250);
+    };
+
+function searchProducts() {
+    // 🚫 تم إزالة loadDB() من هنا نهائياً لتسريع الكيبورد 🚫
+    
+    const rawQuery = document.getElementById('productSearch').value.trim().toLowerCase();
+    const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
+    const resultsDiv = document.getElementById('productResults');
+    resultsDiv.innerHTML = ''; 
+    resultsDiv.scrollTop = 0; 
+    
+    if(searchWords.length === 0) { resultsDiv.style.display = 'none'; return; }
+
+    if (!productsDB || !Array.isArray(productsDB)) productsDB = [];
+
+    // استخدام دالة البحث السريع المركزية لو متاحة، أو البحث العادي كبديل
+    let filtered = [];
+    if (window.Utils && window.Utils.fastSearch) {
+        filtered = window.Utils.fastSearch(productsDB, rawQuery, ['name', 'barcode']).map(p => ({ product: p, score: 10 }));
+    } else {
+        filtered = productsDB.map(p => {
+            let pName = String(p.name || '').toLowerCase();
+            let score = 0;
+            searchWords.forEach(w => { 
+                if (pName.includes(w) || String(p.barcode || '').includes(w)) score += 1; 
+            });
+            if (score > 0 && pName.startsWith(searchWords[0])) score += 2; 
+            return { product: p, score: score };
+        }).filter(item => item.score > 0);
+        filtered.sort((a, b) => b.score - a.score);
+    }
+
+    if(filtered.length > 0) {
+        resultsDiv.style.display = 'block';
+        filtered.forEach(item => {
+            let p = item.product;
+            let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
+            let dispPurchasePrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].purchasePrice : (parseFloat(p.purchasePrice) || 0);
             
-            resultsDiv.scrollTop = 0; 
+            let isItemArchived = (p.isDeleted || p.isArchived);
+            let isDeletedText = isItemArchived ? `<span class="color-red-val" style="font-size:13px; font-weight:bold; margin-right:5px;">(مؤرشف)</span>` : '';
+            let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" alt="" width="35" height="35">` : '';
+
+            const div = document.createElement('div'); 
+            div.className = isItemArchived ? 'dropdown-item archived-item' : 'dropdown-item';
+            div.innerHTML = `
+                <span style="display:flex; align-items:center; gap:5px;">${imgHtml} <strong>${p.name}</strong> ${isDeletedText}</span>
+                <span class="color-red-val" style="font-weight:bold;">${dispPurchasePrice}</span>
+                <span class="stock-badge">رصيد: ${totalStock}</span>
+            `;
             
-            if(searchWords.length === 0) { resultsDiv.style.display = 'none'; return; }
+            div.onmousedown = async (e) => {
+                e.preventDefault(); 
+                
+                let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
+                if(existsIndex > -1) {
+                    SerajAlert("الصنف موجود مسبقاً في الفاتورة!");
+                    document.getElementById('productSearch').value = ''; 
+                    resultsDiv.style.display = 'none';
+                    return; 
+                }
 
-            if (!productsDB || !Array.isArray(productsDB)) productsDB = [];
-
-            let filtered = productsDB.map(p => {
-                let pName = String(p.name || '').toLowerCase();
-                let score = 0;
-                searchWords.forEach(w => { 
-                    if (pName.includes(w) || String(p.barcode || '').includes(w)) score += 1; 
-                });
-                if (score > 0 && pName.startsWith(searchWords[0])) score += 2; 
-                return { product: p, score: score };
-            }).filter(item => item.score > 0);
-
-            filtered.sort((a, b) => b.score - a.score);
-
-            if(filtered.length > 0) {
-                resultsDiv.style.display = 'block';
-                filtered.forEach(item => {
-                    let p = item.product;
-                    let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
-                    let dispPurchasePrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].purchasePrice : (parseFloat(p.purchasePrice) || 0);
-                    
-                    let isItemArchived = (p.isDeleted || p.isArchived);
-                    let isDeletedText = isItemArchived ? `<span class="color-red-val" style="font-size:13px; font-weight:bold; margin-right:5px;">(مؤرشف)</span>` : '';
-                    let imgHtml = p.hasImage ? `<img id="search_img_${p.id}" src="" alt="" width="35" height="35">` : '';
-
-                    const div = document.createElement('div'); 
-                    div.className = isItemArchived ? 'dropdown-item archived-item' : 'dropdown-item';
-                    // استخدام <span> كما طلب مدير النظام لضبط المحاذاة المركزية
-                    div.innerHTML = `
-                        <span style="display:flex; align-items:center; gap:5px;">${imgHtml} <strong>${p.name}</strong> ${isDeletedText}</span>
-                        <span class="color-red-val" style="font-weight:bold;">${dispPurchasePrice}</span>
-                        <span class="stock-badge">رصيد: ${totalStock}</span>
-                    `;
-                    
-                    div.onmousedown = async (e) => {
-                        e.preventDefault(); 
-                        
-                        let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
-                        if(existsIndex > -1) {
-                            SerajAlert("الصنف موجود مسبقاً في الفاتورة!");
-                            document.getElementById('productSearch').value = ''; 
-                            resultsDiv.style.display = 'none';
-                            return; 
-                        }
-
-                        if (p.isDeleted) {
-                            if(await SerajConfirm("هذا الصنف محذوف. هل تريد إعادة تنشيطه وإضافته للفاتورة الحالية؟ سيتم تصفير رصيده القديم لتبدأ من جديد.")) {
-                                p.isDeleted = false;
-                                p.isArchived = false;
-                                p.stock = 0; 
-                                p.lots = []; 
-                                p._lastModified = Date.now();
-                                p._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'غير معروف';
-                                if(typeof DB !== 'undefined') DB.saveProducts(productsDB); 
-                                openEditModalForNewItem(p.id); 
-                            }
-                        } else {
-                            openEditModalForNewItem(p.id); 
-                        }
-                    };
-                    resultsDiv.appendChild(div);
-                    if (p.hasImage) loadImageFromDB(p.id, `search_img_${p.id}`);
-                });
-            } else {
-                resultsDiv.style.display = 'none';
-            }
-        }
+                if (p.isDeleted) {
+                    if(await SerajConfirm("هذا الصنف محذوف. هل تريد إعادة تنشيطه وإضافته للفاتورة الحالية؟ سيتم تصفير رصيده القديم لتبدأ من جديد.")) {
+                        p.isDeleted = false;
+                        p.isArchived = false;
+                        p.stock = 0; 
+                        p.lots = []; 
+                        p._lastModified = Date.now();
+                        p._lastModifiedBy = localStorage.getItem('seraj_device_name') || 'غير معروف';
+                        if(typeof DB !== 'undefined') DB.saveProducts(productsDB); 
+                        openEditModalForNewItem(p.id); 
+                    }
+                } else {
+                    openEditModalForNewItem(p.id); 
+                }
+            };
+            resultsDiv.appendChild(div);
+            if (p.hasImage) loadImageFromDB(p.id, `search_img_${p.id}`);
+        });
+    } else {
+        resultsDiv.style.display = 'none';
+    }
+}
 
         let searchTimer;
         function smartSearch() {
