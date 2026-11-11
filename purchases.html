@@ -868,66 +868,82 @@ function searchProducts() {
             document.getElementById('saveModalOverlay').style.display = 'flex';
         }
 
-        function handleSupplierInput() {
-            loadDB(); 
-            const rawQuery = document.getElementById('supplierSearch').value.trim();
-            const resultsDiv = document.getElementById('supplierResults');
-            resultsDiv.innerHTML = ''; 
-            if(rawQuery.length === 0) { 
-                resultsDiv.style.display = 'none'; 
-                document.getElementById('selectedSupplierId').value = "";
-                updateLiveSupplierBalanceUI(null); 
-                return; 
-            }
-            
-            const normQuery = (window.Utils && typeof window.Utils.normalizeName === 'function') 
-                ? window.Utils.normalizeName(rawQuery) 
-                : rawQuery.toLowerCase();
+// نستخدم debounce هنا برضه لمنع التهنيج أثناء كتابة اسم المورد
+const handleSupplierInput = (window.Utils && window.Utils.debounce)
+    ? window.Utils.debounce(processSupplierSearch, 200)
+    : function() {
+        clearTimeout(window._supTimer);
+        window._supTimer = setTimeout(processSupplierSearch, 200);
+    };
 
-            const exactMatch = suppliersDB.find(s => {
-                let sNorm = (window.Utils && typeof window.Utils.normalizeName === 'function')
-                    ? window.Utils.normalizeName(s.name || '')
-                    : String(s.name || '').trim().toLowerCase();
-                return sNorm === normQuery;
-            });
-            document.getElementById('selectedSupplierId').value = exactMatch ? exactMatch.id : "";
-            updateLiveSupplierBalanceUI(exactMatch);
-            
-            const filtered = suppliersDB.filter(s => {
-                let sNorm = (window.Utils && typeof window.Utils.normalizeName === 'function')
-                    ? window.Utils.normalizeName(s.name || '')
-                    : String(s.name || '').trim().toLowerCase();
-                return sNorm.includes(normQuery);
-            });
-            if(filtered.length > 0) {
-                resultsDiv.style.display = 'block';
-                filtered.forEach(s => {
-                    // حساب الرصيد وتطبيق الألوان والكلمات المعكوسة
-                    let sBal = parseFloat(s.calculatedBalance ?? s.balance ?? 0);
-                    let balText = "";
-                    if (sBal > 0) balText = `<span class="color-red-val" style="font-size:15px; font-weight:bold;">${sBal.toFixed(2)} (عليه)</span>`;
-                    else if (sBal < 0) balText = `<span class="color-green-val" style="font-size:15px; font-weight:bold;">${Math.abs(sBal).toFixed(2)} (له)</span>`;
-                    else balText = `<span style="font-size:14px; color:#aaa;">0.00 (صافي)</span>`;
+function processSupplierSearch() {
+    // 🚫 تم إزالة loadDB() من هنا نهائياً 🚫
+    
+    const rawQuery = document.getElementById('supplierSearch').value.trim();
+    const resultsDiv = document.getElementById('supplierResults');
+    resultsDiv.innerHTML = ''; 
+    
+    if(rawQuery.length === 0) { 
+        resultsDiv.style.display = 'none'; 
+        document.getElementById('selectedSupplierId').value = "";
+        updateLiveSupplierBalanceUI(null); 
+        return; 
+    }
+    
+    const normQuery = (window.Utils && typeof window.Utils.normalizeName === 'function') 
+        ? window.Utils.normalizeName(rawQuery) 
+        : rawQuery.toLowerCase();
 
-                    const div = document.createElement('div'); 
-                    div.className = 'dropdown-item'; 
-                    div.style.display = 'flex';
-                    div.style.justifyContent = 'space-between';
-                    div.style.alignItems = 'center';
-                    div.innerHTML = `<strong>${s.name}</strong> ${balText}`;
-                    div.onmousedown = (e) => { 
-                        e.preventDefault(); 
-                        document.getElementById('supplierSearch').value = s.name; 
-                        document.getElementById('selectedSupplierId').value = s.id;
-                        resultsDiv.style.display = 'none';
-                        updateLiveSupplierBalanceUI(s); 
-                    };
-                    resultsDiv.appendChild(div);
-                });
-            } else {
+    const exactMatch = suppliersDB.find(s => {
+        let sNorm = (window.Utils && typeof window.Utils.normalizeName === 'function')
+            ? window.Utils.normalizeName(s.name || '')
+            : String(s.name || '').trim().toLowerCase();
+        return sNorm === normQuery;
+    });
+    document.getElementById('selectedSupplierId').value = exactMatch ? exactMatch.id : "";
+    updateLiveSupplierBalanceUI(exactMatch);
+    
+    // البحث السريع
+    let filtered = [];
+    if (window.Utils && window.Utils.fastSearch) {
+        filtered = window.Utils.fastSearch(suppliersDB, rawQuery, ['name', 'phone']);
+    } else {
+        filtered = suppliersDB.filter(s => {
+            let sNorm = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                ? window.Utils.normalizeName(s.name || '')
+                : String(s.name || '').trim().toLowerCase();
+            return sNorm.includes(normQuery);
+        });
+    }
+
+    if(filtered.length > 0) {
+        resultsDiv.style.display = 'block';
+        filtered.forEach(s => {
+            let sBal = parseFloat(s.calculatedBalance ?? s.balance ?? 0);
+            let balText = "";
+            if (sBal > 0) balText = `<span class="color-red-val" style="font-size:15px; font-weight:bold;">${sBal.toFixed(2)} (عليه)</span>`;
+            else if (sBal < 0) balText = `<span class="color-green-val" style="font-size:15px; font-weight:bold;">${Math.abs(sBal).toFixed(2)} (له)</span>`;
+            else balText = `<span style="font-size:14px; color:#aaa;">0.00 (صافي)</span>`;
+
+            const div = document.createElement('div'); 
+            div.className = 'dropdown-item'; 
+            div.style.display = 'flex';
+            div.style.justifyContent = 'space-between';
+            div.style.alignItems = 'center';
+            div.innerHTML = `<strong>${s.name}</strong> ${balText}`;
+            div.onmousedown = (e) => { 
+                e.preventDefault(); 
+                document.getElementById('supplierSearch').value = s.name; 
+                document.getElementById('selectedSupplierId').value = s.id;
                 resultsDiv.style.display = 'none';
-            }
-        }
+                updateLiveSupplierBalanceUI(s); 
+            };
+            resultsDiv.appendChild(div);
+        });
+    } else {
+        resultsDiv.style.display = 'none';
+    }
+}
 
         function updateLiveSupplierBalanceUI(supplier) {
             const balDiv = document.getElementById('liveSupplierBalance');
