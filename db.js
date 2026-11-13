@@ -3975,7 +3975,8 @@ saveSmartNotes: function(data) {
 
 // =========================================================
 // ☁️ محرك الأرشفة السحابية الذكي (Deep Archiving Engine)
-// يحتفظ بآخر 50 فاتورة نقدية (طياري) أو فواتير آخر يومين ويرحّل الباقي والقديم (>90 يوماً) للسحابة
+// يؤرشف فقط فواتير البيع النقدية (الطياري - بدون اسم عميل) الأقدم من 7 أيام بعد آخر 50 فاتورة
+// ولا يمس نهائياً أي فواتير أو سندات خاصة بالعملاء أو الموردين
 // =========================================================
 archiveSmartData: async function() {
     if (!cloudReady || !navigator.onLine || !window.dbCloud) {
@@ -3984,23 +3985,30 @@ archiveSmartData: async function() {
     }
 
     return new Promise((resolve) => {
-        SerajConfirm("سيتم أرشفة فواتير الكاش (الطياري) القديمة مع الاحتفاظ بآخر 50 فاتورة نقدية (أو فواتير آخر يومين)، وأرشفة الفواتير والحركات الأقدم من 90 يوماً للسحابة مع تثبيت الأرصدة الافتتاحية. هل أنت متأكد؟", async (confirm) => {
+        SerajConfirm("سيتم أرشفة الفواتير النقدية (الطياري - بدون اسم عميل) الأقدم من 7 أيام مع الاحتفاظ بآخر 50 فاتورة طياري على الجهاز، ولن يتم المساس نهائياً بأي فواتير أو سندات خاصة بالعملاء أو الموردين. هل أنت متأكد؟", async (confirm) => {
             if (!confirm) return resolve(false);
 
-            showCloudStatus("⏳ جاري أرشفة البيانات القديمة للسحابة... برجاء عدم إغلاق الصفحة.");
+            showCloudStatus("⏳ جاري فحص وأرشفة الفواتير الطياري القديمة... برجاء عدم إغلاق الصفحة.");
 
             let now = Date.now();
-            let days2 = now - (2 * 24 * 60 * 60 * 1000);
-            let days90 = now - (90 * 24 * 60 * 60 * 1000);
+            let days7 = now - (7 * 24 * 60 * 60 * 1000);
 
             let sales = this.getSalesInvoices(true);
-            let purchases = this.getPurchaseInvoices(true);
             let moves = this.getTreasuryMoves(true, true);
             let customers = this.getCustomers(true);
-            let suppliers = this.getSuppliers(true);
 
-            let archivePayload = { sales: {}, purchases: {}, treasury_moves: {} };
-            let newSales = [], newPurchases = [], newMoves = [];
+            // بناء قائمة بجميع أسماء ومعرفات العملاء المسجلين لحمايتهم 100%
+            let registeredCustomerIds = new Set();
+            let registeredCustomerNormNames = new Set();
+            customers.forEach(c => {
+                if (!c) return;
+                if (c.id !== undefined && c.id !== null) registeredCustomerIds.add(String(c.id));
+                let norm = window.Utils.normalizeName(c.name || '');
+                if (norm) registeredCustomerNormNames.add(norm);
+            });
+
+            let archivePayload = { sales: {} };
+            let newSales = [];
 
             let sortedSales = [...sales].sort((a, b) => {
                 let diff = window.Utils.getSafeTime(b.timestamp || b.date) - window.Utils.getSafeTime(a.timestamp || a.date);
@@ -4008,38 +4016,45 @@ archiveSmartData: async function() {
                 return window.Utils.extractSerialNum(b.id) - window.Utils.extractSerialNum(a.id);
             });
 
-            let cashSalesKeptCount = 0;
+            let anonymousCount = 0;
 
             sortedSales.forEach(inv => {
                 if (!inv) return;
                 let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
                 let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
-                let isAnonymousOrCash = (!inv.customerId && (!inv.customer || inv.customer.includes('طيار') || inv.customer.includes('نقد'))) || (remVal <= 0.01 && (parseFloat(inv.initialRemaining) || 0) <= 0.01 && (!inv.customerId));
+                let initRemVal = parseFloat(inv.initialRemaining) || 0;
 
-                if (isAnonymousOrCash) {
-                    cashSalesKeptCount++;
-                    if (cashSalesKeptCount <= 50 || t >= days2) {
+                let custName = String(inv.customer || inv.customerName || '').trim();
+                let custNorm = window.Utils.normalizeName(custName);
+                let hasCustomerId = (inv.customerId !== undefined && inv.customerId !== null && String(inv.customerId).trim() !== '');
+                let isRegisteredCustomer = (hasCustomerId && registeredCustomerIds.has(String(inv.customerId))) || (custNorm !== '' && registeredCustomerNormNames.has(custNorm));
+
+                // الفاتورة تعتبر "طياري" فقط إذا لم يكن لها عميل مسجل، ولا اسم عميل حقيقي، وليس عليها أي مبلغ متبقٍ
+                let isWalkInName = (!custName || custName === 'عميل نقدي' || custName === 'عميل طياري' || custName === 'طياري' || custName === 'نقدي' || custName === 'بدون اسم' || custName === '---');
+                let isAnonymousCash = !hasCustomerId && !isRegisteredCustomer && isWalkInName && remVal <= 0.01 && initRemVal <= 0.01;
+
+                if (isAnonymousCash) {
+                    anonymousCount++;
+                    // الاحتفاظ بآخر 50 فاتورة طياري أو فواتير آخر 7 أيام محلياً، وأرشفة الأقدم فقط
+                    if (anonymousCount <= 50 || t >= days7) {
                         newSales.push(inv);
                     } else {
                         archivePayload.sales[inv.id] = inv;
                     }
-                } else if (t < days90 && remVal <= 0.01) {
-                    archivePayload.sales[inv.id] = inv;
                 } else {
+                    // 🛡️ أي فاتورة تخص عميلاً أو عليها اسم أو متبقي تظل محفوظة دائماً ولا تُمس
                     newSales.push(inv);
                 }
             });
 
-            purchases.forEach(inv => {
-                if (!inv) return;
-                let t = window.Utils.getSafeTime(inv.date || inv.timestamp);
-                let remVal = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
-                if (t < days90 && remVal <= 0.01) archivePayload.purchases[inv.id] = inv;
-                else newPurchases.push(inv);
-            });
+            let archivedIds = Object.keys(archivePayload.sales);
+            if (archivedIds.length === 0) {
+                SerajAlert("ℹ️ لا توجد فواتير طياري قديمة تحتاج للأرشفة حالياً.", "info");
+                return resolve(false);
+            }
 
+            // حفظ الأثر النقدي للفواتير الطياري المؤرشفة في الخزينة (فقط إذا لم يكن لها حركة خزينة مسجلة مسبقاً)
             let archivedVaultDelta = { main: 0, insta: 0, wallet: 0 };
-
             Object.values(archivePayload.sales).forEach(inv => {
                 if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
                 if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
@@ -4053,38 +4068,12 @@ archiveSmartData: async function() {
                 }
             });
 
-            Object.values(archivePayload.purchases).forEach(inv => {
-                if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.type === 'quotation' || inv.isDeleted) return;
-                if (!this._hasTreasuryMoveForInvoice(inv, moves)) {
-                    let checkoutPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                    if (checkoutPaid > 0) {
-                        let isReturn = (inv.type === 'return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
-                        let vKey = inv.vault || inv.treasury || 'main';
-                        if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
-                        archivedVaultDelta[vKey] += isReturn ? checkoutPaid : -checkoutPaid;
-                    }
-                }
-            });
-
-            moves.forEach(m => {
-                if (!m) return;
-                let t = window.Utils.getSafeTime(m.date || m.timestamp);
-                if (t < days90 && !String(m.id).startsWith('arch_bal_')) {
-                    archivePayload.treasury_moves[m.id] = m;
-                    if (!m.isCanceled && m.type !== 'canceled' && m.type !== 'cancelled' && !m.isDeleted && m.status !== 'deleted') {
-                        let vKey = m.vault || 'main';
-                        if (archivedVaultDelta[vKey] === undefined) vKey = 'main';
-                        archivedVaultDelta[vKey] += ((parseFloat(m.amountAdd) || 0) - (parseFloat(m.amountDeduct) || 0));
-                    }
-                } else {
-                    newMoves.push(m);
-                }
-            });
-
+            let movesModified = false;
             ['main', 'insta', 'wallet'].forEach(vKey => {
                 let delta = Math.round(archivedVaultDelta[vKey] * 100) / 100;
                 if (Math.abs(delta) < 0.01) return;
-                let existingArchMove = newMoves.find(m => m && String(m.id) === `arch_bal_${vKey}`);
+                movesModified = true;
+                let existingArchMove = moves.find(m => m && String(m.id) === `arch_bal_${vKey}`);
                 if (existingArchMove) {
                     let netNow = ((parseFloat(existingArchMove.amountAdd) || 0) - (parseFloat(existingArchMove.amountDeduct) || 0)) + delta;
                     existingArchMove.amountAdd = netNow >= 0 ? Math.round(netNow * 100) / 100 : 0;
@@ -4092,7 +4081,7 @@ archiveSmartData: async function() {
                     existingArchMove.amount = Math.round(Math.abs(netNow) * 100) / 100;
                     existingArchMove._lastModified = now;
                 } else {
-                    newMoves.push({
+                    moves.push({
                         id: `arch_bal_${vKey}`,
                         type: 'direct',
                         vault: vKey,
@@ -4100,9 +4089,9 @@ archiveSmartData: async function() {
                         amountAdd: delta >= 0 ? delta : 0,
                         amountDeduct: delta < 0 ? Math.abs(delta) : 0,
                         amount: Math.abs(delta),
-                        notes: 'رصيد مرحل من الأرشيف السحابي',
-                        date: window.Utils.getLocalDateString(days90),
-                        timestamp: days90,
+                        notes: 'رصيد فواتير طياري مرحلة للأرشيف السحابي',
+                        date: window.Utils.getLocalDateString(days7),
+                        timestamp: days7,
                         _device: myDeviceName,
                         _lastModified: now,
                         _lastModifiedBy: myDeviceName
@@ -4110,111 +4099,43 @@ archiveSmartData: async function() {
                 }
             });
 
-            customers.forEach(c => {
-                let oldAleih = 0; let oldLeh = 0;
-                let cNorm = window.Utils.normalizeName(c.name || '');
-
-                Object.values(archivePayload.sales).forEach(inv => {
-                    let invNorm = window.Utils.normalizeName(inv.customer || '');
-                    if (!inv.isCanceled && (String(inv.customerId) === String(c.id) || (cNorm && invNorm === cNorm))) {
-                        let invTot = parseFloat(inv.total) || 0;
-                        let invDisc = parseFloat(inv.discount) || 0;
-                        let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                        let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
-                        let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
-                        if (req < 0) req = 0;
-
-                        let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
-                        let checkoutPaid = origPaid;
-
-                        if (!isReturn) { oldAleih += req; oldLeh += checkoutPaid; }
-                        else { oldLeh += req; oldAleih += checkoutPaid; }
-                    }
-                });
-
-                Object.values(archivePayload.treasury_moves).forEach(m => {
-                    let mNorm = window.Utils.normalizeName(m.customer || '');
-                    if (!m.isCanceled && !m._isReversed && !m._isReversal && (String(m.customerId) === String(c.id) || (cNorm && mNorm === cNorm))) {
-                        let amt = parseFloat(m.amount) || 0;
-                        if (m.type === 'payment' || m.type === 'customer_payment') oldAleih += amt;
-                        else if (m.type === 'receipt' || m.type === 'customer_receipt') oldLeh += amt;
-                    }
-                });
-
-                if (Array.isArray(c.transactions)) {
-                    c.transactions = c.transactions.filter(tx => !tx || !archivePayload.treasury_moves[tx.id]);
-                }
-
-                c.openingBalance = Math.round(((parseFloat(c.openingBalance) || 0) + (oldAleih - oldLeh)) * 100) / 100;
-            });
-
-            suppliers.forEach(s => {
-                let sTotalReq = 0; let sTotalPaid = 0;
-                let sNorm = window.Utils.normalizeName(s.name || '');
-
-                Object.values(archivePayload.purchases).forEach(inv => {
-                    let invNorm = window.Utils.normalizeName(inv.supplier || '');
-                    if (!inv.isCanceled && (String(inv.supplierId) === String(s.id) || (sNorm && invNorm === sNorm))) {
-                        let invTot = parseFloat(inv.total) || 0;
-                        let invDisc = parseFloat(inv.discount) || 0;
-                        let origPaid = (inv.initialPaid !== undefined && inv.initialPaid !== null) ? parseFloat(inv.initialPaid) : (parseFloat(inv.paid) || 0);
-                        let origRem = (inv.initialRemaining !== undefined && inv.initialRemaining !== null) ? parseFloat(inv.initialRemaining) : (parseFloat(inv.remaining) || 0);
-                        let req = (Math.abs((origPaid + origRem) - invTot) < 0.05 && invDisc > 0) ? invTot : (invTot - invDisc);
-                        if (req < 0) req = 0;
-
-                        let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
-                        let checkoutPaid = origPaid;
-
-                        if (!isReturn) { sTotalReq += req; sTotalPaid += checkoutPaid; }
-                        else { sTotalReq -= req; sTotalPaid -= checkoutPaid; }
-                    }
-                });
-
-                Object.values(archivePayload.treasury_moves).forEach(m => {
-                    let mNorm = window.Utils.normalizeName(m.supplier || '');
-                    if (!m.isCanceled && !m._isReversed && !m._isReversal && (String(m.supplierId) === String(s.id) || (sNorm && mNorm === sNorm))) {
-                        let amt = parseFloat(m.amount) || 0;
-                        if (m.type === 'receipt' || m.type === 'supplier_receipt') sTotalReq += amt;
-                        else if (m.type === 'payment' || m.type === 'purchase_payment') sTotalPaid += amt;
-                    }
-                });
-
-                if (Array.isArray(s.transactions)) {
-                    s.transactions = s.transactions.filter(tx => !tx || !archivePayload.treasury_moves[tx.id]);
-                }
-
-                s.openingBalance = Math.round(((parseFloat(s.openingBalance) || 0) + (sTotalReq - sTotalPaid)) * 100) / 100;
-            });
-
             try {
                 let currentYear = new Date().getFullYear();
                 let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
-                let archiveRef = window.dbCloud.ref('test_Stores/' + activeStoreId + '/Archive_' + currentYear);
-                await archiveRef.update(archivePayload);
 
-                Object.keys(archivePayload.sales).forEach(id => addToDeleteQueue('sales_invoices', id));
-                Object.keys(archivePayload.purchases).forEach(id => addToDeleteQueue('purchase_invoices', id));
-                Object.keys(archivePayload.treasury_moves).forEach(id => addToDeleteQueue('treasury_moves', id));
+                // 1. رفع الفواتير الطياري إلى قسم الأرشيف في السحابة
+                let safeArchiveSales = {};
+                archivedIds.forEach(id => {
+                    let safeId = String(id).replace(/[.#$\[\]]/g, "_");
+                    safeArchiveSales[safeId] = archivePayload.sales[id];
+                });
+                let archiveRef = window.dbCloud.ref('test_Stores/' + activeStoreId + '/Archive_' + currentYear + '/sales');
+                await archiveRef.update(safeArchiveSales);
 
-                this.saveCustomers(customers);
-                this.saveSuppliers(suppliers);
+                // 2. حذف الفواتير الطياري المؤرشفة من جدول المبيعات النشط في السحابة فوراً
+                let deletePromises = archivedIds.map(id => {
+                    let safeId = String(id).replace(/[.#$\[\]]/g, "_");
+                    return window.dbCloud.ref('test_Stores/' + activeStoreId + '/sales_invoices/' + safeId).remove();
+                });
+                await Promise.all(deletePromises);
 
+                // 3. تحديث الذاكرة المحلية والكاش المحلي للمبيعات
                 _internalSetItem('seraj_sales_invoices', JSON.stringify(newSales));
-                saveArrayToQueueSafely('sales_invoices', newSales);
+                _internalSetItem('seraj_cloud_cache_sales_invoices', JSON.stringify(newSales));
+                localCollectionsCache['sales_invoices'] = [...newSales];
 
-                _internalSetItem('seraj_purchase_invoices', JSON.stringify(newPurchases));
-                saveArrayToQueueSafely('purchase_invoices', newPurchases);
+                if (movesModified) {
+                    this.saveTreasuryMoves(moves);
+                    await this.syncNow();
+                }
 
-                this.saveTreasuryMoves(newMoves);
-                await this.syncNow();
-
-                SerajAlert("✅ تمت عملية الأرشفة الذكية بنجاح! تم الاحتفاظ بآخر 50 فاتورة نقدية وترحيل القديم للسحابة مع تثبيت الأرصدة.", "success", () => {
+                SerajAlert(`✅ تمت الأرشفة الآمنة بنجاح! تم ترحيل (${archivedIds.length}) فاتورة طياري قديمة للسحابة، مع الحفاظ الكامل على جميع فواتير وحسابات العملاء.`, "success", () => {
                     window.location.reload();
                 });
                 resolve(true);
             } catch (e) {
                 console.error("Archive Error:", e);
-                SerajAlert("❌ خطأ أثناء الرفع للسحابة، لم يتم مسح الداتا المحلية لحمايتها من الضياع.", "error");
+                SerajAlert("❌ حدث خطأ أثناء الاتصال بالسحابة، لم يتم مسح أي بيانات محلية لحمايتها.", "error");
                 resolve(false);
             }
         });
