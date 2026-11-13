@@ -383,6 +383,10 @@ animation: pulse-alert 2s infinite;
             <h2 style="color:var(--text-white); margin-top:0; text-shadow: 0 0 10px var(--neon-glow);">إعدادات المتجر ⚙️</h2>
             
             <input type="text" id="set-store-name" placeholder="اسم المحل (يظهر على الفواتير)" style="width:100%; padding:12px; margin-bottom:15px; background:rgba(0,0,0,0.5); color:var(--text-white); border:1px solid var(--neon-border); border-radius:8px; box-sizing:border-box; outline:none;">
+            
+            <!-- تم إضافة حقل رابط Gemini هنا -->
+            <input type="text" id="settings_gemini_link" placeholder="رابط الذكاء الخارجى  Gemini (مثال: https://gemini.google.com/...)" style="width:100%; padding:12px; margin-bottom:15px; background:rgba(0,0,0,0.5); color:var(--text-white); border:1px solid #3b82f6; border-radius:8px; box-sizing:border-box; outline:none;">
+            
             <input type="password" id="set-ai-key" placeholder="مفتاح الذكاء الاصطناعي (API Key)" style="width:100%; padding:12px; margin-bottom:10px; background:rgba(0,0,0,0.5); color:var(--text-white); border:1px solid var(--neon-border); border-radius:8px; box-sizing:border-box; outline:none;">
             
             <div style="text-align: right; margin-bottom: 15px;">
@@ -604,6 +608,15 @@ animation: pulse-alert 2s infinite;
         function openSettings() {
             document.getElementById('set-store-name').value = localStorage.getItem('seraj_store_name') || '';
             document.getElementById('set-ai-key').value = localStorage.getItem('seraj_ai_key') || '';
+            
+            // إضافة سحب الرابط عند الفتح
+            let savedGeminiLink = localStorage.getItem('seraj_gemini_link');
+            if (savedGeminiLink && document.getElementById('settings_gemini_link')) {
+                document.getElementById('settings_gemini_link').value = savedGeminiLink;
+            } else if (document.getElementById('settings_gemini_link')) {
+                document.getElementById('settings_gemini_link').value = ''; // تفريغ الخانة لو مكانش فيه رابط قديم
+            }
+
             document.getElementById('seraj-settings-modal').style.display = 'flex';
         }
 
@@ -614,6 +627,11 @@ animation: pulse-alert 2s infinite;
         function saveSettings() {
             let sName = document.getElementById('set-store-name').value.trim();
             let aiKey = document.getElementById('set-ai-key').value.trim();
+            
+            // إضافة حفظ الرابط
+            let inputGeminiLink = document.getElementById('settings_gemini_link').value.trim();
+            localStorage.setItem('seraj_gemini_link', inputGeminiLink); // هيحفظ حتى لو فاضي عشان يمسح القديم لو مسحته
+
             if (sName !== "") localStorage.setItem('seraj_store_name', sName);
             if (aiKey !== "") localStorage.setItem('seraj_ai_key', aiKey);
             
