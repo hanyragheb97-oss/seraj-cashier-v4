@@ -1090,7 +1090,7 @@ function saveArrayToQueueSafely(colName, newArray) {
                     queue.push({ col: colName, data: item });
                 });
                 _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
-                scheduleSyncQueue();
+                scheduleSyncQueue(1000); // تسريع الرفع خلال ثانية واحدة
                 return;
             }
 
@@ -1117,7 +1117,7 @@ function saveArrayToQueueSafely(colName, newArray) {
                     queue.push({ col: colName, data: item });
                 });
                 _internalSetItem('seraj_sync_queue', JSON.stringify(queue));
-                scheduleSyncQueue();
+                scheduleSyncQueue(1000); // تسريع الرفع خلال ثانية واحدة
             }
 
             if (colName === 'treasury_moves') {
@@ -2369,6 +2369,11 @@ deleteItem: function(colName, id, mode = 'soft') {
             }
         });
 
+        // 🌟 [بداية الكود المضاف لاكتشاف التعديلات وتحديث التوقيت] 🌟
+        let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_customers'), []);
+        let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
+        let now = Date.now();
+
         let dataToSave = dedup.cleaned.map(c => {
             let temp = _stripComputedFieldsForDiff(c);
             if (temp.name) temp.name = String(temp.name).trim();
@@ -2383,9 +2388,20 @@ deleteItem: function(colName, id, mode = 'soft') {
                     };
                 }).filter(Boolean);
             }
-            temp._lastModified = c._lastModified || Date.now();
+            
+            // تحديث التوقيت فقط إذا تم إضافة سند أو تعديل بيانات العميل
+            let oldC = oldMap.get(String(temp.id));
+            if (!oldC || JSON.stringify(_stripComputedFieldsForDiff(oldC)) !== JSON.stringify(_stripComputedFieldsForDiff(temp))) {
+                temp._lastModified = now;
+            } else if (oldC._lastModified) {
+                temp._lastModified = oldC._lastModified;
+            } else {
+                temp._lastModified = c._lastModified || now;
+            }
             return temp;
         });
+        // 🌟 [نهاية الكود المضاف] 🌟
+
         _internalSetItem('seraj_customers', JSON.stringify(dataToSave));
         saveArrayToQueueSafely('customers', dataToSave);
     },
@@ -2503,6 +2519,11 @@ deleteItem: function(colName, id, mode = 'soft') {
             }
         });
 
+        // 🌟 [بداية الكود المضاف لاكتشاف تعديلات الموردين وتحديث التوقيت] 🌟
+        let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_suppliers'), []);
+        let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
+        let now = Date.now();
+
         let dataToSave = dedup.cleaned.map(s => {
             let temp = _stripComputedFieldsForDiff(s);
             if (temp.name) temp.name = String(temp.name).trim();
@@ -2517,9 +2538,20 @@ deleteItem: function(colName, id, mode = 'soft') {
                     };
                 }).filter(Boolean);
             }
-            temp._lastModified = s._lastModified || Date.now();
+            
+            // تحديث التوقيت للمورد إذا حدث تعديل
+            let oldS = oldMap.get(String(temp.id));
+            if (!oldS || JSON.stringify(_stripComputedFieldsForDiff(oldS)) !== JSON.stringify(_stripComputedFieldsForDiff(temp))) {
+                temp._lastModified = now;
+            } else if (oldS._lastModified) {
+                temp._lastModified = oldS._lastModified;
+            } else {
+                temp._lastModified = s._lastModified || now;
+            }
             return temp;
         });
+        // 🌟 [نهاية الكود المضاف] 🌟
+
         _internalSetItem('seraj_suppliers', JSON.stringify(dataToSave));
         saveArrayToQueueSafely('suppliers', dataToSave);
     },
@@ -4481,23 +4513,45 @@ const SmartVoice = {
         this._shadowCacheCount = 0;
     },
 
-    // دالة التقشير أصبحت وهمية (ترجع الكلام كما هو لحماية أي صفحة تستدعيها)
+    // دالة التوحيد الذكية: تتغاضى عن النقط والهمزات والياء والتاء المربوطة
     peeler: function(text) {
-        return text ? String(text).trim() : "";
+        if (!text) return "";
+        return String(text)
+            .replace(/[\u200B-\u200F\u202A-\u202E\u061C\uFEFF]/g, '') // مسح الرموز المخفية
+            .replace(/[أإآءئؤ]/g, 'ا')  // توحيد كل الهمزات لألف عادية
+            .replace(/ة/g, 'ه')         // التاء المربوطة تعامل كهاء
+            .replace(/ى/g, 'ي')         // الألف المقصورة تعامل كياء
+            .replace(/\s+/g, ' ')       // توحيد المسافات
+            .trim()
+            .toLowerCase();
     },
 
-    // تحضير المخزن أصبح وهمياً لأننا لن نبحث فيه ولن نقارن الكلمات
     prepareInventoryShadow: function(inventoryDB) {
-        return [];
+        if (!Array.isArray(inventoryDB)) inventoryDB = [];
+        if (this._shadowCache && this._shadowCacheCount === inventoryDB.length) {
+            return this._shadowCache;
+        }
+        this._shadowCache = inventoryDB.filter(Boolean).map(item => {
+            let rawName = item.name || String(item);
+            return {
+                itemObj: item,
+                id: item.id,
+                original: rawName,
+                peeled: this.peeler(rawName) // الاسم متقشر وموحد للمطابقة
+            };
+        });
+        this._shadowCacheCount = inventoryDB.length;
+        return this._shadowCache;
     },
 
-    // المايسترو الجديد (الكوبري): يأخذ الكلام كوبي بيست بدون أي اجتهاد أو تأليف
     analyzeFullText: function(rawText, customInventoryDB, profileOverride) {
         let activeProfile = profileOverride || (window.DB && typeof window.DB.getActiveVoiceProfile === 'function' ? window.DB.getActiveVoiceProfile() : 'sales');
         if (!rawText || !String(rawText).trim()) return { queue: [], logsHTML: "", activeProfile: activeProfile };
 
-        // 1. تجهيز الفواصل: استبدال "زائد" والواو المستقلة بعلامة +
-        // نستخدم \s+و\s+ لكي نفصل بالواو المستقلة فقط دون قص حرف الواو من بداية الكلمات
+        let inventoryDB = Array.isArray(customInventoryDB) ? customInventoryDB : (window.DB && typeof window.DB.getProducts === 'function' ? window.DB.getProducts() : []);
+        let shadowList = this.prepareInventoryShadow(inventoryDB);
+
+        // فصل الطلبات بالزائد أو الواو
         let working = String(rawText)
             .replace(/(?:زائد|[\.،,؛\-!\?؟])/g, ' + ')
             .replace(/\s+و\s+/g, ' + ');
@@ -4510,34 +4564,64 @@ const SmartVoice = {
             if (words.length === 0) return;
 
             let qty = 1;
-            // نحول الأرقام الهندية لإنجليزية في "ذاكرة النظام فقط" لنعرف هل الكلمة الأولى رقم أم لا
+            // عزل الكمية (الرقم) من بداية الطلب
             let firstWordNormalized = words[0].replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
-
-            // إذا كانت الكلمة الأولى رقماً، نسحبها للكمية ونحذفها من اسم الصنف
             if (!isNaN(firstWordNormalized)) {
                 qty = parseFloat(firstWordNormalized) || 1;
-                words.shift(); 
+                words.shift();
             }
 
-            // الصنف: باقي الكلام يتم تجميعه كما جاء تماماً (كوبي بيست)
-            let spokenName = words.join(" ");
-            if (!spokenName) return; 
+            let spokenName = words.join(" ").trim();
+            if (!spokenName) return;
 
-            extractedQueue.push({
-                id: null, // لا يوجد ID لأننا لم نربطه بالمخزن
-                product: null,
-                qty: qty,
-                displayQty: activeProfile === 'inventory' ? "" : qty,
-                name: spokenName, // الصنف ينزل صورة طبق الأصل
-                cleanName: spokenName,
-                price: 0,
-                sellPrice: 0,
-                purchasePrice: 0,
-                score: 100 // نعطيه 100% دائماً لكي تقبله الفاتورة فوراً
-            });
+            let peeledSpoken = this.peeler(spokenName); // توحيد كلام الزبون للمقارنة
+
+            // البحث عن تطابق "تام" في المخزن (بعد توحيد الحروف)
+            let matchedItem = shadowList.find(dbItem => dbItem.peeled === peeledSpoken);
+
+            if (matchedItem) {
+                // الصنف موجود وتطابق بالمللي (مع تجاهل النقط والهمزات) -> هينزل بأسعاره ومعلوماته
+                let pObj = matchedItem.itemObj;
+                let sellP = parseFloat(pObj.sellPrice ?? pObj.price ?? 0) || 0;
+                let buyP = parseFloat(pObj.purchasePrice ?? pObj.buyPrice ?? pObj.costPrice ?? pObj.cost ?? 0) || 0;
+                
+                if (Array.isArray(pObj.lots) && pObj.lots.length > 0) {
+                    let lastLot = pObj.lots[pObj.lots.length - 1];
+                    if (!sellP) sellP = parseFloat(lastLot.sellPrice ?? lastLot.price ?? 0) || 0;
+                    if (!buyP) buyP = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0) || 0;
+                }
+
+                extractedQueue.push({
+                    id: matchedItem.id,
+                    product: pObj,
+                    qty: qty,
+                    displayQty: activeProfile === 'inventory' ? "" : qty,
+                    name: matchedItem.original,
+                    cleanName: matchedItem.original,
+                    price: activeProfile === 'purchases' ? (buyP || sellP) : (sellP || buyP),
+                    sellPrice: sellP,
+                    purchasePrice: buyP,
+                    score: 100, // علامة إنه تطابق تام وناجح
+                    isExactMatch: true
+                });
+            } else {
+                // مفيش تطابق تام بالظبط في المخزن -> نعطيه سكور 0 عشان الشاشة تتجاهله
+                extractedQueue.push({
+                    id: null,
+                    product: null,
+                    qty: qty,
+                    displayQty: activeProfile === 'inventory' ? "" : qty,
+                    name: spokenName,
+                    cleanName: spokenName,
+                    price: 0,
+                    sellPrice: 0,
+                    purchasePrice: 0,
+                    score: 0, // علامة إنه لم يتطابق
+                    isExactMatch: false
+                });
+            }
         });
 
-        // إرجاع الطابور الجاهز للصفحة
         return { queue: extractedQueue, logsHTML: "", activeProfile: activeProfile };
     },
 
