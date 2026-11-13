@@ -87,9 +87,13 @@ function buildAIBrainUI() {
                     <span>🖼️ تم إرفاق صورة</span>
                     <button onclick="clearImage()" style="background:none; border:none; color:red; cursor:pointer;">❌ إلغاء</button>
                 </div>
-                <div class="ai-controls">
+<div class="ai-controls">
                     <input type="file" id="ai-camera-input" accept="image/*">
                     <button id="ai-camera-btn" class="ai-btn" title="تصوير فاتورة">📷</button>
+                    
+                    <!-- الزر الجديد لفتح دردشة Gemini -->
+                    <button id="ai-gemini-link-btn" class="ai-btn" title="دردشة خارجية" style="background: #8b5cf6;">✨</button>
+                    
                     <textarea id="ai-input" placeholder="اسألني أو ارفع فاتورة..."></textarea>
                     <button id="ai-mic-btn" class="ai-btn" title="تحدث بالصوت">🎤</button>
                     <button id="ai-send-btn" class="ai-btn" title="إرسال">➤</button>
@@ -128,6 +132,24 @@ function buildAIBrainUI() {
     
     document.getElementById('ai-camera-btn').addEventListener('click', () => document.getElementById('ai-camera-input').click());
     document.getElementById('ai-camera-input').addEventListener('change', handleImageUpload);
+
+// تفعيل زر جيمناي لفتح الدردشة المخصصة للجهاز
+document.getElementById('ai-gemini-link-btn').addEventListener('click', () => {
+    // قراءة الرابط من ذاكرة الجهاز الحالي
+    const geminiUrl = localStorage.getItem('seraj_gemini_link');
+    
+    if (geminiUrl && geminiUrl.trim() !== "") {
+        // فتح الرابط في صفحة جديدة
+        window.open(geminiUrl, '_blank');
+    } else {
+        // تنبيه في حالة عدم وجود رابط
+        if (typeof SerajAlert === 'function') {
+            SerajAlert("لم يتم تعيين رابط Gemini لهذا الجهاز!<br>يرجى إضافته من شاشة الإعدادات في الصفحة الرئيسية.", "error");
+        } else {
+            alert("لم يتم تعيين رابط Gemini لهذا الجهاز! يرجى إضافته من شاشة الإعدادات في الصفحة الرئيسية.");
+        }
+    }
+});
 
     setupMic();
 }
