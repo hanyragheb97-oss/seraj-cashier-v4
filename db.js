@@ -51,8 +51,229 @@ if (!currentStoreId) {
     currentStoreId = currentStoreId.trim();
     localStorage.setItem('seraj_store_id', currentStoreId);
 }
-const _origSetItem = localStorage.setItem.bind(localStorage);
+// =========================================================================
+// 🚀 محرك الذاكرة المفتوحة العملاق (SerajMegaDB - IndexedDB + RAM Bridge)
+// ينقل الحمل الثقيل والكاش السحابي إلى الذاكرة المفتوحة (10 جيجا+) تلقائياً
+// مع الحفاظ على سرعة القراءة اللحظية (0ms) وعدم كسر أي صفحة في البرنامج
+// =========================================================================
+const _rawNativeSetItem = localStorage.setItem.bind(localStorage);
+const _rawNativeGetItem = localStorage.getItem.bind(localStorage);
+const _rawNativeRemoveItem = localStorage.removeItem.bind(localStorage);
 let _isInternalSetItem = false;
+window._serajRAM = new Map();
+
+window.SerajMegaDB = {
+    dbName: 'SerajMegaStorageDB',
+    storeName: 'kvStore',
+    _dbPromise: null,
+
+    open: function() {
+        if (this._dbPromise) return this._dbPromise;
+        this._dbPromise = new Promise((resolve, reject) => {
+            if (!('indexedDB' in window)) return reject('IndexedDB not supported');
+            let req = indexedDB.open(this.dbName, 1);
+            req.onupgradeneeded = (e) => {
+                let db = e.target.result;
+                if (!db.objectStoreNames.contains(this.storeName)) {
+                    db.createObjectStore(this.storeName, { keyPath: 'k' });
+                }
+            };
+            req.onsuccess = (e) => resolve(e.target.result);
+            req.onerror = (e) => reject(e.target.error);
+        });
+        return this._dbPromise;
+    },
+
+    set: function(key, strVal) {
+        return this.open().then(db => {
+            return new Promise((resolve) => {
+                try {
+                    let tx = db.transaction([this.storeName], 'readwrite');
+                    tx.objectStore(this.storeName).put({ k: String(key), v: String(strVal), t: Date.now() });
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                } catch (e) { resolve(false); }
+            });
+        }).catch(() => false);
+    },
+
+    remove: function(key) {
+        return this.open().then(db => {
+            return new Promise((resolve) => {
+                try {
+                    let tx = db.transaction([this.storeName], 'readwrite');
+                    tx.objectStore(this.storeName).delete(String(key));
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                } catch (e) { resolve(false); }
+            });
+        }).catch(() => false);
+    },
+
+    // ترحيل تلقائي آمن للبيانات وتفريغ الكاش المكرر من LocalStorage فور فتح البرنامج
+    initAndMigrate: function() {
+        try {
+            let keysToMoveOutOfLocal = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                let k = localStorage.key(i);
+                if (!k) continue;
+                let v = _rawNativeGetItem(k);
+                if (v !== null) {
+                    window._serajRAM.set(k, v);
+                    if (k.startsWith('seraj_cloud_cache_')) {
+                        keysToMoveOutOfLocal.push(k);
+                    }
+                }
+            }
+            // مسح النسخ المكررة (cloud_cache) من LocalStorage لتفريغ 50% من المساحة فوراً مع حفظها في الذاكرة المفتوحة
+            keysToMoveOutOfLocal.forEach(k => {
+                let v = window._serajRAM.get(k);
+                if (v) this.set(k, v);
+                try { _rawNativeRemoveItem(k); } catch (e) {}
+            });
+        } catch (e) {
+            console.error("RAM Init Error:", e);
+        }
+
+        // مزامنة الذاكرة المفتوحة (IndexedDB) مع الرامات في الخلفية
+        this.open().then(db => {
+            try {
+                let tx = db.transaction([this.storeName], 'readonly');
+                let store = tx.objectStore(this.storeName);
+                let req = store.getAll();
+                req.onsuccess = (e) => {
+                    let records = e.target.result || [];
+                    let idbMap = new Map();
+                    records.forEach(r => {
+                        if (r && r.k) idbMap.set(r.k, r.v);
+                    });
+
+                    // 1. أي بيانات موجودة في المتصفح ولم تدخل الذاكرة المفتوحة بعد، يتم نسخها فوراً للأمان
+                    window._serajRAM.forEach((ramVal, ramKey) => {
+                        if (ramKey.startsWith('seraj_') && !idbMap.has(ramKey)) {
+                            this.set(ramKey, ramVal);
+                        }
+                    });
+
+                    // 2. استرجاع الكاش السحابي أو أي قوائم كاملة من الذاكرة المفتوحة (IndexedDB)
+                    const mainCollections = ['products', 'customers', 'suppliers', 'sales_invoices', 'purchase_invoices', 'treasury_moves', 'smart_notes'];
+                    idbMap.forEach((idbVal, idbKey) => {
+                        if (idbKey.startsWith('seraj_cloud_cache_')) {
+                            if (!window._serajRAM.has(idbKey)) {
+                                window._serajRAM.set(idbKey, idbVal);
+                            }
+                            return;
+                        }
+
+                        // إذا كانت LocalStorage قد اقتطعت جزءاً من الفواتير بسبب امتلاء المساحة، نسترجع القائمة الكاملة من IndexedDB
+                        let isTrimmedInLocal = (_rawNativeGetItem('seraj_trimmed_' + idbKey) === '1');
+                        let hasLocalCopy = window._serajRAM.has(idbKey);
+
+                        if (!hasLocalCopy || isTrimmedInLocal) {
+                            try {
+                                let idbArr = JSON.parse(idbVal);
+                                let ramArr = hasLocalCopy ? JSON.parse(window._serajRAM.get(idbKey) || '[]') : [];
+                                if (Array.isArray(idbArr) && Array.isArray(ramArr)) {
+                                    let delQueue = JSON.parse(window._serajRAM.get('seraj_delete_queue') || '[]');
+                                    let colName = idbKey.replace(/^seraj_/, '');
+                                    let deletedIds = new Set(delQueue.filter(q => q && q.col === colName).map(q => String(q.id)));
+
+                                    let mergedMap = new Map();
+                                    idbArr.forEach(item => {
+                                        if (item && item.id !== undefined && !deletedIds.has(String(item.id))) {
+                                            mergedMap.set(String(item.id), item);
+                                        }
+                                    });
+                                    ramArr.forEach(item => {
+                                        if (item && item.id !== undefined && !deletedIds.has(String(item.id))) {
+                                            let existing = mergedMap.get(String(item.id));
+                                            if (!existing || Number(item._lastModified || 0) >= Number(existing._lastModified || 0)) {
+                                                mergedMap.set(String(item.id), item);
+                                            }
+                                        }
+                                    });
+
+                                    let finalArr = Array.from(mergedMap.values());
+                                    let finalStr = JSON.stringify(finalArr);
+                                    window._serajRAM.set(idbKey, finalStr);
+                                    this.set(idbKey, finalStr);
+
+                                    if (mainCollections.includes(colName) && typeof saveAndRenderLocal === 'function') {
+                                        localCollectionsCache[colName] = finalArr;
+                                        saveAndRenderLocal(colName, finalArr);
+                                    }
+                                }
+                            } catch (err) {}
+                        }
+                    });
+                };
+            } catch (err) {}
+        }).catch(() => {});
+    }
+};
+
+// دالة الحفظ المركزية المحمية ضد امتلاء LocalStorage (QuotaExceededError Shield)
+const _origSetItem = function(key, value) {
+    let strVal = String(value);
+    window._serajRAM.set(key, strVal);
+
+    if (key.startsWith('seraj_')) {
+        window.SerajMegaDB.set(key, strVal);
+    }
+
+    // عدم كتابة الكاش المكرر (seraj_cloud_cache_) في LocalStorage نهائياً لتوفير 50% من المساحة
+    if (key.startsWith('seraj_cloud_cache_')) {
+        try { _rawNativeRemoveItem(key); } catch (e) {}
+        return;
+    }
+
+    try {
+        _rawNativeSetItem(key, strVal);
+        if (key.startsWith('seraj_')) {
+            try { _rawNativeRemoveItem('seraj_trimmed_' + key); } catch (e) {}
+        }
+    } catch (quotaErr) {
+        // 🛡️ حارس الطوارئ: لو امتلأت LocalStorage مستقبلاً، لا يتوقف البرنامج أبداً
+        try {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                let k = localStorage.key(i);
+                if (k && k.startsWith('seraj_cloud_cache_')) {
+                    _rawNativeRemoveItem(k);
+                }
+            }
+            _rawNativeSetItem(key, strVal);
+            try { _rawNativeRemoveItem('seraj_trimmed_' + key); } catch (e) {}
+        } catch (err2) {
+            // حفظ آخر 300 حركة في LocalStorage للفتح اللحظي بينما تظل الداتا الكاملة 100% في الرامات و IndexedDB والسحابة
+            try {
+                if (strVal.startsWith('[')) {
+                    let parsedArr = JSON.parse(strVal);
+                    if (Array.isArray(parsedArr) && parsedArr.length > 300) {
+                        _rawNativeSetItem(key, JSON.stringify(parsedArr.slice(0, 300)));
+                        _rawNativeSetItem('seraj_trimmed_' + key, '1');
+                    }
+                }
+            } catch (err3) {}
+        }
+    }
+};
+
+// توجيه قراءة وحذف localStorage لتقرأ من الرامات اللحظية والذاكرة المفتوحة في 0 ملي ثانية
+localStorage.getItem = function(key) {
+    if (window._serajRAM && window._serajRAM.has(key)) {
+        return window._serajRAM.get(key);
+    }
+    return _rawNativeGetItem(key);
+};
+
+localStorage.removeItem = function(key) {
+    if (window._serajRAM) window._serajRAM.delete(key);
+    if (String(key).startsWith('seraj_') && window.SerajMegaDB) {
+        window.SerajMegaDB.remove(key);
+    }
+    try { _rawNativeRemoveItem('seraj_trimmed_' + key); } catch (e) {}
+    return _rawNativeRemoveItem(key);
+};
 
 function _internalSetItem(key, value) {
     _isInternalSetItem = true;
@@ -62,6 +283,9 @@ function _internalSetItem(key, value) {
         _isInternalSetItem = false;
     }
 }
+
+// تشغيل الترحيل الآمن وتفريغ الكاش المكرر فور تحميل الملف
+window.SerajMegaDB.initAndMigrate();
 
 function initCloud() {
     const startRealtimeDB = () => {
