@@ -26,7 +26,7 @@
     <div class="main-container customers-container">
         <div class="search-box">
             <span>≡</span>
-            <input type="text" id="customerSearch" placeholder="ابحث باسم العميل واضغط Enter..." oninput="smartSearch()" onkeydown="handleSearchKey(event)" onclick="this.select()">
+            <input type="text" id="customerSearch" placeholder="ابحث باسم العميل واضغط Enter..." oninput="debouncedSearch()" onkeydown="handleSearchKey(event)" onclick="this.select()">
         </div>
         <div class="table-wrapper">
             <table id="mainCustomersTable">
@@ -347,6 +347,9 @@ let activeSelectedVoucher = null;
 let savedScrollPosition = 0;
 let searchTimer;
 
+// دالة بحث ذكية تؤخر الرسم 180 ملي ثانية لمنع تهنيج الكيبورد
+const debouncedSearch = typeof window.debounce === 'function' ? window.debounce(smartSearch, 180) : smartSearch;
+
 document.addEventListener('change', function(e) {
     if (e.target.type === 'number' && e.target.value !== '') {
         e.target.value = parseFloat(e.target.value).toFixed(2);
@@ -559,19 +562,18 @@ function addSmartTouchLogic(tr, customerId) {
 }
 
 function renderCustomersList() {
-    if(typeof DB !== 'undefined') {
-        let allCust = DB.getCustomers() || [];
-        customersDB = allCust.filter(c => c.isDeleted !== true && c.deleted !== true);
-    }
-
     if (document.getElementById('customer-account-view').classList.contains('active-view') && currentActiveCustomerId) {
-        updateAccountSummary(customersDB.find(x => x.id === currentActiveCustomerId));
-        renderAccountTransactions(customersDB.find(x => x.id === currentActiveCustomerId));
+        let activeCust = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+        if(activeCust) {
+            updateAccountSummary(activeCust);
+            renderAccountTransactions(activeCust);
+        }
     }
 
     const rawQuery = document.getElementById('customerSearch').value.trim().toLowerCase();
     const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
     const tbody = document.getElementById('customersTableBody');
+// ... بقية الكود كما هو بدون تغيير
 
     tbody.innerHTML = '';
     document.getElementById('customers-list-view').scrollTop = 0;
