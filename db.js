@@ -4837,5 +4837,84 @@ if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
 
 window.DB.migrateOldData();
 window.DB.applySavedTheme();
+
+// =========================================================================
+// 🛡️ رادار المطابقة الذاتية (Auto-Heal Engine) - ابتكار المهندس هاني
+// يعمل في صمت عند كل ريفريش لمراجعة آخر 100 فاتورة وتعويض أي حركة خزينة سقطت
+// بسبب إغلاق الكاشير للصفحة بسرعة فائقة قبل اكتمال الحفظ
+// =========================================================================
+window.DB.autoHealTreasury = function() {
+    if (this._isCalculatingBalances) return;
+
+    try {
+        // سحب آخر 100 فاتورة بيع وشراء وحركات الخزينة
+        let sales = this.getSalesInvoices(false).slice(0, 100);
+        let purchases = this.getPurchaseInvoices(false).slice(0, 100);
+        let moves = this.getTreasuryMoves(true, true);
+        let healedCount = 0;
+
+        const checkAndHeal = (inv, typeLabel) => {
+            let paidAmt = Math.max(0, parseFloat(inv.initialPaid ?? inv.paid) || 0);
+            
+            // لو الفاتورة فيها فلوس مدفوعة، والرادار لم يجدها في الخزينة
+            if (paidAmt > 0 && !this._hasTreasuryMoveForInvoice(inv, moves)) {
+                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
+                let isPurch = (typeLabel === 'purchase');
+                
+                let finalType = isPurch ? (isReturn ? 'return_purchase' : 'purchase') : (isReturn ? 'return_sale' : 'sales');
+                
+                let addAmt = 0;
+                let dedAmt = 0;
+                
+                if (isPurch) {
+                    addAmt = isReturn ? paidAmt : 0;
+                    dedAmt = isReturn ? 0 : paidAmt;
+                } else {
+                    addAmt = isReturn ? 0 : paidAmt;
+                    dedAmt = isReturn ? paidAmt : 0;
+                }
+
+                // تسجيل الحركة الناقصة أوتوماتيكياً
+                this.recordTreasuryTransaction({
+                    type: finalType,
+                    vault: inv.vault || inv.treasury || inv.paymentMethod || 'main',
+                    amountAdd: addAmt,
+                    amountDeduct: dedAmt,
+                    amount: paidAmt,
+                    date: inv.date,
+                    timestamp: inv.timestamp || Date.now(),
+                    invoiceNo: inv.id,
+                    customerId: inv.customerId || null,
+                    customer: inv.customer || null,
+                    supplierId: inv.supplierId || null,
+                    supplier: inv.supplier || null,
+                    notes: `🔧 تسوية آلية (استدراك): ${isReturn ? 'مرتجع' : 'فاتورة'} ${isPurch ? 'مشتريات' : 'مبيعات'} رقم #${inv.id} (إجمالي: ${inv.total})`
+                });
+                
+                healedCount++;
+            }
+        };
+
+        // فحص الفواتير
+        sales.forEach(inv => checkAndHeal(inv, 'sales'));
+        purchases.forEach(inv => checkAndHeal(inv, 'purchase'));
+
+        // لو تم تصحيح أخطاء، نعيد حساب أرصدة الخزن ونطلق التحديث
+        if (healedCount > 0) {
+            console.log(`🛡️ رادار المطابقة الذاتية: تم إنقاذ وإضافة ${healedCount} حركة خزينة كانت مفقودة!`);
+            this.recalculateVaultBalances(true);
+        }
+    } catch (e) {
+        console.error("Auto-Heal Error:", e);
+    }
+};
+
+// تشغيل رادار المطابقة بعد فتح الصفحة بـ 3 ثوانٍ (عشان ما يعطلش سرعة فتح البرنامج)
+setTimeout(() => {
+    if (window.DB && typeof window.DB.autoHealTreasury === 'function') {
+        window.DB.autoHealTreasury();
+    }
+}, 3000);
+
 initCloud();
 // ==================== [ نهاية الجزء الثالث 3/3 - اكتمل الملف ] ====================
