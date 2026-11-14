@@ -4130,7 +4130,7 @@ getSalesReturns: function(includeCanceled = false) {
 },
 
 getVaults: function() {
-    return safeParseJSON(localStorage.getItem('seraj_vaults_v2'), { main: 0, insta: 0, wallet: 0 });
+    return this.recalculateVaultBalances(true);
 },
 
 saveVaults: function(data) {
