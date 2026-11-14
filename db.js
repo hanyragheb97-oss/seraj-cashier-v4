@@ -3518,13 +3518,17 @@ getSalesInvoices: function(includeCanceled = true) {
 
 saveSalesInvoices: function(data) {
     if (!Array.isArray(data)) return;
-    let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_sales_invoices'), []);
+    // قراءة النسخة المحلية اللحظية أولاً لضمان دقة المقارنة 100% دون تأخير
+    let oldCache = safeParseJSON(localStorage.getItem('seraj_sales_invoices') || localStorage.getItem('seraj_cloud_cache_sales_invoices'), []);
     let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
     let rawCustomers = safeParseJSON(localStorage.getItem('seraj_customers'), []);
     let allMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
     let now = Date.now();
     let newlyCreatedInvoices = [];
     let editedInvoices = [];
+
+    // التأكد أننا لسنا داخل شاشة العملاء أثناء توزيع سند تحصيل
+    let isCustomerScreen = (typeof renderCustomersList === 'function');
 
     let cleanData = data.map(inv => {
         if (!inv) return null;
@@ -3570,7 +3574,8 @@ saveSalesInvoices: function(data) {
                     appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, false);
                 }
 
-                let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
+                // لا نعتبر تغير المدفوع تعديلاً للفاتورة إلا إذا تم من خارج صفحة العملاء
+                let wasEditedInHistory = !isCustomerScreen && (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
                 if (wasEditedInHistory) {
                     cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
                     let disc = parseFloat(cleanInv.discount) || 0;
@@ -3588,11 +3593,10 @@ saveSalesInvoices: function(data) {
                 let oldVault = oldInv.vault || oldInv.treasury || oldInv.paymentMethod || 'main';
                 let newVault = cleanInv.vault || cleanInv.treasury || cleanInv.paymentMethod || 'main';
 
-                // رصد الإلغاء أو التعديل المالي للفاتورة لتسجيله في كاميرا الخزينة
                 if (!oldInv.isCanceled && cleanInv.isCanceled) {
                     editedInvoices.push({ action: 'cancel', oldInv, cleanInv, oldInitPaid, oldIsReturn, oldVault });
-                } else if (!cleanInv.isCanceled && cleanInv.type !== 'quotation') {
-                    if (Math.abs(newInitPaid - oldInitPaid) > 0.009 || oldIsReturn !== newIsReturn || oldVault !== newVault) {
+                } else if (!isCustomerScreen && !cleanInv.isCanceled && cleanInv.type !== 'quotation') {
+                    if (Math.abs(newInitPaid - oldInitPaid) > 0.009 || Math.abs(newTotal - oldTotal) > 0.009 || oldIsReturn !== newIsReturn || oldVault !== newVault) {
                         editedInvoices.push({ action: 'edit', oldInv, cleanInv, oldInitPaid, newInitPaid, oldIsReturn, newIsReturn, oldVault, newVault });
                     }
                 }
@@ -3643,7 +3647,7 @@ saveSalesInvoices: function(data) {
         }, 120);
     }
 
-    // 2. تسجيل تعديلات أو إلغاء الفواتير في كاميرا الخزينة (عكس القديم + إثبات الجديد)
+    // 2. تسجيل تعديلات أو إلغاء الفواتير في كاميرا الخزينة
     if (!this._isCalculatingBalances && editedInvoices.length > 0) {
         setTimeout(() => {
             let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
@@ -3653,28 +3657,24 @@ saveSalesInvoices: function(data) {
                 let invIdStr = String(item.cleanInv.id);
                 let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
 
-                // التأكد أن الشاشة لم تقم بتسجيل حركة عكسية لنفس الفاتورة في آخر 3 ثوانٍ لمنع الازدواجية
                 let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
                 if (recentlyLogged) return;
 
                 if (item.action === 'cancel') {
-                    if (item.oldInitPaid > 0) {
-                        this.recordTreasuryTransaction({
-                            type: 'correction',
-                            vault: item.oldVault,
-                            amountAdd: item.oldIsReturn ? item.oldInitPaid : 0,
-                            amountDeduct: item.oldIsReturn ? 0 : item.oldInitPaid,
-                            amount: item.oldInitPaid,
-                            date: window.Utils.getLocalDateString(tsNow),
-                            timestamp: tsNow + (idx * 2),
-                            invoiceNo: item.cleanInv.id,
-                            customerId: item.cleanInv.customerId || null,
-                            customer: item.cleanInv.customer || null,
-                            notes: `🗑️ إلغاء واسترداد فاتورة مبيعات رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''}`
-                        });
-                    }
+                    this.recordTreasuryTransaction({
+                        type: 'correction',
+                        vault: item.oldVault,
+                        amountAdd: item.oldIsReturn ? item.oldInitPaid : 0,
+                        amountDeduct: item.oldIsReturn ? 0 : item.oldInitPaid,
+                        amount: item.oldInitPaid,
+                        date: window.Utils.getLocalDateString(tsNow),
+                        timestamp: tsNow + (idx * 2),
+                        invoiceNo: item.cleanInv.id,
+                        customerId: item.cleanInv.customerId || null,
+                        customer: item.cleanInv.customer || null,
+                        notes: `🗑️ إلغاء واسترداد فاتورة مبيعات رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''} (المدفوع المسترد: ${item.oldInitPaid})`
+                    });
                 } else if (item.action === 'edit') {
-                    // أ) عكس المبلغ القديم إن وجد
                     if (item.oldInitPaid > 0) {
                         this.recordTreasuryTransaction({
                             type: 'correction',
@@ -3690,7 +3690,6 @@ saveSalesInvoices: function(data) {
                             notes: `🔄 عكس لتعديل فاتورة مبيعات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
                         });
                     }
-                    // ب) تسجيل المبلغ الجديد بعد التعديل
                     let totalAmt = parseFloat(item.cleanInv.total) || 0;
                     this.recordTreasuryTransaction({
                         type: item.newIsReturn ? 'return_sale' : 'sales',
@@ -3734,7 +3733,7 @@ getPurchaseInvoices: function(includeCanceled = true) {
 
 savePurchaseInvoices: function(data, newInvoiceItems = null) {
     if (!Array.isArray(data)) return;
-    let oldCache = safeParseJSON(localStorage.getItem('seraj_cloud_cache_purchase_invoices'), []);
+    let oldCache = safeParseJSON(localStorage.getItem('seraj_purchase_invoices') || localStorage.getItem('seraj_cloud_cache_purchase_invoices'), []);
     let oldMap = new Map(oldCache.map(i => [String(i?.id), i]));
     let rawSuppliers = safeParseJSON(localStorage.getItem('seraj_suppliers'), []);
     let allMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
@@ -3742,6 +3741,9 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
     let autoDetectedNewItems = [];
     let newlyCreatedInvoices = [];
     let editedInvoices = [];
+
+    // التأكد أننا لسنا داخل شاشة الموردين أثناء توزيع سند سداد
+    let isSupplierScreen = (typeof renderSuppliersList === 'function');
 
     let cleanData = data.map(inv => {
         if (!inv) return null;
@@ -3791,7 +3793,7 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
                     appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, true);
                 }
 
-                let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
+                let wasEditedInHistory = !isSupplierScreen && (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
                 if (wasEditedInHistory) {
                     cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
                     let disc = parseFloat(cleanInv.discount) || 0;
@@ -3811,8 +3813,8 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
 
                 if (!oldInv.isCanceled && cleanInv.isCanceled) {
                     editedInvoices.push({ action: 'cancel', oldInv, cleanInv, oldInitPaid, oldIsReturn, oldVault });
-                } else if (!cleanInv.isCanceled && cleanInv.type !== 'quotation') {
-                    if (Math.abs(newInitPaid - oldInitPaid) > 0.009 || oldIsReturn !== newIsReturn || oldVault !== newVault) {
+                } else if (!isSupplierScreen && !cleanInv.isCanceled && cleanInv.type !== 'quotation') {
+                    if (Math.abs(newInitPaid - oldInitPaid) > 0.009 || Math.abs(newTotal - oldTotal) > 0.009 || oldIsReturn !== newIsReturn || oldVault !== newVault) {
                         editedInvoices.push({ action: 'edit', oldInv, cleanInv, oldInitPaid, newInitPaid, oldIsReturn, newIsReturn, oldVault, newVault });
                     }
                 }
@@ -3877,21 +3879,19 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
                 if (recentlyLogged) return;
 
                 if (item.action === 'cancel') {
-                    if (item.oldInitPaid > 0) {
-                        this.recordTreasuryTransaction({
-                            type: 'correction',
-                            vault: item.oldVault,
-                            amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
-                            amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
-                            amount: item.oldInitPaid,
-                            date: window.Utils.getLocalDateString(tsNow),
-                            timestamp: tsNow + (idx * 2),
-                            invoiceNo: item.cleanInv.id,
-                            supplierId: item.cleanInv.supplierId || null,
-                            supplier: item.cleanInv.supplier || null,
-                            notes: `🗑️ إلغاء واسترداد فاتورة مشتريات رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''}`
-                        });
-                    }
+                    this.recordTreasuryTransaction({
+                        type: 'correction',
+                        vault: item.oldVault,
+                        amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
+                        amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
+                        amount: item.oldInitPaid,
+                        date: window.Utils.getLocalDateString(tsNow),
+                        timestamp: tsNow + (idx * 2),
+                        invoiceNo: item.cleanInv.id,
+                        supplierId: item.cleanInv.supplierId || null,
+                        supplier: item.cleanInv.supplier || null,
+                        notes: `🗑️ إلغاء واسترداد فاتورة مشتريات رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''} (المدفوع المسترد: ${item.oldInitPaid})`
+                    });
                 } else if (item.action === 'edit') {
                     if (item.oldInitPaid > 0) {
                         this.recordTreasuryTransaction({
