@@ -1329,7 +1329,9 @@
             container.appendChild(fragment);
         }
 
-// ==========================================
+
+
+        // ==========================================
         // 🔒 قفل التعديل والحذف من سجل الخزينة (كاميرا مراقبة محمية 100%)
         // ==========================================
         function openEditMovementModal() {
@@ -1407,85 +1409,6 @@
             }
         }
 
-        function saveFullExpense() {
-            let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
-            let destination = document.getElementById('fullExpDestination').value.trim();
-            let date = document.getElementById('fullExpDate').value;
-
-            if (amount <= 0) return safeAlert("برجاء إدخال مبلغ صحيح أكبر من الصفر", "error");
-            if (!destination) return safeAlert("برجاء إدخال جهة الصرف (الملاحظات)", "error");
-
-            if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
-                DB.recordTreasuryTransaction({
-                    type: 'expenses',
-                    vault: currentExpVault,
-                    amountAdd: 0,
-                    amountDeduct: amount,
-                    notes: destination,
-                    date: date
-                });
-
-                document.getElementById('fullExpAmount').value = '';
-                document.getElementById('fullExpDestination').value = '';
-                safeAlert("تم تسجيل المصروف بنجاح", "success");
-                updateExpenseVaultUI();
-            } else {
-                safeAlert("خطأ في الاتصال بقاعدة البيانات", "error");
-            }
-        }
-
-        function saveEditedMovement() {
-            let id = document.getElementById('editTrId').value;
-            let amount = parseFloat(document.getElementById('editTrAmount').value) || 0;
-            let notes = document.getElementById('editTrNotes').value.trim();
-            let date = document.getElementById('editTrDate').value;
-            let typeRadio = document.querySelector('input[name="editTrType"]:checked');
-            
-            if (amount <= 0) return safeAlert("برجاء إدخال مبلغ صحيح", "error");
-            if (!notes) return safeAlert("برجاء إدخال الملاحظات", "error");
-
-            let isAdd = typeRadio && typeRadio.value === 'add';
-            let existingM = treasuryMovements.find(x => String(x.id) === String(id));
-            
-            if (!existingM) return;
-
-            let updatedItem = {
-                ...existingM,
-                amountAdd: isAdd ? amount : 0,
-                amountDeduct: isAdd ? 0 : amount,
-                amount: amount,
-                notes: notes,
-                date: date
-            };
-
-            if (typeof DB !== 'undefined' && typeof DB.updateItem === 'function') {
-                // استخدام دالة updateItem المركزية لضمان عمل "كاميرا المراقبة" للحسابات
-                DB.updateItem('treasury_moves', id, updatedItem);
-                document.getElementById('editMovementModal').style.display = 'none';
-                safeAlert("تم حفظ التعديل بنجاح", "success");
-            }
-        }
-
-        function confirmDeleteMovement() {
-            document.getElementById('actionSheetModal').style.display = 'none';
-            if (!selectedMovementId) return;
-            if (!checkAdminPin()) return;
-
-            let m = treasuryMovements.find(x => String(x.id) === String(selectedMovementId));
-            if (!m) return;
-            
-            if (m._isInvoice || m.invoiceNo) return safeAlert("هذه الحركة تخص فاتورة أو سند مسجل، يرجى مسحها من مصدرها (سجل الفواتير أو كشف الحساب) لضمان انضباط حسابات العملاء والموردين.", "error");
-
-            safeConfirm("هل أنت متأكد من حذف هذه الحركة؟ سيتم تسجيل حركة عكسية تلقائياً لضبط الرصيد (نظام المراقبة).").then(yes => {
-                if (yes) {
-                    if (typeof DB !== 'undefined' && typeof DB.deleteItem === 'function') {
-                        // الحذف بوضع soft يضمن عكس القيمة مالياً بدل إخفاء السطر
-                        DB.deleteItem('treasury_moves', selectedMovementId, 'soft');
-                        safeAlert("تم حذف الحركة بنجاح", "success");
-                    }
-                }
-            });
-        }
 
 
         // ==========================================
