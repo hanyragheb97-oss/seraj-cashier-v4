@@ -408,7 +408,7 @@
                 </div>
             </div>
 
-            <div style="text-align: center; font-size: 13px; opacity: 0.85; margin-bottom: 10px;">💡 تلميح: اضغط ضغطتين متتاليتين على أي سطر لفتح خيارات التعديل أو الحذف</div>
+            <div style="text-align: center; font-size: 13px; color: #facc15; opacity: 0.9; margin-bottom: 10px;">🛡️ كاميرا الخزينة: سجل رقابي محمي يسجل كافة الحركات والتعديلات تلقائياً بالثانية</div>
 
             <div class="table-wrapper">
                 <table>
@@ -1094,7 +1094,7 @@
                 if(currentMovementFilter === 'customers') {
                     list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
                 } else if (currentMovementFilter === 'suppliers') {
-                    list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'suppliers');
+                    list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'purchase_payment' || m.type === 'suppliers');
                 } else {
                     list = list.filter(m => m.type === currentMovementFilter);
                 }
@@ -1329,27 +1329,26 @@
             container.appendChild(fragment);
         }
 
+// ==========================================
+        // 🔒 قفل التعديل والحذف من سجل الخزينة (كاميرا مراقبة محمية 100%)
+        // ==========================================
         function openEditMovementModal() {
             document.getElementById('actionSheetModal').style.display = 'none';
-            if(!checkAdminPin()) return; 
-            let m = treasuryMovements.find(x => String(x.id) === String(selectedMovementId));
-            if(!m) return;
-            // حماية صارمة: يمنع تعديل أي مبلغ يخص فاتورة أو سند عميل/مورد لتجنب تدمير الحسابات
-            if(m._isInvoice || m.invoiceNo) return safeAlert("هذه حركة مرتبطة بفاتورة أو سند؛ يتم تعديلها من سجل الفواتير أو كشف الحساب لضمان انضباط حسابات العملاء.", "error");
+            return safeAlert("🔒 سجل الخزينة للمراقبة فقط ومغلق ضد التعديل.\n• لتعديل فاتورة أو سند: ارجع لصفحته الأصلية.\n• لتسوية مبلغ نقدي: استخدم (إضافة / خصم مبلغ) من شاشة الخزينة.", "error");
+        }
 
-            document.getElementById('editTrId').value = m.id;
-            document.getElementById('editTrAmount').value = m.amountAdd > 0 ? m.amountAdd : m.amountDeduct;
-            document.getElementById('editTrNotes').value = m.notes;
-            document.getElementById('editTrDate').value = getLocalDateStr(m.date || m.timestamp) || getLocalDateStr(Date.now());
+        function saveEditedMovement() {
+            document.getElementById('editMovementModal').style.display = 'none';
+            return safeAlert("🔒 سجل الخزينة مغلق ضد التعديل.", "error");
+        }
 
-            if(m.amountAdd > 0) document.getElementById('editTypeAdd').checked = true;
-            else document.getElementById('editTypeDeduct').checked = true;
-
-            document.getElementById('editMovementModal').style.display = 'flex';
+        function confirmDeleteMovement() {
+            document.getElementById('actionSheetModal').style.display = 'none';
+            return safeAlert("🔒 سجل الخزينة للمراقبة فقط ومغلق ضد الحذف.\n• لإلغاء فاتورة أو سند: احذفه من صفحته الأصلية وسيتم عكسه هنا تلقائياً.\n• لتسوية مبلغ: استخدم (إضافة / خصم مبلغ) من شاشة الخزينة.", "error");
         }
 
         // ==========================================
-        // دوال الحفظ، التعديل، والحذف (مرتبطة آلياً بـ db.js)
+        // دوال حفظ الحركات المباشرة والمصروفات (مرتبطة آلياً بـ db.js)
         // ==========================================
         function saveTreasuryTransaction() {
             let amount = parseFloat(document.getElementById('trAmount').value) || 0;
@@ -1372,10 +1371,37 @@
                     date: date
                 });
 
-                document.getElementById('trAmount').value = '';
+                document.getElementById('trAmount').value = '0';
                 document.getElementById('trNotes').value = '';
                 safeAlert("تم حفظ الحركة بالخزينة بنجاح", "success");
                 updateTreasuryUI();
+            } else {
+                safeAlert("خطأ في الاتصال بقاعدة البيانات", "error");
+            }
+        }
+
+        function saveFullExpense() {
+            let amount = parseFloat(document.getElementById('fullExpAmount').value) || 0;
+            let destination = document.getElementById('fullExpDestination').value.trim();
+            let date = document.getElementById('fullExpDate').value;
+
+            if (amount <= 0) return safeAlert("برجاء إدخال مبلغ صحيح أكبر من الصفر", "error");
+            if (!destination) return safeAlert("برجاء إدخال جهة الصرف (الملاحظات)", "error");
+
+            if (typeof DB !== 'undefined' && typeof DB.recordTreasuryTransaction === 'function') {
+                DB.recordTreasuryTransaction({
+                    type: 'expenses',
+                    vault: currentExpVault,
+                    amountAdd: 0,
+                    amountDeduct: amount,
+                    notes: destination,
+                    date: date
+                });
+
+                document.getElementById('fullExpAmount').value = '0';
+                document.getElementById('fullExpDestination').value = '';
+                safeAlert("تم تسجيل المصروف بنجاح", "success");
+                updateExpenseVaultUI();
             } else {
                 safeAlert("خطأ في الاتصال بقاعدة البيانات", "error");
             }
