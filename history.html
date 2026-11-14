@@ -580,8 +580,9 @@
             
             if (filterType === 'delayed') {
                 if (isQuote || isReturn) return false;
-                let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (parseFloat(inv.remaining) || 0);
-                if (rem <= 0 && inv.type !== 'delayed') return false; 
+                let rem = inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (parseFloat(inv.remaining) || 0);
+                // الفاتورة الآجلة هي التي بها متبقي فقط، بغض النظر عن نوعها القديم
+                if (rem <= 0) return false; 
             }
             
             if (searchQuery !== '') {
@@ -613,9 +614,10 @@
     window.renderInvoicesHistory = renderInvoicesHistory;
     function renderInvoicesHistory() {
         if(typeof DB !== 'undefined') {
+            // سحب العملاء أولاً يجبر النظام على مراجعة السندات وتصفير الفواتير المسددة
+            customersDB = DB.getCustomers() || []; 
             invoicesDB = DB.getSalesInvoices(true) || [];
             productsDB = DB.getProducts() || [];
-            customersDB = DB.getCustomers() || [];
         }
 
         const container = document.getElementById('invoiceListContainer');
@@ -674,7 +676,7 @@
             let isCanceled = (inv.isCanceled === true);
             let isReturn = (inv.type === 'return' || inv.type === 'return_sale');
             let isQuote = (inv.type === 'quotation' || inv.type === 'quote');
-            let isDelayed = (!isReturn && !isQuote && (rem > 0 || inv.type === 'delayed'));
+            let isDelayed = (!isReturn && !isQuote && rem > 0);
 
             let badge = isCanceled ? '❌ ملغية' : (isReturn ? '🟠 مرتجع' : isQuote ? '⚫ عرض سعر' : isDelayed ? '🔴 آجل' : '🟢 مسدد');
             let amountClass = (isDelayed || isReturn) ? 'val-red' : (isQuote ? '' : 'val-green');
