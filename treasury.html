@@ -818,9 +818,11 @@
 
 
         function refreshVaultCardsDOM() {
-    // سحب الأرصدة الجاهزة والدقيقة من المحرك المركزي مباشرة
-    if (typeof DB !== 'undefined' && typeof DB.getVaults === 'function') {
-        vaultsDB = DB.getVaults();
+    // إعادة حساب وسحب الأرصدة الحقيقية مباشرة من حركات الخزينة الفعلية
+    if (typeof DB !== 'undefined') {
+        vaultsDB = (typeof DB.recalculateVaultBalances === 'function')
+            ? DB.recalculateVaultBalances(true)
+            : DB.getVaults();
     }
     if (document.getElementById('vaultMainBal')) document.getElementById('vaultMainBal').innerText = (vaultsDB.main || 0).toFixed(2);
     if (document.getElementById('vaultInstaBal')) document.getElementById('vaultInstaBal').innerText = (vaultsDB.insta || 0).toFixed(2);
