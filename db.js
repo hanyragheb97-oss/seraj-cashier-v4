@@ -3524,6 +3524,7 @@ saveSalesInvoices: function(data) {
     let allMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
     let now = Date.now();
     let newlyCreatedInvoices = [];
+    let editedInvoices = [];
 
     let cleanData = data.map(inv => {
         if (!inv) return null;
@@ -3557,16 +3558,20 @@ saveSalesInvoices: function(data) {
                 let newPaid = parseFloat(cleanInv.paid) || 0;
                 let oldTotal = parseFloat(oldInv.total) || 0;
                 let newTotal = parseFloat(cleanInv.total) || 0;
-                let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || (Math.abs(newPaid - oldPaid) > 0.001 && typeof confirmFinalEdit === 'function'));
+                let oldInitPaid = (oldInv.initialPaid !== undefined && oldInv.initialPaid !== null && !isNaN(parseFloat(oldInv.initialPaid)))
+                    ? Math.max(0, parseFloat(oldInv.initialPaid))
+                    : oldPaid;
 
+                let appliedVouchers = 0;
+                let cNorm = window.Utils.normalizeName(cleanInv.customer || cleanInv.customerName || '');
+                let matchedCust = rawCustomers.find(c => c && (String(c.id) === String(cleanInv.customerId) || (cNorm && window.Utils.normalizeName(c.name) === cNorm)));
+                if (matchedCust) {
+                    let validTxs = this._collectUnifiedEntityTransactions(matchedCust, allMoves, false);
+                    appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, false);
+                }
+
+                let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
                 if (wasEditedInHistory) {
-                    let appliedVouchers = 0;
-                    let cNorm = window.Utils.normalizeName(cleanInv.customer || cleanInv.customerName || '');
-                    let matchedCust = rawCustomers.find(c => c && (String(c.id) === String(cleanInv.customerId) || (cNorm && window.Utils.normalizeName(c.name) === cNorm)));
-                    if (matchedCust) {
-                        let validTxs = this._collectUnifiedEntityTransactions(matchedCust, allMoves, false);
-                        appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, false);
-                    }
                     cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
                     let disc = parseFloat(cleanInv.discount) || 0;
                     let remNow = parseFloat(cleanInv.remaining) || 0;
@@ -3575,6 +3580,21 @@ saveSalesInvoices: function(data) {
                 } else {
                     if (cleanInv.initialPaid === undefined && oldInv.initialPaid !== undefined) cleanInv.initialPaid = oldInv.initialPaid;
                     if (cleanInv.initialRemaining === undefined && oldInv.initialRemaining !== undefined) cleanInv.initialRemaining = oldInv.initialRemaining;
+                }
+
+                let newInitPaid = Math.max(0, parseFloat(cleanInv.initialPaid ?? cleanInv.paid) || 0);
+                let oldIsReturn = (oldInv.type === 'return' || oldInv.type === 'return_sale' || oldInv.type === 'sales_return');
+                let newIsReturn = (cleanInv.type === 'return' || cleanInv.type === 'return_sale' || cleanInv.type === 'sales_return');
+                let oldVault = oldInv.vault || oldInv.treasury || oldInv.paymentMethod || 'main';
+                let newVault = cleanInv.vault || cleanInv.treasury || cleanInv.paymentMethod || 'main';
+
+                // رصد الإلغاء أو التعديل المالي للفاتورة لتسجيله في كاميرا الخزينة
+                if (!oldInv.isCanceled && cleanInv.isCanceled) {
+                    editedInvoices.push({ action: 'cancel', oldInv, cleanInv, oldInitPaid, oldIsReturn, oldVault });
+                } else if (!cleanInv.isCanceled && cleanInv.type !== 'quotation') {
+                    if (Math.abs(newInitPaid - oldInitPaid) > 0.009 || oldIsReturn !== newIsReturn || oldVault !== newVault) {
+                        editedInvoices.push({ action: 'edit', oldInv, cleanInv, oldInitPaid, newInitPaid, oldIsReturn, newIsReturn, oldVault, newVault });
+                    }
                 }
             }
 
@@ -3596,33 +3616,99 @@ saveSalesInvoices: function(data) {
     _internalSetItem('seraj_sales_invoices', JSON.stringify(cleanData));
     saveArrayToQueueSafely('sales_invoices', cleanData);
 
-    // نظام كاميرا الخزينة: تسجيل أي فاتورة بيع جديدة (حتى لو آجلة بصفر) في الخزينة إذا لم تكن الشاشة قد سجلتها
-// نظام كاميرا الخزينة: تسجيل أي فاتورة بيع جديدة بعد 120ms لإعطاء الأولوية لحركة الشاشة ومنع التكرار
-if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
-    setTimeout(() => {
-        let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-        newlyCreatedInvoices.forEach(newInv => {
-            if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
-                let isReturn = (newInv.type === 'return' || newInv.type === 'return_sale' || newInv.type === 'sales_return');
-                let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
-                let totalAmt = parseFloat(newInv.total) || 0;
-                this.recordTreasuryTransaction({
-                    type: isReturn ? 'return_sale' : 'sales',
-                    vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
-                    amountAdd: isReturn ? 0 : paidAmt,
-                    amountDeduct: isReturn ? paidAmt : 0,
-                    amount: paidAmt,
-                    date: newInv.date,
-                    timestamp: newInv.timestamp || Date.now(),
-                    invoiceNo: newInv.id,
-                    customerId: newInv.customerId || null,
-                    customer: newInv.customer || null,
-                    notes: `${isReturn ? 'فاتورة مرتجع بيع' : (paidAmt === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${newInv.id}${newInv.customer ? ' - ' + newInv.customer : ''} (إجمالي: ${totalAmt})`
-                });
-            }
-        });
-    }, 120);
-}
+    // 1. تسجيل الفواتير الجديدة في كاميرا الخزينة
+    if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
+        setTimeout(() => {
+            let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            newlyCreatedInvoices.forEach(newInv => {
+                if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
+                    let isReturn = (newInv.type === 'return' || newInv.type === 'return_sale' || newInv.type === 'sales_return');
+                    let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
+                    let totalAmt = parseFloat(newInv.total) || 0;
+                    this.recordTreasuryTransaction({
+                        type: isReturn ? 'return_sale' : 'sales',
+                        vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
+                        amountAdd: isReturn ? 0 : paidAmt,
+                        amountDeduct: isReturn ? paidAmt : 0,
+                        amount: paidAmt,
+                        date: newInv.date,
+                        timestamp: newInv.timestamp || Date.now(),
+                        invoiceNo: newInv.id,
+                        customerId: newInv.customerId || null,
+                        customer: newInv.customer || null,
+                        notes: `${isReturn ? 'فاتورة مرتجع بيع' : (paidAmt === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${newInv.id}${newInv.customer ? ' - ' + newInv.customer : ''} (إجمالي: ${totalAmt})`
+                    });
+                }
+            });
+        }, 120);
+    }
+
+    // 2. تسجيل تعديلات أو إلغاء الفواتير في كاميرا الخزينة (عكس القديم + إثبات الجديد)
+    if (!this._isCalculatingBalances && editedInvoices.length > 0) {
+        setTimeout(() => {
+            let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            let tsNow = Date.now();
+
+            editedInvoices.forEach((item, idx) => {
+                let invIdStr = String(item.cleanInv.id);
+                let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
+
+                // التأكد أن الشاشة لم تقم بتسجيل حركة عكسية لنفس الفاتورة في آخر 3 ثوانٍ لمنع الازدواجية
+                let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
+                if (recentlyLogged) return;
+
+                if (item.action === 'cancel') {
+                    if (item.oldInitPaid > 0) {
+                        this.recordTreasuryTransaction({
+                            type: 'correction',
+                            vault: item.oldVault,
+                            amountAdd: item.oldIsReturn ? item.oldInitPaid : 0,
+                            amountDeduct: item.oldIsReturn ? 0 : item.oldInitPaid,
+                            amount: item.oldInitPaid,
+                            date: window.Utils.getLocalDateString(tsNow),
+                            timestamp: tsNow + (idx * 2),
+                            invoiceNo: item.cleanInv.id,
+                            customerId: item.cleanInv.customerId || null,
+                            customer: item.cleanInv.customer || null,
+                            notes: `🗑️ إلغاء واسترداد فاتورة مبيعات رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''}`
+                        });
+                    }
+                } else if (item.action === 'edit') {
+                    // أ) عكس المبلغ القديم إن وجد
+                    if (item.oldInitPaid > 0) {
+                        this.recordTreasuryTransaction({
+                            type: 'correction',
+                            vault: item.oldVault,
+                            amountAdd: item.oldIsReturn ? item.oldInitPaid : 0,
+                            amountDeduct: item.oldIsReturn ? 0 : item.oldInitPaid,
+                            amount: item.oldInitPaid,
+                            date: window.Utils.getLocalDateString(tsNow),
+                            timestamp: tsNow + (idx * 2),
+                            invoiceNo: item.cleanInv.id,
+                            customerId: item.cleanInv.customerId || null,
+                            customer: item.cleanInv.customer || null,
+                            notes: `🔄 عكس لتعديل فاتورة مبيعات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
+                        });
+                    }
+                    // ب) تسجيل المبلغ الجديد بعد التعديل
+                    let totalAmt = parseFloat(item.cleanInv.total) || 0;
+                    this.recordTreasuryTransaction({
+                        type: item.newIsReturn ? 'return_sale' : 'sales',
+                        vault: item.newVault,
+                        amountAdd: item.newIsReturn ? 0 : item.newInitPaid,
+                        amountDeduct: item.newIsReturn ? item.newInitPaid : 0,
+                        amount: item.newInitPaid,
+                        date: window.Utils.getLocalDateString(tsNow),
+                        timestamp: tsNow + (idx * 2) + 1,
+                        invoiceNo: item.cleanInv.id,
+                        customerId: item.cleanInv.customerId || null,
+                        customer: item.cleanInv.customer || null,
+                        notes: `✏️ بعد التعديل: ${item.newIsReturn ? 'فاتورة مرتجع بيع' : (item.newInitPaid === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''} (إجمالي: ${totalAmt})`
+                    });
+                }
+            });
+        }, 120);
+    }
 
     if (!this._isCalculatingBalances) {
         this.recalculateVaultBalances();
@@ -3655,6 +3741,7 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
     let now = Date.now();
     let autoDetectedNewItems = [];
     let newlyCreatedInvoices = [];
+    let editedInvoices = [];
 
     let cleanData = data.map(inv => {
         if (!inv) return null;
@@ -3692,16 +3779,20 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
                 let newPaid = parseFloat(cleanInv.paid) || 0;
                 let oldTotal = parseFloat(oldInv.total) || 0;
                 let newTotal = parseFloat(cleanInv.total) || 0;
-                let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || (Math.abs(newPaid - oldPaid) > 0.001 && typeof confirmFinalEdit === 'function'));
+                let oldInitPaid = (oldInv.initialPaid !== undefined && oldInv.initialPaid !== null && !isNaN(parseFloat(oldInv.initialPaid)))
+                    ? Math.max(0, parseFloat(oldInv.initialPaid))
+                    : oldPaid;
 
+                let appliedVouchers = 0;
+                let sNorm = window.Utils.normalizeName(cleanInv.supplier || cleanInv.supplierName || '');
+                let matchedSupp = rawSuppliers.find(s => s && (String(s.id) === String(cleanInv.supplierId) || (sNorm && window.Utils.normalizeName(s.name) === sNorm)));
+                if (matchedSupp) {
+                    let validTxs = this._collectUnifiedEntityTransactions(matchedSupp, allMoves, true);
+                    appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, true);
+                }
+
+                let wasEditedInHistory = (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
                 if (wasEditedInHistory) {
-                    let appliedVouchers = 0;
-                    let sNorm = window.Utils.normalizeName(cleanInv.supplier || cleanInv.supplierName || '');
-                    let matchedSupp = rawSuppliers.find(s => s && (String(s.id) === String(cleanInv.supplierId) || (sNorm && window.Utils.normalizeName(s.name) === sNorm)));
-                    if (matchedSupp) {
-                        let validTxs = this._collectUnifiedEntityTransactions(matchedSupp, allMoves, true);
-                        appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, true);
-                    }
                     cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
                     let disc = parseFloat(cleanInv.discount) || 0;
                     let remNow = parseFloat(cleanInv.remaining) || 0;
@@ -3710,6 +3801,20 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
                 } else {
                     if (cleanInv.initialPaid === undefined && oldInv.initialPaid !== undefined) cleanInv.initialPaid = oldInv.initialPaid;
                     if (cleanInv.initialRemaining === undefined && oldInv.initialRemaining !== undefined) cleanInv.initialRemaining = oldInv.initialRemaining;
+                }
+
+                let newInitPaid = Math.max(0, parseFloat(cleanInv.initialPaid ?? cleanInv.paid) || 0);
+                let oldIsReturn = (oldInv.type === 'return' || oldInv.type === 'return_purchase' || oldInv.type === 'purchase_return');
+                let newIsReturn = (cleanInv.type === 'return' || cleanInv.type === 'return_purchase' || cleanInv.type === 'purchase_return');
+                let oldVault = oldInv.vault || oldInv.treasury || oldInv.paymentMethod || 'main';
+                let newVault = cleanInv.vault || cleanInv.treasury || cleanInv.paymentMethod || 'main';
+
+                if (!oldInv.isCanceled && cleanInv.isCanceled) {
+                    editedInvoices.push({ action: 'cancel', oldInv, cleanInv, oldInitPaid, oldIsReturn, oldVault });
+                } else if (!cleanInv.isCanceled && cleanInv.type !== 'quotation') {
+                    if (Math.abs(newInitPaid - oldInitPaid) > 0.009 || oldIsReturn !== newIsReturn || oldVault !== newVault) {
+                        editedInvoices.push({ action: 'edit', oldInv, cleanInv, oldInitPaid, newInitPaid, oldIsReturn, newIsReturn, oldVault, newVault });
+                    }
                 }
             }
 
@@ -3731,32 +3836,96 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
     _internalSetItem('seraj_purchase_invoices', JSON.stringify(cleanData));
     saveArrayToQueueSafely('purchase_invoices', cleanData);
 
-// نظام كاميرا الخزينة: تسجيل أي فاتورة شراء جديدة بعد 120ms لإعطاء الأولوية لحركة الشاشة ومنع التكرار
-if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
-    setTimeout(() => {
-        let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-        newlyCreatedInvoices.forEach(newInv => {
-            if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
-                let isReturn = (newInv.type === 'return' || newInv.type === 'return_purchase' || newInv.type === 'purchase_return');
-                let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
-                let totalAmt = parseFloat(newInv.total) || 0;
-                this.recordTreasuryTransaction({
-                    type: isReturn ? 'return_purchase' : 'purchase',
-                    vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
-                    amountAdd: isReturn ? paidAmt : 0,
-                    amountDeduct: isReturn ? 0 : paidAmt,
-                    amount: paidAmt,
-                    date: newInv.date,
-                    timestamp: newInv.timestamp || Date.now(),
-                    invoiceNo: newInv.id,
-                    supplierId: newInv.supplierId || null,
-                    supplier: newInv.supplier || null,
-                    notes: `${isReturn ? 'فاتورة مرتجع مشتريات' : (paidAmt === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${newInv.id}${newInv.supplier ? ' - ' + newInv.supplier : ''} (إجمالي: ${totalAmt})`
-                });
-            }
-        });
-    }, 120);
-}
+    // 1. تسجيل فواتير الشراء الجديدة في كاميرا الخزينة
+    if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
+        setTimeout(() => {
+            let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            newlyCreatedInvoices.forEach(newInv => {
+                if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
+                    let isReturn = (newInv.type === 'return' || newInv.type === 'return_purchase' || newInv.type === 'purchase_return');
+                    let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
+                    let totalAmt = parseFloat(newInv.total) || 0;
+                    this.recordTreasuryTransaction({
+                        type: isReturn ? 'return_purchase' : 'purchase',
+                        vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
+                        amountAdd: isReturn ? paidAmt : 0,
+                        amountDeduct: isReturn ? 0 : paidAmt,
+                        amount: paidAmt,
+                        date: newInv.date,
+                        timestamp: newInv.timestamp || Date.now(),
+                        invoiceNo: newInv.id,
+                        supplierId: newInv.supplierId || null,
+                        supplier: newInv.supplier || null,
+                        notes: `${isReturn ? 'فاتورة مرتجع مشتريات' : (paidAmt === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${newInv.id}${newInv.supplier ? ' - ' + newInv.supplier : ''} (إجمالي: ${totalAmt})`
+                    });
+                }
+            });
+        }, 120);
+    }
+
+    // 2. تسجيل تعديلات أو إلغاء فواتير الشراء في كاميرا الخزينة
+    if (!this._isCalculatingBalances && editedInvoices.length > 0) {
+        setTimeout(() => {
+            let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+            let tsNow = Date.now();
+
+            editedInvoices.forEach((item, idx) => {
+                let invIdStr = String(item.cleanInv.id);
+                let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
+
+                let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
+                if (recentlyLogged) return;
+
+                if (item.action === 'cancel') {
+                    if (item.oldInitPaid > 0) {
+                        this.recordTreasuryTransaction({
+                            type: 'correction',
+                            vault: item.oldVault,
+                            amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
+                            amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
+                            amount: item.oldInitPaid,
+                            date: window.Utils.getLocalDateString(tsNow),
+                            timestamp: tsNow + (idx * 2),
+                            invoiceNo: item.cleanInv.id,
+                            supplierId: item.cleanInv.supplierId || null,
+                            supplier: item.cleanInv.supplier || null,
+                            notes: `🗑️ إلغاء واسترداد فاتورة مشتريات رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''}`
+                        });
+                    }
+                } else if (item.action === 'edit') {
+                    if (item.oldInitPaid > 0) {
+                        this.recordTreasuryTransaction({
+                            type: 'correction',
+                            vault: item.oldVault,
+                            amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
+                            amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
+                            amount: item.oldInitPaid,
+                            date: window.Utils.getLocalDateString(tsNow),
+                            timestamp: tsNow + (idx * 2),
+                            invoiceNo: item.cleanInv.id,
+                            supplierId: item.cleanInv.supplierId || null,
+                            supplier: item.cleanInv.supplier || null,
+                            notes: `🔄 عكس لتعديل فاتورة مشتريات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
+                        });
+                    }
+                    let totalAmt = parseFloat(item.cleanInv.total) || 0;
+                    this.recordTreasuryTransaction({
+                        type: item.newIsReturn ? 'return_purchase' : 'purchase',
+                        vault: item.newVault,
+                        amountAdd: item.newIsReturn ? item.newInitPaid : 0,
+                        amountDeduct: item.newIsReturn ? 0 : item.newInitPaid,
+                        amount: item.newInitPaid,
+                        date: window.Utils.getLocalDateString(tsNow),
+                        timestamp: tsNow + (idx * 2) + 1,
+                        invoiceNo: item.cleanInv.id,
+                        supplierId: item.cleanInv.supplierId || null,
+                        supplier: item.cleanInv.supplier || null,
+                        notes: `✏️ بعد التعديل: ${item.newIsReturn ? 'فاتورة مرتجع مشتريات' : (item.newInitPaid === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''} (إجمالي: ${totalAmt})`
+                    });
+                }
+            });
+        }, 120);
+    }
 
     if (!this._isCalculatingBalances) {
         this.recalculateVaultBalances();
@@ -3803,7 +3972,7 @@ cleanSmartNotesAfterPurchase: function(newInvoiceItems) {
     }
 },
 
-// فحص ما إذا كانت الفاتورة مسجلة مسبقاً كحركة في seraj_treasury_moves (بالمعرف الكامل أو آخر 5 أرقام أو الملاحظات)
+// فحص ما إذا كانت الفاتورة مسجلة مسبقاً كحركة فاتورة أصلية في الخزينة (مع تجاهل سندات العملاء والموردين)
 _hasTreasuryMoveForInvoice: function(inv, rawMoves) {
     if (!inv || !Array.isArray(rawMoves)) return false;
     let invIdStr = String(inv.id ?? inv.invoiceNo ?? '').trim();
@@ -3812,16 +3981,17 @@ _hasTreasuryMoveForInvoice: function(inv, rawMoves) {
     let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
 
     return rawMoves.some(m => {
-        if (!m) return false;
+        if (!m || m._isReversed || m._isReversal) return false;
+        // الفحص يقتصر على حركات الفواتير فقط ولا ينخدع بسندات التحصيل التي تذكر رقم الفاتورة
+        let isInvoiceMove = ['sales', 'return_sale', 'purchase', 'return_purchase'].includes(m.type);
+        if (!isInvoiceMove) return false;
+
         let mInvNo = String(m.invoiceNo ?? '').trim();
         let mInvShort = mInvNo.length > 5 ? mInvNo.slice(-5) : mInvNo;
-        let mId = String(m.id ?? '').trim();
         if (mInvNo && (mInvNo === invIdStr || mInvNo === invNoStr || (shortId && (mInvNo === shortId || mInvShort === shortId)))) return true;
-        if (mId === invIdStr || mId === invNoStr) return true;
         if (m.notes) {
             let notesStr = String(m.notes);
-            if (notesStr.includes(`#${invIdStr}`) || notesStr.includes(`فاتورة ${invIdStr}`) || notesStr.includes(`فاتورة رقم ${invIdStr}`)) return true;
-            if (shortId && shortId.length >= 4 && (notesStr.includes(`#${shortId}`) || notesStr.includes(`فاتورة ${shortId}`) || notesStr.includes(`فاتورة رقم ${shortId}`))) return true;
+            if (notesStr.includes(`#${invIdStr}`) || (shortId && shortId.length >= 4 && notesStr.includes(`#${shortId}`))) return true;
         }
         return false;
     });
@@ -4837,84 +5007,6 @@ if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'number') {
 
 window.DB.migrateOldData();
 window.DB.applySavedTheme();
-
-// =========================================================================
-// 🛡️ رادار المطابقة الذاتية (Auto-Heal Engine) - ابتكار المهندس هاني
-// يعمل في صمت عند كل ريفريش لمراجعة آخر 100 فاتورة وتعويض أي حركة خزينة سقطت
-// بسبب إغلاق الكاشير للصفحة بسرعة فائقة قبل اكتمال الحفظ
-// =========================================================================
-window.DB.autoHealTreasury = function() {
-    if (this._isCalculatingBalances) return;
-
-    try {
-        // سحب آخر 100 فاتورة بيع وشراء وحركات الخزينة
-        let sales = this.getSalesInvoices(false).slice(0, 100);
-        let purchases = this.getPurchaseInvoices(false).slice(0, 100);
-        let moves = this.getTreasuryMoves(true, true);
-        let healedCount = 0;
-
-        const checkAndHeal = (inv, typeLabel) => {
-            let paidAmt = Math.max(0, parseFloat(inv.initialPaid ?? inv.paid) || 0);
-            
-            // لو الفاتورة فيها فلوس مدفوعة، والرادار لم يجدها في الخزينة
-            if (paidAmt > 0 && !this._hasTreasuryMoveForInvoice(inv, moves)) {
-                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return' || inv.type === 'return_purchase' || inv.type === 'purchase_return');
-                let isPurch = (typeLabel === 'purchase');
-                
-                let finalType = isPurch ? (isReturn ? 'return_purchase' : 'purchase') : (isReturn ? 'return_sale' : 'sales');
-                
-                let addAmt = 0;
-                let dedAmt = 0;
-                
-                if (isPurch) {
-                    addAmt = isReturn ? paidAmt : 0;
-                    dedAmt = isReturn ? 0 : paidAmt;
-                } else {
-                    addAmt = isReturn ? 0 : paidAmt;
-                    dedAmt = isReturn ? paidAmt : 0;
-                }
-
-                // تسجيل الحركة الناقصة أوتوماتيكياً
-                this.recordTreasuryTransaction({
-                    type: finalType,
-                    vault: inv.vault || inv.treasury || inv.paymentMethod || 'main',
-                    amountAdd: addAmt,
-                    amountDeduct: dedAmt,
-                    amount: paidAmt,
-                    date: inv.date,
-                    timestamp: inv.timestamp || Date.now(),
-                    invoiceNo: inv.id,
-                    customerId: inv.customerId || null,
-                    customer: inv.customer || null,
-                    supplierId: inv.supplierId || null,
-                    supplier: inv.supplier || null,
-                    notes: `🔧 تسوية آلية (استدراك): ${isReturn ? 'مرتجع' : 'فاتورة'} ${isPurch ? 'مشتريات' : 'مبيعات'} رقم #${inv.id} (إجمالي: ${inv.total})`
-                });
-                
-                healedCount++;
-            }
-        };
-
-        // فحص الفواتير
-        sales.forEach(inv => checkAndHeal(inv, 'sales'));
-        purchases.forEach(inv => checkAndHeal(inv, 'purchase'));
-
-        // لو تم تصحيح أخطاء، نعيد حساب أرصدة الخزن ونطلق التحديث
-        if (healedCount > 0) {
-            console.log(`🛡️ رادار المطابقة الذاتية: تم إنقاذ وإضافة ${healedCount} حركة خزينة كانت مفقودة!`);
-            this.recalculateVaultBalances(true);
-        }
-    } catch (e) {
-        console.error("Auto-Heal Error:", e);
-    }
-};
-
-// تشغيل رادار المطابقة بعد فتح الصفحة بـ 3 ثوانٍ (عشان ما يعطلش سرعة فتح البرنامج)
-setTimeout(() => {
-    if (window.DB && typeof window.DB.autoHealTreasury === 'function') {
-        window.DB.autoHealTreasury();
-    }
-}, 3000);
 
 initCloud();
 // ==================== [ نهاية الجزء الثالث 3/3 - اكتمل الملف ] ====================
