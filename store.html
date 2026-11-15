@@ -782,17 +782,37 @@
         // ==========================================
         // التحميل والتزامن اللحظي مع السحابة (V4 Clean)
         // ==========================================
-        function safeLoadProducts() {
+        const _arCollator = (typeof Intl !== 'undefined' && Intl.Collator) ? new Intl.Collator('ar') : null;
+
+        // تجهيز فهرس بحث سريع في الرامات لكل صنف مرة واحدة فقط بدلاً من إعادة حسابه مع كل حرف
+        function _prepareProductFastIndex(p) {
+            if (!p) return;
+            if (p._cachedIndexMod !== p._lastModified || p._normName === undefined) {
+                p._normName = getNormalizedName(p.name || '');
+                p._normCat = getNormalizedName(p.category || '');
+                p._normBar = getNormalizedName(p.barcode || '');
+                p._fullSearchStr = p._normName + " " + p._normCat + " " + p._normBar;
+                p._cachedStock = getProductStock(p);
+                p._cachedPrice = getProductPrice(p);
+                p._cachedIndexMod = p._lastModified;
+            }
+        }
+
+        function safeLoadProducts(onlyUnpackDeficits = true) {
             productsDB = DB.getProducts() || [];
             let needsSave = false;
             const nowTs = Date.now();
 
             productsDB.forEach((p) => {
                 if (!p.isDeleted && !p.isArchived) {
-                    if (checkAndRunAutoUnpack(p)) {
-                        p._lastModified = nowTs;
-                        needsSave = true;
+                    // لا نشغل فك الكراتين إلا للأصناف المربوطة بصنف رئيسي ورصيدها سالب فقط لمنع تعديل الـ 2000 صنف دفعة واحدة
+                    if (p.autoParentId && getProductStock(p) < 0) {
+                        if (checkAndRunAutoUnpack(p)) {
+                            p._lastModified = nowTs;
+                            needsSave = true;
+                        }
                     }
+                    _prepareProductFastIndex(p);
                 }
             });
 
@@ -802,10 +822,14 @@
         }
 
         window.addEventListener('seraj:updated', (e) => {
-            const col = e.detail && (e.detail.collection || e.detail.key);
+            const detail = (e && e.detail) ? e.detail : {};
+            const col = detail.collection || detail.key;
+            // تجاهل الأحداث المحلية الصادرة من نفس الصفحة لمنع إعادة التحميل المزدوج
+            if (detail.source === 'local' && col === 'products') return;
+
             if (!col || col === 'products' || col === 'seraj_products' || col === 'sales_invoices' || col === 'seraj_sales_invoices') {
-                safeLoadProducts();
-                window.renderInventoryTable();
+                safeLoadProducts(true);
+                window.renderInventoryTable(false);
 
                 if (document.getElementById('product-details-view').classList.contains('active-view')) {
                     const p = productsDB.find(x => String(x.id) === String(currentActiveProductId));
@@ -827,8 +851,8 @@
                 if (typeof DB.applySavedTheme === 'function') DB.applySavedTheme();
                 if (typeof DB.setActiveVoiceProfile === 'function') DB.setActiveVoiceProfile('inventory');
             }
-            safeLoadProducts();
-            window.renderInventoryTable();
+            safeLoadProducts(true);
+            window.renderInventoryTable(false);
             history.replaceState({ page: 'list' }, '', '');
         };
 
@@ -875,7 +899,7 @@
 
         function goBackSmart(isMainPage = false) {
             if (!isMainPage && document.getElementById('product-details-view').classList.contains('active-view')) {
-                window.renderInventoryTable();
+                window.renderInventoryTable(false);
                 history.back();
             } else {
                 window.location.href = 'index.html';
@@ -884,7 +908,7 @@
 
         window.addEventListener('popstate', function() {
             if (document.getElementById('product-details-view').classList.contains('active-view')) {
-                window.renderInventoryTable();
+                window.renderInventoryTable(false);
                 switchView('inventory-list-view');
             }
         });
@@ -919,7 +943,7 @@
         function sortInventory(field) {
             if (currentSortField === field) currentSortAsc = !currentSortAsc;
             else { currentSortField = field; currentSortAsc = false; }
-            window.renderInventoryTable();
+            window.renderInventoryTable(false);
         }
 
         function addSmartTouchLogic(tr, productId) {
@@ -958,51 +982,51 @@
         }
 
         let _renderInventoryDebounceTimer = null;
-        window.renderInventoryTable = function() {
+        let _imageLoadDebounceTimer = null;
+
+        window.renderInventoryTable = function(isTypingSearch = false) {
             if (_renderInventoryDebounceTimer) clearTimeout(_renderInventoryDebounceTimer);
             _renderInventoryDebounceTimer = setTimeout(() => {
                 _renderInventoryDebounceTimer = null;
-                _executeRenderInventoryTable();
-            }, 35);
+                _executeRenderInventoryTable(isTypingSearch);
+            }, isTypingSearch ? 10 : 30);
         };
 
-        function _executeRenderInventoryTable() {
+        function _executeRenderInventoryTable(isTypingSearch = false) {
             if (typeof window.renderLimit !== 'number' || window.renderLimit <= 0) window.renderLimit = 50;
-            if (typeof DB !== 'undefined') productsDB = DB.getProducts() || [];
+            if (!Array.isArray(productsDB) || productsDB.length === 0) {
+                if (typeof DB !== 'undefined') productsDB = DB.getProducts() || [];
+            }
 
             const rawQuery = getNormalizedName(document.getElementById('inventorySearch').value || '');
-            const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
+            const searchWords = rawQuery ? rawQuery.split(' ').filter(Boolean) : [];
 
             const tbody = document.getElementById('inventoryTableBody');
             tbody.innerHTML = '';
             
             let filtered = [];
-            const activeProducts = productsDB.filter(p => !p.isDeleted && !p.isArchived);
 
-            if (searchWords.length === 0) {
-                filtered = activeProducts.map(p => ({ product: p, score: 0 }));
-            } else {
-                filtered = activeProducts.map(p => {
-                    let pName = getNormalizedName(p.name || '');
-                    let pCat = getNormalizedName(p.category || '');
-                    let pBar = getNormalizedName(p.barcode || '');
-                    let fullString = pName + " " + pCat + " " + pBar;
+            for (let i = 0; i < productsDB.length; i++) {
+                const p = productsDB[i];
+                if (!p || p.isDeleted || p.isArchived) continue;
+                _prepareProductFastIndex(p);
 
+                if (searchWords.length === 0) {
+                    filtered.push({ product: p, score: 0 });
+                } else {
                     let score = 0;
                     let allMatched = true;
-                    searchWords.forEach(word => {
-                        if (fullString.includes(word)) score += 1;
-                        else allMatched = false;
-                    });
-
-                    if (!allMatched) score = 0;
-                    else {
-                        if (pName === rawQuery || pBar === rawQuery) score += 10;
-                        else if (pName.startsWith(rawQuery)) score += 5;
-                        else if (pName.startsWith(searchWords[0])) score += 2;
+                    for (let w = 0; w < searchWords.length; w++) {
+                        if (p._fullSearchStr.includes(searchWords[w])) score += 1;
+                        else { allMatched = false; break; }
                     }
-                    return { product: p, score: score };
-                }).filter(item => item.score > 0);
+                    if (allMatched && score > 0) {
+                        if (p._normName === rawQuery || p._normBar === rawQuery) score += 10;
+                        else if (p._normName.startsWith(rawQuery)) score += 5;
+                        else if (p._normName.startsWith(searchWords[0])) score += 2;
+                        filtered.push({ product: p, score: score });
+                    }
+                }
             }
 
             filtered.sort((a, b) => {
@@ -1011,11 +1035,14 @@
                 }
                 let valA = a.product, valB = b.product;
                 if (currentSortField === 'name') {
-                    return currentSortAsc ? String(valA.name).localeCompare(String(valB.name), 'ar') : String(valB.name).localeCompare(String(valA.name), 'ar');
+                    if (_arCollator) {
+                        return currentSortAsc ? _arCollator.compare(valA._normName, valB._normName) : _arCollator.compare(valB._normName, valA._normName);
+                    }
+                    return currentSortAsc ? (valA._normName > valB._normName ? 1 : -1) : (valB._normName > valA._normName ? 1 : -1);
                 } else if (currentSortField === 'stock') {
-                    return currentSortAsc ? getProductStock(valA) - getProductStock(valB) : getProductStock(valB) - getProductStock(valA);
+                    return currentSortAsc ? valA._cachedStock - valB._cachedStock : valB._cachedStock - valA._cachedStock;
                 } else if (currentSortField === 'price') {
-                    return currentSortAsc ? getProductPrice(valA) - getProductPrice(valB) : getProductPrice(valB) - getProductPrice(valA);
+                    return currentSortAsc ? valA._cachedPrice - valB._cachedPrice : valB._cachedPrice - valA._cachedPrice;
                 }
                 return 0;
             });
@@ -1033,8 +1060,8 @@
                 const tr = document.createElement('tr');
                 addSmartTouchLogic(tr, p.id);
 
-                const totalStock = getProductStock(p);
-                const displayPrice = getProductPrice(p);
+                const totalStock = p._cachedStock;
+                const displayPrice = p._cachedPrice;
                 
                 const imgHtml = p.hasImage ? `<img id="img_thumb_${p.id}" class="product-thumb-img" loading="lazy" src="" alt="صورة" onclick="showFullImage(event, '${p.id}')" style="display:none;" hidden>` : '';
 
@@ -1064,26 +1091,30 @@
 
             tbody.appendChild(fragment);
             
-            if (window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
-                visibleItems.forEach(item => {
-                    if (item.product.hasImage) {
-                        let imgEl = document.getElementById(`img_thumb_${item.product.id}`);
-                        if (imgEl) {
-                            window.ImagesDB.getImage(item.product.id, imgEl).then(blob => {
-                                if (blob) {
-                                    imgEl.hidden = false;
-                                    imgEl.style.display = '';
-                                }
-                            });
+            // تأجيل سحب الصور من IndexedDB لمدة 200ms أثناء الكتابة السريعة لعدم إشغال الكيبورد
+            if (_imageLoadDebounceTimer) clearTimeout(_imageLoadDebounceTimer);
+            _imageLoadDebounceTimer = setTimeout(() => {
+                if (window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
+                    visibleItems.forEach(item => {
+                        if (item.product.hasImage) {
+                            let imgEl = document.getElementById(`img_thumb_${item.product.id}`);
+                            if (imgEl) {
+                                window.ImagesDB.getImage(item.product.id, imgEl).then(blob => {
+                                    if (blob) {
+                                        imgEl.hidden = false;
+                                        imgEl.style.display = '';
+                                    }
+                                });
+                            }
                         }
-                    }
-                });
-            }
+                    });
+                }
+            }, isTypingSearch ? 200 : 20);
         }
 
         function loadMoreInventory() {
             renderLimit += 50;
-            window.renderInventoryTable();
+            window.renderInventoryTable(false);
         }
 
         let searchTimer;
@@ -1094,8 +1125,8 @@
                 const listView = document.getElementById('inventory-list-view');
                 if (listView) listView.scrollTop = 0;
                 savedScrollPosition = 0;
-                window.renderInventoryTable();
-            }, 150);
+                _executeRenderInventoryTable(true);
+            }, 120);
         }
 
         // ==========================================
