@@ -1284,38 +1284,60 @@ function processDeleteQueue() {
     });
 }
 
+let _isSyncBatchRunning = false;
+let _nextBatchTimer = null;
+
 function processSyncQueue() {
-    if (!cloudReady || !navigator.onLine || !window.dbCloud) return;
+    if (!cloudReady || !navigator.onLine || !window.dbCloud || _isSyncBatchRunning) return;
     let activeStoreId = localStorage.getItem('seraj_store_id') || currentStoreId || 'DemoStore';
     let queue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
     if (queue.length === 0) return;
 
-    showCloudStatus("⏳ جاري مزامنة التعديلات للسحابة...");
+    _isSyncBatchRunning = true;
+    if (_nextBatchTimer) {
+        clearTimeout(_nextBatchTimer);
+        _nextBatchTimer = null;
+    }
 
-    let batch = queue.slice(0, 30);
+    showCloudStatus(`⏳ جاري مزامنة التعديلات (${queue.length})...`);
+
+    // رفع 80 عنصراً في حزمة واحدة (Multi-path update) بكتابة محلية واحدة فقط لمنع أي تهنيج
+    let batch = queue.slice(0, 80);
+    let updatesObj = {};
+    let processedSet = new Set();
+
     batch.forEach(q => {
-        if (!q.data || q.data.id === undefined) return;
-        let lockKey = q.col + '_' + String(q.data.id);
-        if (_inFlightSyncKeys.has(lockKey)) return;
-        _inFlightSyncKeys.add(lockKey);
-
+        if (!q || !q.col || !q.data || q.data.id === undefined) return;
         let safeId = String(q.data.id).replace(/[.#$\[\]]/g, "_");
-        let cloudRefName = 'test_Stores/' + activeStoreId + '/' + q.col + '/' + safeId;
-
-        window.dbCloud.ref(cloudRefName).set(q.data)
-            .then(() => {
-                _inFlightSyncKeys.delete(lockKey);
-                let currentQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
-                currentQueue = currentQueue.filter(item => !(item.col === q.col && String(item.data?.id) === String(q.data.id)));
-                _internalSetItem('seraj_sync_queue', JSON.stringify(currentQueue));
-                if (currentQueue.length > 0) {
-                    setTimeout(() => processSyncQueue(), 250);
-                }
-            }).catch(e => {
-                _inFlightSyncKeys.delete(lockKey);
-                console.error("Sync Error", e);
-            });
+        updatesObj[q.col + '/' + safeId] = q.data;
+        processedSet.add(q.col + '_' + String(q.data.id));
     });
+
+    if (processedSet.size === 0) {
+        _internalSetItem('seraj_sync_queue', '[]');
+        _isSyncBatchRunning = false;
+        return;
+    }
+
+    window.dbCloud.ref('test_Stores/' + activeStoreId).update(updatesObj)
+        .then(() => {
+            let currentQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
+            let remainingQueue = currentQueue.filter(item => {
+                if (!item || !item.col || !item.data || item.data.id === undefined) return false;
+                return !processedSet.has(item.col + '_' + String(item.data.id));
+            });
+            _internalSetItem('seraj_sync_queue', JSON.stringify(remainingQueue));
+            _isSyncBatchRunning = false;
+
+            if (remainingQueue.length > 0) {
+                _nextBatchTimer = setTimeout(() => processSyncQueue(), 400);
+            } else {
+                showCloudStatus("✅ اكتملت المزامنة السحابية بنجاح");
+            }
+        }).catch(e => {
+            _isSyncBatchRunning = false;
+            console.error("Sync Error", e);
+        });
 }
 
 window.addEventListener('online', () => {
