@@ -784,29 +784,40 @@
         // ==========================================
         const _arCollator = (typeof Intl !== 'undefined' && Intl.Collator) ? new Intl.Collator('ar') : null;
 
-        // تجهيز فهرس بحث سريع في الرامات لكل صنف مرة واحدة فقط بدلاً من إعادة حسابه مع كل حرف
+        // تجهيز فهرس بحث سريع في الرامات فقط (enumerable: false) حتى لا يُحفظ في LocalStorage أو السحابة أبداً
         function _prepareProductFastIndex(p) {
-            if (!p) return;
-            if (p._cachedIndexMod !== p._lastModified || p._normName === undefined) {
-                p._normName = getNormalizedName(p.name || '');
-                p._normCat = getNormalizedName(p.category || '');
-                p._normBar = getNormalizedName(p.barcode || '');
-                p._fullSearchStr = p._normName + " " + p._normCat + " " + p._normBar;
-                p._cachedStock = getProductStock(p);
-                p._cachedPrice = getProductPrice(p);
-                p._cachedIndexMod = p._lastModified;
+            if (!p) return null;
+            let idx = p._fastIdx;
+            if (!idx || idx.mod !== p._lastModified) {
+                let nName = getNormalizedName(p.name || '');
+                let nCat = getNormalizedName(p.category || '');
+                let nBar = getNormalizedName(p.barcode || '');
+                idx = {
+                    normName: nName,
+                    normCat: nCat,
+                    normBar: nBar,
+                    fullStr: nName + " " + nCat + " " + nBar,
+                    stock: getProductStock(p),
+                    price: getProductPrice(p),
+                    mod: p._lastModified
+                };
+                try {
+                    Object.defineProperty(p, '_fastIdx', { value: idx, writable: true, configurable: true, enumerable: false });
+                } catch (e) {}
             }
+            return idx;
         }
 
-        function safeLoadProducts(onlyUnpackDeficits = true) {
+        function safeLoadProducts() {
             productsDB = DB.getProducts() || [];
             let needsSave = false;
             const nowTs = Date.now();
 
             productsDB.forEach((p) => {
                 if (!p.isDeleted && !p.isArchived) {
-                    // لا نشغل فك الكراتين إلا للأصناف المربوطة بصنف رئيسي ورصيدها سالب فقط لمنع تعديل الـ 2000 صنف دفعة واحدة
-                    if (p.autoParentId && getProductStock(p) < 0) {
+                    // تشغيل فك الكراتين أو دمج الدفعة السالبة فقط للصنف الذي يحتاجها فعلياً دون لمس الـ 2000 صنف
+                    const hasNegLot = Array.isArray(p.lots) && p.lots.length > 1 && p.lots.some(l => (parseFloat(l.stock) || 0) < 0);
+                    if ((p.autoParentId && getProductStock(p) < 0) || hasNegLot) {
                         if (checkAndRunAutoUnpack(p)) {
                             p._lastModified = nowTs;
                             needsSave = true;
@@ -824,11 +835,10 @@
         window.addEventListener('seraj:updated', (e) => {
             const detail = (e && e.detail) ? e.detail : {};
             const col = detail.collection || detail.key;
-            // تجاهل الأحداث المحلية الصادرة من نفس الصفحة لمنع إعادة التحميل المزدوج
             if (detail.source === 'local' && col === 'products') return;
 
             if (!col || col === 'products' || col === 'seraj_products' || col === 'sales_invoices' || col === 'seraj_sales_invoices') {
-                safeLoadProducts(true);
+                safeLoadProducts();
                 window.renderInventoryTable(false);
 
                 if (document.getElementById('product-details-view').classList.contains('active-view')) {
@@ -851,7 +861,7 @@
                 if (typeof DB.applySavedTheme === 'function') DB.applySavedTheme();
                 if (typeof DB.setActiveVoiceProfile === 'function') DB.setActiveVoiceProfile('inventory');
             }
-            safeLoadProducts(true);
+            safeLoadProducts();
             window.renderInventoryTable(false);
             history.replaceState({ page: 'list' }, '', '');
         };
@@ -1009,22 +1019,22 @@
             for (let i = 0; i < productsDB.length; i++) {
                 const p = productsDB[i];
                 if (!p || p.isDeleted || p.isArchived) continue;
-                _prepareProductFastIndex(p);
+                const idx = _prepareProductFastIndex(p);
 
                 if (searchWords.length === 0) {
-                    filtered.push({ product: p, score: 0 });
+                    filtered.push({ product: p, idx: idx, score: 0 });
                 } else {
                     let score = 0;
                     let allMatched = true;
                     for (let w = 0; w < searchWords.length; w++) {
-                        if (p._fullSearchStr.includes(searchWords[w])) score += 1;
+                        if (idx.fullStr.includes(searchWords[w])) score += 1;
                         else { allMatched = false; break; }
                     }
                     if (allMatched && score > 0) {
-                        if (p._normName === rawQuery || p._normBar === rawQuery) score += 10;
-                        else if (p._normName.startsWith(rawQuery)) score += 5;
-                        else if (p._normName.startsWith(searchWords[0])) score += 2;
-                        filtered.push({ product: p, score: score });
+                        if (idx.normName === rawQuery || idx.normBar === rawQuery) score += 10;
+                        else if (idx.normName.startsWith(rawQuery)) score += 5;
+                        else if (idx.normName.startsWith(searchWords[0])) score += 2;
+                        filtered.push({ product: p, idx: idx, score: score });
                     }
                 }
             }
@@ -1033,16 +1043,16 @@
                 if (searchWords.length > 0 && b.score !== a.score) {
                     return b.score - a.score;
                 }
-                let valA = a.product, valB = b.product;
+                let idxA = a.idx, idxB = b.idx;
                 if (currentSortField === 'name') {
                     if (_arCollator) {
-                        return currentSortAsc ? _arCollator.compare(valA._normName, valB._normName) : _arCollator.compare(valB._normName, valA._normName);
+                        return currentSortAsc ? _arCollator.compare(idxA.normName, idxB.normName) : _arCollator.compare(idxB.normName, idxA.normName);
                     }
-                    return currentSortAsc ? (valA._normName > valB._normName ? 1 : -1) : (valB._normName > valA._normName ? 1 : -1);
+                    return currentSortAsc ? (idxA.normName > idxB.normName ? 1 : -1) : (idxB.normName > idxA.normName ? 1 : -1);
                 } else if (currentSortField === 'stock') {
-                    return currentSortAsc ? valA._cachedStock - valB._cachedStock : valB._cachedStock - valA._cachedStock;
+                    return currentSortAsc ? idxA.stock - idxB.stock : idxB.stock - idxA.stock;
                 } else if (currentSortField === 'price') {
-                    return currentSortAsc ? valA._cachedPrice - valB._cachedPrice : valB._cachedPrice - valA._cachedPrice;
+                    return currentSortAsc ? idxA.price - idxB.price : idxB.price - idxA.price;
                 }
                 return 0;
             });
@@ -1057,11 +1067,12 @@
 
             visibleItems.forEach(item => {
                 const p = item.product;
+                const idx = item.idx;
                 const tr = document.createElement('tr');
                 addSmartTouchLogic(tr, p.id);
 
-                const totalStock = p._cachedStock;
-                const displayPrice = p._cachedPrice;
+                const totalStock = idx.stock;
+                const displayPrice = idx.price;
                 
                 const imgHtml = p.hasImage ? `<img id="img_thumb_${p.id}" class="product-thumb-img" loading="lazy" src="" alt="صورة" onclick="showFullImage(event, '${p.id}')" style="display:none;" hidden>` : '';
 
@@ -1091,7 +1102,6 @@
 
             tbody.appendChild(fragment);
             
-            // تأجيل سحب الصور من IndexedDB لمدة 200ms أثناء الكتابة السريعة لعدم إشغال الكيبورد
             if (_imageLoadDebounceTimer) clearTimeout(_imageLoadDebounceTimer);
             _imageLoadDebounceTimer = setTimeout(() => {
                 if (window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
