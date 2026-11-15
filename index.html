@@ -26,11 +26,8 @@
 
 <link rel="stylesheet" href="style.css">
 
-<!-- استدعاء ملفات السحابة (Firebase) -->
-
+<!-- استدعاء ملفات السحابة (Firebase) يتم إدارته تلقائياً عبر db.js -->
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" defer></script>
-
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" defer></script>
 
 
 <style>
@@ -510,114 +507,170 @@ animation: pulse-alert 2s infinite;
         </div>
     </div>
 
-    <!-- استدعاء ملفات السكربت -->
+    <!-- استدعاء المحرك المركزي فقط (يحتوي على SmartVoice V4 المدمج) -->
     <script src="db.js"></script>
-    <script src="ai_brain.js?v=600"></script>
     
     <script>
+        function notifyMain(msg, type = 'info', cb = null) {
+            if (typeof window.SerajAlert === 'function') {
+                return window.SerajAlert(msg, type, cb);
+            } else {
+                alert(msg);
+                if (typeof cb === 'function') cb();
+            }
+        }
 
+        function closeSidebarExplicit() {
+            let sidebar = document.getElementById('main-sidebar');
+            let overlay = document.getElementById('sidebar-overlay');
+            if (sidebar) sidebar.style.right = '-300px';
+            if (overlay) overlay.style.display = 'none';
+        }
 
         function toggleSidebar() {
             let sidebar = document.getElementById('main-sidebar');
             let overlay = document.getElementById('sidebar-overlay');
             if (sidebar.style.right === '0px') {
-                sidebar.style.right = '-300px';
-                overlay.style.display = 'none';
+                closeSidebarExplicit();
             } else {
                 sidebar.style.right = '0px';
                 overlay.style.display = 'block';
+                history.pushState({ uiOpen: 'sidebar' }, '');
+            }
+        }
+
+        function syncCentralStoreSettings() {
+            if (window.DB && typeof window.DB.getStoreSettings === 'function' && typeof window.DB.saveStoreSettings === 'function') {
+                let current = window.DB.getStoreSettings();
+                let sName = localStorage.getItem('seraj_store_name');
+                let sFooter = localStorage.getItem('seraj_receipt_footer');
+                window.DB.saveStoreSettings({
+                    ...current,
+                    shopName: sName || current.shopName || 'سراج كاشير',
+                    footerNote: sFooter !== null ? sFooter : (current.footerNote || 'شكراً لزيارتكم')
+                });
             }
         }
 
         function backupData() {
             let dataObj = {};
+            // جمع كافة المفاتيح من الرامات المركزية و localStorage مع استبعاد الكاش المكرر
+            if (window._serajRAM && window._serajRAM instanceof Map) {
+                window._serajRAM.forEach((val, key) => {
+                    if (!key.startsWith('seraj_cloud_cache_') && !key.startsWith('seraj_trimmed_')) {
+                        dataObj[key] = val;
+                    }
+                });
+            }
             for (let i = 0; i < localStorage.length; i++) {
                 let key = localStorage.key(i);
-                dataObj[key] = localStorage.getItem(key);
+                if (key && !key.startsWith('seraj_cloud_cache_') && !key.startsWith('seraj_trimmed_') && !(key in dataObj)) {
+                    dataObj[key] = localStorage.getItem(key);
+                }
             }
-            let dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataObj, null, 2));
+            let localDate = (window.Utils && typeof window.Utils.getLocalDateString === 'function')
+                ? window.Utils.getLocalDateString()
+                : new Date().toISOString().slice(0, 10);
+
+            let blob = new Blob([JSON.stringify(dataObj, null, 2)], { type: "application/json;charset=utf-8" });
+            let url = URL.createObjectURL(blob);
             let downloadAnchorNode = document.createElement('a');
-            downloadAnchorNode.setAttribute("href", dataStr);
-            downloadAnchorNode.setAttribute("download", "Seraj_Backup_" + new Date().toISOString().slice(0,10) + ".json");
+            downloadAnchorNode.setAttribute("href", url);
+            downloadAnchorNode.setAttribute("download", "Seraj_Backup_" + localDate + ".json");
             document.body.appendChild(downloadAnchorNode); 
             downloadAnchorNode.click();
             downloadAnchorNode.remove();
-            alert("تم تحميل نسخة من الإعدادات والبيانات على جهازك بنجاح! 💾");
+            setTimeout(() => URL.revokeObjectURL(url), 2000);
+            notifyMain("تم تحميل نسخة كاملة من الإعدادات والبيانات على جهازك بنجاح! 💾", "success");
         }
             
         function restoreData(event) {
             let file = event.target.files[0];
             if (!file) return;
             let reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = async function(e) {
                 try {
                     let dataObj = JSON.parse(e.target.result);
+                    let idbPromises = [];
+
                     for (let key in dataObj) {
-                        localStorage.setItem(key, dataObj[key]);
+                        if (key.startsWith('seraj_cloud_cache_') || key.startsWith('seraj_trimmed_')) continue;
+                        let strVal = typeof dataObj[key] === 'string' ? dataObj[key] : JSON.stringify(dataObj[key]);
+                        localStorage.setItem(key, strVal);
+                        if (key.startsWith('seraj_') && window.SerajMegaDB && typeof window.SerajMegaDB.set === 'function') {
+                            idbPromises.push(window.SerajMegaDB.set(key, strVal));
+                        }
                     }
-                    alert("تم استرجاع البيانات بنجاح! 🎊\nسيتم إعادة تحميل البرنامج لتطبيق إعداداتك الجديدة.");
-                    window.location.reload();
+
+                    // انتظار اكتمال الحفظ في الذاكرة المفتوحة IndexedDB قبل إعادة التحميل لمنع ضياع البيانات
+                    if (idbPromises.length > 0) {
+                        await Promise.all(idbPromises);
+                    }
+
+                    notifyMain("تم استرجاع البيانات بنجاح! 🎊\nسيتم إعادة تحميل البرنامج لتطبيق إعداداتك الجديدة.", "success", () => {
+                        window.location.reload();
+                    });
                 } catch (error) {
-                    alert("❌ عذراً، حدث خطأ! تأكد من أنك قمت باختيار ملف النسخة الاحتياطية الصحيح.");
+                    notifyMain("❌ عذراً، حدث خطأ! تأكد من أنك قمت باختيار ملف النسخة الاحتياطية الصحيح.", "error");
+                } finally {
+                    event.target.value = '';
                 }
             };
             reader.readAsText(file);
         } 
 
-// ==========================================
-    // هنا بتحط الكود الجديد بتاع الطابعة (جوه الـ script)
-    // ==========================================
-    
-    // 1. دالة فتح النافذة المدمجة
-    function openPrinterSettings() {
-        if(typeof toggleSidebar === 'function') { toggleSidebar(); }
-        let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
-        let connType = localStorage.getItem('seraj_printer_type') || 'usb';
-        let storeName = localStorage.getItem('seraj_store_name') || 'سراج ستور';
-        let footerMsg = localStorage.getItem('seraj_receipt_footer') || '';
-        document.getElementById('printModeSelect').value = printSetting;
-        document.getElementById('printer-type').value = connType;
-        document.getElementById('printerStoreName').value = storeName;
-        document.getElementById('invoice-footer-text').value = footerMsg;
-        document.getElementById('printerSettingsModal').style.display = 'flex';
-    }
+        // ==========================================
+        // إعدادات الطابعة الشاملة والمدمجة
+        // ==========================================
+        function openPrinterSettings() {
+            // لا نستدعي toggleSidebar هنا لأن زر الـ HTML يستدعيها بالفعل، فنمنع فتح القائمة مرتين
+            let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
+            let connType = localStorage.getItem('seraj_printer_type') || 'usb';
+            let storeName = localStorage.getItem('seraj_store_name') || 'سراج ستور';
+            let footerMsg = localStorage.getItem('seraj_receipt_footer') || '';
+            document.getElementById('printModeSelect').value = printSetting;
+            document.getElementById('printer-type').value = connType;
+            document.getElementById('printerStoreName').value = storeName;
+            document.getElementById('invoice-footer-text').value = footerMsg;
+            document.getElementById('printerSettingsModal').style.display = 'flex';
+            history.pushState({ uiOpen: 'printerModal' }, '');
+        }
 
-    // 2. دالة الإغلاق
-    function closePrinterSettings() {
-        document.getElementById('printerSettingsModal').style.display = 'none';
-    }
+        function closePrinterSettings() {
+            document.getElementById('printerSettingsModal').style.display = 'none';
+        }
 
-    // 3. دالة الحفظ المدمجة
-    function savePrinterSettings() {
-        let mode = document.getElementById('printModeSelect').value;
-        let type = document.getElementById('printer-type').value;
-        let storeName = document.getElementById('printerStoreName').value.trim();
-        let footerMsg = document.getElementById('invoice-footer-text').value.trim();
+        function savePrinterSettings() {
+            let mode = document.getElementById('printModeSelect').value;
+            let type = document.getElementById('printer-type').value;
+            let storeName = document.getElementById('printerStoreName').value.trim();
+            let footerMsg = document.getElementById('invoice-footer-text').value.trim();
 
-        localStorage.setItem('seraj_auto_print_setting', mode);
-        localStorage.setItem('seraj_printer_type', type);
-        localStorage.setItem('seraj_store_name', storeName);
-        localStorage.setItem('seraj_receipt_footer', footerMsg);
+            localStorage.setItem('seraj_auto_print_setting', mode);
+            localStorage.setItem('seraj_printer_type', type);
+            localStorage.setItem('seraj_store_name', storeName);
+            localStorage.setItem('seraj_receipt_footer', footerMsg);
+            syncCentralStoreSettings();
 
-        closePrinterSettings();
-        setTimeout(() => {
-            alert("✅ تم حفظ إعدادات الطباعة الشاملة بنجاح!");
-        }, 200);
-    }
+            closePrinterSettings();
+            setTimeout(() => {
+                notifyMain("✅ تم حفظ إعدادات الطباعة الشاملة بنجاح!", "success");
+            }, 200);
+        }
 
         function openSettings() {
             document.getElementById('set-store-name').value = localStorage.getItem('seraj_store_name') || '';
             document.getElementById('set-ai-key').value = localStorage.getItem('seraj_ai_key') || '';
             
-            // إضافة سحب الرابط عند الفتح
             let savedGeminiLink = localStorage.getItem('seraj_gemini_link');
             if (savedGeminiLink && document.getElementById('settings_gemini_link')) {
                 document.getElementById('settings_gemini_link').value = savedGeminiLink;
             } else if (document.getElementById('settings_gemini_link')) {
-                document.getElementById('settings_gemini_link').value = ''; // تفريغ الخانة لو مكانش فيه رابط قديم
+                document.getElementById('settings_gemini_link').value = '';
             }
 
             document.getElementById('seraj-settings-modal').style.display = 'flex';
+            history.pushState({ uiOpen: 'settingsModal' }, '');
         }
 
         function closeSettings() {
@@ -627,20 +680,18 @@ animation: pulse-alert 2s infinite;
         function saveSettings() {
             let sName = document.getElementById('set-store-name').value.trim();
             let aiKey = document.getElementById('set-ai-key').value.trim();
-            
-            // إضافة حفظ الرابط
             let inputGeminiLink = document.getElementById('settings_gemini_link').value.trim();
-            localStorage.setItem('seraj_gemini_link', inputGeminiLink); // هيحفظ حتى لو فاضي عشان يمسح القديم لو مسحته
+            localStorage.setItem('seraj_gemini_link', inputGeminiLink);
 
             if (sName !== "") localStorage.setItem('seraj_store_name', sName);
             if (aiKey !== "") localStorage.setItem('seraj_ai_key', aiKey);
+            syncCentralStoreSettings();
             
             document.getElementById('main-menu-btn').classList.remove('needs-setup');   
-            alert("تم حفظ الإعدادات بنجاح! ✅");
             closeSettings();
+            notifyMain("تم حفظ الإعدادات بنجاح! ✅", "success");
         }
 
-        // الدالة السحرية والمحمية لتغيير الرقم السري (بتتأكد من القديم أولاً)
         function changeSecurityPinSafe() {
             let settings = JSON.parse(localStorage.getItem('seraj_treasury_settings')) || { pin: '1234' };
             
@@ -648,7 +699,7 @@ animation: pulse-alert 2s infinite;
             if (oldPin === null) return; 
             
             if (oldPin !== settings.pin) {
-                alert("❌ الرقم السري الحالي غير صحيح! لا يمكنك التعديل.");
+                notifyMain("❌ الرقم السري الحالي غير صحيح! لا يمكنك التعديل.", "error");
                 return; 
             }
             
@@ -663,7 +714,7 @@ animation: pulse-alert 2s infinite;
                     localStorage.setItem('seraj_store_pass', settings.pin); 
                 }
                 
-                alert("تم تغيير الرقم السري والخزينة بنجاح! 🔐");
+                notifyMain("تم تغيير الرقم السري والخزينة بنجاح! 🔐", "success");
             }
         }
 
@@ -671,21 +722,20 @@ animation: pulse-alert 2s infinite;
             let savedStoreId = localStorage.getItem('seraj_store_id');
             
             if(savedStoreId) {
-                // المستخدم مسجل بالفعل (الشاشة مخفية أصلاً)، نقوم فقط بفحص حالة الحساب سحابياً
                 setTimeout(() => {
                     if (window.dbCloud) {
                         window.dbCloud.ref('Admin_Users/' + savedStoreId + '/status').on('value', (snapshot) => {
                             if (snapshot.val() === 'suspended') {
                                 localStorage.removeItem('seraj_store_id');
                                 localStorage.removeItem('seraj_store_pass');
-                                alert("⚠️ تم إيقاف اشتراكك! برجاء التواصل مع الإدارة.");
-                                window.location.reload(); 
+                                notifyMain("⚠️ تم إيقاف اشتراكك! برجاء التواصل مع الإدارة.", "error", () => {
+                                    window.location.reload();
+                                });
                             }
                         });
                     }
-                }, 1000); 
+                }, 1500); 
             } else {
-                // المستخدم غير مسجل دخول، نظهر له شاشة الدخول
                 let loginScreen = document.getElementById('seraj-login-screen');
                 if(loginScreen) loginScreen.style.display = 'flex';
             }
@@ -694,7 +744,7 @@ animation: pulse-alert 2s infinite;
                 let menuBtn = document.getElementById('main-menu-btn');
                 if (menuBtn) menuBtn.classList.add('needs-setup');
                 setTimeout(() => {
-                    alert("مرحباً بك في سراج كاشير! 🌟\nبرجاء الضغط على زر القائمة (☰) أعلى الشاشة للدخول إلى 'إعدادات المتجر' وضبط اسم محلك.");
+                    notifyMain("مرحباً بك في سراج كاشير! 🌟\nبرجاء الضغط على زر القائمة (☰) أعلى الشاشة للدخول إلى 'إعدادات المتجر' وضبط اسم محلك.", "info");
                 }, 3500);
             }   
         });
@@ -741,35 +791,39 @@ animation: pulse-alert 2s infinite;
         }
 
         function triggerSystemArchive() {
-    if (typeof toggleSidebar === 'function') toggleSidebar();
+            closeSidebarExplicit();
 
-    // 1. التأكد من توفر اتصال الإنترنت
-    if (!navigator.onLine) {
-        if (typeof SerajAlert === 'function') {
-            SerajAlert("⚠️ يجب توصيل الإنترنت أولاً لتشغيل الأرشفة السحابية.", "error");
-        } else {
-            alert("⚠️ يجب توصيل الإنترنت أولاً لتشغيل الأرشفة السحابية.");
-        }
-        return;
-    }
-    
-    // 2. التحقق من وجود واستدعاء محرك الأرشفة في db.js
-    if (window.DB && typeof window.DB.archiveSmartData === 'function') {
-        window.DB.archiveSmartData();
-    } else {
-        if (typeof SerajAlert === 'function') {
-            SerajAlert("❌ محرك الأرشفة غير متوفر حالياً في ملف db.js.", "error");
-        } else {
-            alert("❌ محرك الأرشفة غير متوفر حالياً في ملف db.js.");
-        }
-    }
-}    
+            if (!navigator.onLine) {
+                notifyMain("⚠️ يجب توصيل الإنترنت أولاً لتشغيل الأرشفة السحابية.", "error");
+                return;
+            }
+            
+            if (window.DB && typeof window.DB.archiveSmartData === 'function') {
+                window.DB.archiveSmartData();
+            } else {
+                notifyMain("❌ محرك الأرشفة غير متوفر حالياً في ملف db.js.", "error");
+            }
+        }    
         
         window.onload = () => {
             if(typeof DB !== 'undefined') DB.applySavedTheme();
         };
 
-</script>
+        // دعم زر الرجوع في الموبايل لإغلاق النوافذ المنبثقة أو القائمة الجانبية بدلاً من الخروج المفاجئ
+        window.addEventListener('popstate', function() {
+            let printerModal = document.getElementById('printerSettingsModal');
+            let settingsModal = document.getElementById('seraj-settings-modal');
+            let sidebar = document.getElementById('main-sidebar');
+
+            if (printerModal && printerModal.style.display === 'flex') {
+                closePrinterSettings();
+            } else if (settingsModal && settingsModal.style.display === 'flex') {
+                closeSettings();
+            } else if (sidebar && sidebar.style.right === '0px') {
+                closeSidebarExplicit();
+            }
+        });
+    </script>
 
 </body>
 </html>
