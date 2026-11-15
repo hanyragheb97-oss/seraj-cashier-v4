@@ -1308,9 +1308,11 @@ function processSyncQueue() {
 
     batch.forEach(q => {
         if (!q || !q.col || !q.data || q.data.id === undefined) return;
-        let safeId = String(q.data.id).replace(/[.#$\[\]]/g, "_");
-        updatesObj[q.col + '/' + safeId] = q.data;
-        processedSet.add(q.col + '_' + String(q.data.id));
+        try {
+            let safeId = String(q.data.id).replace(/[.#$\[\]]/g, "_");
+            updatesObj[q.col + '/' + safeId] = JSON.parse(JSON.stringify(q.data));
+            processedSet.add(q.col + '_' + String(q.data.id));
+        } catch (err) {}
     });
 
     if (processedSet.size === 0) {
@@ -1319,25 +1321,30 @@ function processSyncQueue() {
         return;
     }
 
-    window.dbCloud.ref('test_Stores/' + activeStoreId).update(updatesObj)
-        .then(() => {
-            let currentQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
-            let remainingQueue = currentQueue.filter(item => {
-                if (!item || !item.col || !item.data || item.data.id === undefined) return false;
-                return !processedSet.has(item.col + '_' + String(item.data.id));
-            });
-            _internalSetItem('seraj_sync_queue', JSON.stringify(remainingQueue));
-            _isSyncBatchRunning = false;
+    try {
+        window.dbCloud.ref('test_Stores/' + activeStoreId).update(updatesObj)
+            .then(() => {
+                let currentQueue = safeParseJSON(localStorage.getItem('seraj_sync_queue'), []);
+                let remainingQueue = currentQueue.filter(item => {
+                    if (!item || !item.col || !item.data || item.data.id === undefined) return false;
+                    return !processedSet.has(item.col + '_' + String(item.data.id));
+                });
+                _internalSetItem('seraj_sync_queue', JSON.stringify(remainingQueue));
+                _isSyncBatchRunning = false;
 
-            if (remainingQueue.length > 0) {
-                _nextBatchTimer = setTimeout(() => processSyncQueue(), 400);
-            } else {
-                showCloudStatus("✅ اكتملت المزامنة السحابية بنجاح");
-            }
-        }).catch(e => {
-            _isSyncBatchRunning = false;
-            console.error("Sync Error", e);
-        });
+                if (remainingQueue.length > 0) {
+                    _nextBatchTimer = setTimeout(() => processSyncQueue(), 400);
+                } else {
+                    showCloudStatus("✅ اكتملت المزامنة السحابية بنجاح");
+                }
+            }).catch(e => {
+                _isSyncBatchRunning = false;
+                console.error("Sync Error", e);
+            });
+    } catch (syncErr) {
+        _isSyncBatchRunning = false;
+        console.error("Sync Exception", syncErr);
+    }
 }
 
 window.addEventListener('online', () => {
