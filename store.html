@@ -15,7 +15,6 @@
     
     <!-- مكتبات الفايربيز والباركود والإكسيل -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
@@ -70,7 +69,7 @@
                     🖨️ طباعة / تصدير ▼
                 </button>
                 <div class="dropdown-menu" id="printMenuDropdown" hidden>
-                    <div class="dropdown-menu-item" onclick="window.print()">📄 طباعة / بي دي إف</div>
+                    <div class="dropdown-menu-item" onclick="closeAllMenus(); window.print()">📄 طباعة / بي دي إف</div>
                     <div class="dropdown-menu-item" onclick="toggleExcelSubMenu(event)">📊 إكسيل (Excel) ▶</div>
                     <div id="excelSubMenu" hidden>
                         <div class="dropdown-menu-item" onclick="exportInventoryExcel()">📤 تصدير بيانات</div>
@@ -416,8 +415,16 @@
             return cleaned.toLowerCase();
         }
 
+        function getTodayLocalStr() {
+            if (window.Utils && typeof window.Utils.getLocalDateString === 'function') {
+                return window.Utils.getLocalDateString();
+            }
+            const d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        }
+
         // ==========================================
-        // المايك الخفيف والمباشر (بدون استوديو معقد أو كميات)
+        // المايك الخفيف والمباشر (مربوط ببروفايل inventory)
         // ==========================================
         let searchQueue = [];
         let directMicRecognition = null;
@@ -427,6 +434,10 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
                 return notifyUser("المتصفح لا يدعم البحث الصوتي.", "error");
+            }
+
+            if (typeof DB !== 'undefined' && typeof DB.setActiveVoiceProfile === 'function') {
+                DB.setActiveVoiceProfile('inventory');
             }
 
             if (isDirectMicRecording && directMicRecognition) {
@@ -550,39 +561,39 @@
         function getProductPrice(p) {
             if (p && Array.isArray(p.lots) && p.lots.length > 0) {
                 for (let i = p.lots.length - 1; i >= 0; i--) {
-                    let pr = parseFloat(p.lots[i].price);
+                    let pr = parseFloat(p.lots[i].price ?? p.lots[i].sellPrice);
                     if (!isNaN(pr) && pr > 0) return pr;
                 }
             }
-            return parseFloat(p && p._lastValidPrice) || parseFloat(p && p.price) || 0;
+            return parseFloat(p && p._lastValidPrice) || parseFloat(p && (p.price ?? p.sellPrice)) || 0;
         }
 
         function getProductPurchasePrice(p) {
             if (p && Array.isArray(p.lots) && p.lots.length > 0) {
                 for (let i = p.lots.length - 1; i >= 0; i--) {
-                    let pp = parseFloat(p.lots[i].purchasePrice);
+                    let pp = parseFloat(p.lots[i].purchasePrice ?? p.lots[i].buyPrice);
                     if (!isNaN(pp) && pp > 0) return pp;
                 }
             }
-            return parseFloat(p && p._lastValidPurchase) || parseFloat(p && p.purchasePrice) || 0;
+            return parseFloat(p && p._lastValidPurchase) || parseFloat(p && (p.purchasePrice ?? p.buyPrice)) || 0;
         }
 
-        function normalizeProductLots(p) {
+        function normalizeProductLots(p, preserveTopPrice = false) {
             if (!p) return false;
             let changed = false;
-            const todayStr = new Date().toISOString().split('T')[0];
+            const todayStr = getTodayLocalStr();
             const dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
-            let validPurchase = parseFloat(p._lastValidPurchase) || parseFloat(p.purchasePrice) || 0;
-            let validPrice = parseFloat(p._lastValidPrice) || parseFloat(p.price) || 0;
+            let validPurchase = parseFloat(p._lastValidPurchase) || parseFloat(p.purchasePrice ?? p.buyPrice) || 0;
+            let validPrice = parseFloat(p._lastValidPrice) || parseFloat(p.price ?? p.sellPrice) || 0;
             let validSupplier = p._lastValidSupplier || 'رصيد افتتاحي';
 
             if (Array.isArray(p.lots) && p.lots.length > 0) {
                 p.lots.forEach(l => {
-                    let lp = parseFloat(l.purchasePrice) || 0;
-                    let sp = parseFloat(l.price) || 0;
-                    if (lp > 0) validPurchase = lp;
-                    if (sp > 0) validPrice = sp;
+                    let lp = parseFloat(l.purchasePrice ?? l.buyPrice) || 0;
+                    let sp = parseFloat(l.price ?? l.sellPrice) || 0;
+                    if (lp > 0) { l.purchasePrice = lp; l.buyPrice = lp; validPurchase = lp; }
+                    if (sp > 0) { l.price = sp; l.sellPrice = sp; validPrice = sp; }
                     if (l.supplier && !String(l.supplier).includes('عجز') && !String(l.supplier).includes('مبيعات')) {
                         validSupplier = l.supplier;
                     }
@@ -598,20 +609,33 @@
                     supplier: validSupplier,
                     stock: parseFloat(p.stock) || 0,
                     purchasePrice: validPurchase,
+                    buyPrice: validPurchase,
                     price: validPrice,
+                    sellPrice: validPrice,
                     date: todayStr,
                     _device: dName,
                     _lastModifiedBy: dName
                 }];
                 p.purchasePrice = validPurchase;
+                p.buyPrice = validPurchase;
                 p.price = validPrice;
+                p.sellPrice = validPrice;
                 recalculateProductStock(p);
                 return true;
             }
 
+            // عدم الكتابة فوق سعر دفعة إلا إذا كان الحقل غير معرّف أو تالفاً
             p.lots.forEach(l => {
-                if (!(parseFloat(l.purchasePrice) > 0) && validPurchase > 0) { l.purchasePrice = validPurchase; changed = true; }
-                if (!(parseFloat(l.price) > 0) && validPrice > 0) { l.price = validPrice; changed = true; }
+                if ((l.purchasePrice === undefined || l.purchasePrice === null || isNaN(parseFloat(l.purchasePrice))) && validPurchase > 0) {
+                    l.purchasePrice = validPurchase;
+                    l.buyPrice = validPurchase;
+                    changed = true;
+                }
+                if ((l.price === undefined || l.price === null || isNaN(parseFloat(l.price))) && validPrice > 0) {
+                    l.price = validPrice;
+                    l.sellPrice = validPrice;
+                    changed = true;
+                }
                 if (!l.supplier) { l.supplier = validSupplier; changed = true; }
             });
 
@@ -646,11 +670,15 @@
                     p.lots = remainingPositive;
                 } else {
                     const newestPos = positiveLots[positiveLots.length - 1];
+                    const fPur = parseFloat(newestPos.purchasePrice) || validPurchase;
+                    const fSell = parseFloat(newestPos.price) || validPrice;
                     p.lots = [{
                         supplier: newestPos.supplier || validSupplier,
                         stock: totalNegative > 0 ? -totalNegative : 0,
-                        purchasePrice: parseFloat(newestPos.purchasePrice) || validPurchase,
-                        price: parseFloat(newestPos.price) || validPrice,
+                        purchasePrice: fPur,
+                        buyPrice: fPur,
+                        price: fSell,
+                        sellPrice: fSell,
                         date: newestPos.date || todayStr,
                         _device: newestPos._device || dName,
                         _lastModifiedBy: dName
@@ -659,21 +687,33 @@
             } else {
                 const netNegativeStock = totalNegative > 0 ? -totalNegative : 0;
                 if (p.lots.length !== 1 || parseFloat(p.lots[0].stock) !== netNegativeStock) changed = true;
+                const fPur = parseFloat(lastRefLot.purchasePrice) || validPurchase;
+                const fSell = parseFloat(lastRefLot.price) || validPrice;
 
                 p.lots = [{
                     supplier: lastRefLot.supplier || validSupplier,
                     stock: netNegativeStock,
-                    purchasePrice: parseFloat(lastRefLot.purchasePrice) || validPurchase,
-                    price: parseFloat(lastRefLot.price) || validPrice,
+                    purchasePrice: fPur,
+                    buyPrice: fPur,
+                    price: fSell,
+                    sellPrice: fSell,
                     date: lastRefLot.date || todayStr,
                     _device: lastRefLot._device || dName,
                     _lastModifiedBy: lastRefLot._lastModifiedBy || dName
                 }];
             }
 
-            const finalLot = p.lots[p.lots.length - 1];
-            if (parseFloat(finalLot.purchasePrice) > 0) p.purchasePrice = parseFloat(finalLot.purchasePrice);
-            if (parseFloat(finalLot.price) > 0) p.price = parseFloat(finalLot.price);
+            if (!preserveTopPrice) {
+                const finalLot = p.lots[p.lots.length - 1];
+                if (parseFloat(finalLot.purchasePrice) > 0) {
+                    p.purchasePrice = parseFloat(finalLot.purchasePrice);
+                    p.buyPrice = p.purchasePrice;
+                }
+                if (parseFloat(finalLot.price) > 0) {
+                    p.price = parseFloat(finalLot.price);
+                    p.sellPrice = p.price;
+                }
+            }
 
             const prevStock = p.stock;
             recalculateProductStock(p);
@@ -696,7 +736,7 @@
                 const deficitUnits = Math.abs(currentStock);
                 const cartonsNeeded = Math.ceil(deficitUnits / rate);
 
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getTodayLocalStr();
                 const parentPurchasePrice = getProductPurchasePrice(parentP);
                 const unitPurchaseCost = parentPurchasePrice > 0 ? (parentPurchasePrice / rate) : getProductPurchasePrice(p);
                 const currentSell = getProductPrice(p);
@@ -762,8 +802,9 @@
         }
 
         window.addEventListener('seraj:updated', (e) => {
-            if (!e.detail || !e.detail.collection || e.detail.collection === 'products' || e.detail.key === 'seraj_products') {
-                productsDB = DB.getProducts() || [];
+            const col = e.detail && (e.detail.collection || e.detail.key);
+            if (!col || col === 'products' || col === 'seraj_products' || col === 'sales_invoices' || col === 'seraj_sales_invoices') {
+                safeLoadProducts();
                 window.renderInventoryTable();
 
                 if (document.getElementById('product-details-view').classList.contains('active-view')) {
@@ -782,16 +823,12 @@
 
         window.onload = () => {
             window.renderLimit = 50;
-            if (typeof DB !== 'undefined' && typeof DB.applySavedTheme === 'function') {
-                DB.applySavedTheme();
+            if (typeof DB !== 'undefined') {
+                if (typeof DB.applySavedTheme === 'function') DB.applySavedTheme();
+                if (typeof DB.setActiveVoiceProfile === 'function') DB.setActiveVoiceProfile('inventory');
             }
             safeLoadProducts();
             window.renderInventoryTable();
-            // تأكيد إضافي لرسم الجدول في حال تأخر تحميل البيانات أجزاء من الثانية
-            setTimeout(() => {
-                if (!productsDB || productsDB.length === 0) safeLoadProducts();
-                window.renderInventoryTable();
-            }, 200);
             history.replaceState({ page: 'list' }, '', '');
         };
 
@@ -818,7 +855,6 @@
             const targetView = document.getElementById(viewId);
             if (targetView) targetView.classList.add('active-view');
             
-            // إخفاء حاسم لزر الإضافة العائم في شاشة تفاصيل المنتج وإظهاره في القائمة فقط
             const addBtn = document.querySelector('.seraj-btn-add-floating');
             if (addBtn) {
                 if (viewId === 'inventory-list-view') {
@@ -921,11 +957,20 @@
             tr.ontouchend = endPress;
         }
 
+        let _renderInventoryDebounceTimer = null;
         window.renderInventoryTable = function() {
+            if (_renderInventoryDebounceTimer) clearTimeout(_renderInventoryDebounceTimer);
+            _renderInventoryDebounceTimer = setTimeout(() => {
+                _renderInventoryDebounceTimer = null;
+                _executeRenderInventoryTable();
+            }, 35);
+        };
+
+        function _executeRenderInventoryTable() {
             if (typeof window.renderLimit !== 'number' || window.renderLimit <= 0) window.renderLimit = 50;
             if (typeof DB !== 'undefined') productsDB = DB.getProducts() || [];
 
-            const rawQuery = String(document.getElementById('inventorySearch').value || '').trim().toLowerCase();
+            const rawQuery = getNormalizedName(document.getElementById('inventorySearch').value || '');
             const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
 
             const tbody = document.getElementById('inventoryTableBody');
@@ -938,16 +983,22 @@
                 filtered = activeProducts.map(p => ({ product: p, score: 0 }));
             } else {
                 filtered = activeProducts.map(p => {
-                    let pName = String(p.name || '').toLowerCase();
-                    let pCat = String(p.category || '').toLowerCase();
-                    let pBar = String(p.barcode || '').toLowerCase();
+                    let pName = getNormalizedName(p.name || '');
+                    let pCat = getNormalizedName(p.category || '');
+                    let pBar = getNormalizedName(p.barcode || '');
                     let fullString = pName + " " + pCat + " " + pBar;
 
                     let score = 0;
-                    searchWords.forEach(word => { if (fullString.includes(word)) score += 1; });
+                    let allMatched = true;
+                    searchWords.forEach(word => {
+                        if (fullString.includes(word)) score += 1;
+                        else allMatched = false;
+                    });
 
-                    if (score > 0) {
-                        if (pName.startsWith(rawQuery)) score += 5;
+                    if (!allMatched) score = 0;
+                    else {
+                        if (pName === rawQuery || pBar === rawQuery) score += 10;
+                        else if (pName.startsWith(rawQuery)) score += 5;
                         else if (pName.startsWith(searchWords[0])) score += 2;
                     }
                     return { product: p, score: score };
@@ -985,7 +1036,7 @@
                 const totalStock = getProductStock(p);
                 const displayPrice = getProductPrice(p);
                 
-                const imgHtml = p.hasImage ? `<img id="img_thumb_${p.id}" class="product-thumb-img" loading="lazy" src="" alt="صورة" onclick="showFullImage(event, '${p.id}')" hidden>` : '';
+                const imgHtml = p.hasImage ? `<img id="img_thumb_${p.id}" class="product-thumb-img" loading="lazy" src="" alt="صورة" onclick="showFullImage(event, '${p.id}')" style="display:none;" hidden>` : '';
 
                 tr.innerHTML = `
                     <td class="inv-prod-name-cell" style="text-align: right; padding-right: 12px;">
@@ -1016,19 +1067,19 @@
             if (window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
                 visibleItems.forEach(item => {
                     if (item.product.hasImage) {
-                        window.ImagesDB.getImage(item.product.id).then(blob => {
-                            if (blob) {
-                                let imgEl = document.getElementById(`img_thumb_${item.product.id}`);
-                                if (imgEl) {
-                                    imgEl.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
+                        let imgEl = document.getElementById(`img_thumb_${item.product.id}`);
+                        if (imgEl) {
+                            window.ImagesDB.getImage(item.product.id, imgEl).then(blob => {
+                                if (blob) {
                                     imgEl.hidden = false;
+                                    imgEl.style.display = '';
                                 }
-                            }
-                        });
+                            });
+                        }
                     }
                 });
             }
-        };
+        }
 
         function loadMoreInventory() {
             renderLimit += 50;
@@ -1082,7 +1133,8 @@
 
         function confirmAddProduct(btn) {
             runProtectedAction(btn || document.getElementById('btnConfirmAddProd'), () => {
-                productsDB = DB.getProducts() || [];
+                let allProductsDB = DB.getProducts(true) || [];
+                productsDB = allProductsDB.filter(p => !p.isDeleted && !p.isArchived);
 
                 const name = cleanProductText(document.getElementById('addProdName').value);
                 const category = cleanProductText(document.getElementById('addProdCategory').value) || 'عام';
@@ -1104,10 +1156,7 @@
                 }
 
                 const normName = getNormalizedName(name);
-                const isDuplicate = productsDB.some(p => {
-                    if (p.isDeleted || p.isArchived) return false;
-                    return getNormalizedName(p.name) === normName;
-                });
+                const isDuplicate = productsDB.some(p => getNormalizedName(p.name) === normName);
 
                 if (isDuplicate) {
                     return notifyUser("عفواً، هذا الصنف مسجل مسبقاً في المخزن! يمنع تكرار الأسماء.", "error");
@@ -1116,19 +1165,22 @@
                 if (!barcode) {
                     barcode = getSmallestAvailableBarcode();
                 } else {
-                    const exists = productsDB.some(p => !p.isDeleted && !p.isArchived && String(p.barcode) === barcode);
+                    const exists = productsDB.some(p => String(p.barcode) === barcode);
                     if (exists) {
                         notifyUser("هذا الباركود مستخدم مسبقاً، تم تعيين أصغر كود متاح تلقائياً.", "info");
                         barcode = getSmallestAvailableBarcode();
                     }
                 }
 
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getTodayLocalStr();
                 const dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
                 const nowTs = Date.now();
-                const newProductId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
-                    ? window.Utils.generateUniqueId()
-                    : ('prod_' + nowTs + '_' + Math.random().toString(36).substring(2, 7));
+                const archivedMatch = allProductsDB.find(p => (p.isDeleted || p.isArchived) && getNormalizedName(p.name) === normName);
+                const newProductId = archivedMatch
+                    ? archivedMatch.id
+                    : ((window.Utils && typeof window.Utils.generateUniqueId === 'function')
+                        ? window.Utils.generateUniqueId()
+                        : ('prod_' + nowTs + '_' + Math.random().toString(36).substring(2, 7)));
 
                 const imageInput = document.getElementById('addProdImageInput');
 
@@ -1141,16 +1193,22 @@
                         autoParentId: null,
                         autoConversionRate: 50,
                         purchasePrice: purchase,
+                        buyPrice: purchase,
                         price: price,
+                        sellPrice: price,
                         _lastValidPurchase: purchase,
                         _lastValidPrice: price,
                         _lastValidSupplier: 'رصيد افتتاحي',
                         hasImage: hasImg,
+                        isArchived: false,
+                        isDeleted: false,
                         lots: [{
                             supplier: 'رصيد افتتاحي',
                             stock: stock,
                             purchasePrice: purchase,
+                            buyPrice: purchase,
                             price: price,
+                            sellPrice: price,
                             date: todayStr,
                             _device: dName,
                             _lastModifiedBy: dName,
@@ -1162,8 +1220,14 @@
                     };
 
                     recalculateProductStock(newProd);
-                    productsDB.push(newProd);
-                    DB.saveProducts(productsDB);
+                    if (archivedMatch) {
+                        let idx = allProductsDB.findIndex(x => String(x.id) === String(archivedMatch.id));
+                        if (idx > -1) allProductsDB[idx] = newProd;
+                    } else {
+                        allProductsDB.push(newProd);
+                    }
+                    DB.saveProducts(allProductsDB);
+                    productsDB = DB.getProducts() || [];
 
                     closeModalById('addProductModal');
                     window.renderInventoryTable();
@@ -1195,17 +1259,19 @@
             document.getElementById('detCategoryText').innerText = `الصنف: ${p.category || 'عام'}`;
             document.getElementById('detBarcodeText').innerText = `الكود: ${p.barcode || '---'}`;
             
+            // تفريغ وإخفاء الصورة فوراً لمنع تسرب صورة صنف سابق
             let detImg = document.getElementById('detProductImage');
+            detImg.src = '';
+            detImg.hidden = true;
+            detImg.style.display = 'none';
+
             if (p.hasImage && window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
-                window.ImagesDB.getImage(p.id).then(blob => {
-                    if (blob) {
-                        detImg.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
+                window.ImagesDB.getImage(p.id, detImg).then(blob => {
+                    if (blob && String(currentActiveProductId) === String(p.id)) {
                         detImg.hidden = false;
+                        detImg.style.display = '';
                     }
                 });
-            } else {
-                detImg.hidden = true;
-                detImg.src = '';
             }
 
             let parentDisp = document.getElementById('currentParentDisplay');
@@ -1241,12 +1307,17 @@
         }
 
         function filterParentDropdown() {
-            let query = document.getElementById('parentSearchInput').value.toLowerCase().trim();
+            let query = getNormalizedName(document.getElementById('parentSearchInput').value || '');
             let select = document.getElementById('modalAutoParentSelect');
             const p = productsDB.find(x => String(x.id) === String(currentActiveProductId));
             let currentParentId = p ? String(p.autoParentId) : null;
             let optionsHtml = `<option value="">-- إلغاء الربط --</option>`;
-            let filtered = tempParentOptions.filter(item => item.name.toLowerCase().includes(query) || (item.barcode && String(item.barcode).includes(query)));
+            let filtered = tempParentOptions.filter(item => {
+                if (!query) return true;
+                let normName = getNormalizedName(item.name || '');
+                let normBar = getNormalizedName(item.barcode || '');
+                return normName.includes(query) || normBar.includes(query);
+            });
             let displayList = filtered.slice(0, 50);
             displayList.forEach(item => {
                 let sel = (currentParentId === String(item.id)) ? 'selected' : '';
@@ -1369,27 +1440,35 @@
 
                 const dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
                 const nowTs = Date.now();
+                const isLatestLot = (index === p.lots.length - 1);
                 const lot = p.lots[index];
 
                 lot.stock = newStock;
                 lot.price = newPrice;
+                lot.sellPrice = newPrice;
 
                 const supplierStr = String(lot.supplier || '');
                 if (!supplierStr.includes('فاتورة شراء')) {
                     lot.purchasePrice = newPurchase;
+                    lot.buyPrice = newPurchase;
                 }
 
                 lot._lastModifiedBy = dName;
                 lot._lastModified = nowTs;
 
-                p.purchasePrice = lot.purchasePrice;
-                p.price = lot.price;
-                p._lastValidPurchase = lot.purchasePrice;
-                p._lastValidPrice = lot.price;
+                // لا نحدث السعر العام للصنف إلا إذا كان التعديل على الدفعة الأحدث
+                if (isLatestLot) {
+                    p.purchasePrice = lot.purchasePrice;
+                    p.buyPrice = lot.purchasePrice;
+                    p.price = lot.price;
+                    p.sellPrice = lot.price;
+                    p._lastValidPurchase = lot.purchasePrice;
+                    p._lastValidPrice = lot.price;
+                }
                 p._lastModifiedBy = dName;
                 p._lastModified = nowTs;
 
-                normalizeProductLots(p);
+                normalizeProductLots(p, !isLatestLot);
                 recalculateProductStock(p);
 
                 DB.saveProducts(productsDB);
@@ -1408,17 +1487,19 @@
             document.getElementById('editProdBarcode').value = p.barcode || '';
             
             document.getElementById('editProdImageInput').value = '';
+            // تفريغ وإخفاء المعاينة فوراً لمنع تسرب صورة صنف سابق
             let preview = document.getElementById('editProdImagePreview');
+            preview.src = '';
+            preview.hidden = true;
+            preview.style.display = 'none';
+
             if (p.hasImage && window.ImagesDB && typeof window.ImagesDB.getImage === 'function') {
-                window.ImagesDB.getImage(p.id).then(blob => {
-                    if (blob) {
-                        preview.src = (typeof blob === 'string') ? blob : URL.createObjectURL(blob);
+                window.ImagesDB.getImage(p.id, preview).then(blob => {
+                    if (blob && String(currentActiveProductId) === String(p.id)) {
                         preview.hidden = false;
+                        preview.style.display = '';
                     }
                 });
-            } else {
-                preview.hidden = true;
-                preview.src = '';
             }
             document.getElementById('btnConfirmEditProd').disabled = false;
             openModalById('editProductModal');
@@ -1476,6 +1557,7 @@
                             let detImg = document.getElementById('detProductImage');
                             detImg.src = URL.createObjectURL(imageInput.files[0]);
                             detImg.hidden = false;
+                            detImg.style.display = '';
                         }
                         finishSaving();
                     });
@@ -1511,7 +1593,7 @@
                     return notifyUser("يمنع إدخال كميات أو أسعار سالبة يدوياً!", "error");
                 }
 
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getTodayLocalStr();
                 const dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
                 const nowTs = Date.now();
 
@@ -1520,7 +1602,9 @@
                     supplier: supplier,
                     stock: stockToAdd,
                     purchasePrice: purchase,
+                    buyPrice: purchase,
                     price: price,
+                    sellPrice: price,
                     date: todayStr,
                     _device: dName,
                     _lastModifiedBy: dName,
@@ -1528,7 +1612,9 @@
                 });
 
                 p.purchasePrice = purchase;
+                p.buyPrice = purchase;
                 p.price = price;
+                p.sellPrice = price;
                 p._lastValidPurchase = purchase;
                 p._lastValidPrice = price;
                 p._lastValidSupplier = supplier;
@@ -1569,6 +1655,7 @@
                 const nowTs = Date.now();
 
                 p.price = val;
+                p.sellPrice = val;
                 p._lastValidPrice = val;
                 p._lastModifiedBy = dName;
                 p._lastModified = nowTs;
@@ -1576,6 +1663,7 @@
                 if (Array.isArray(p.lots)) {
                     p.lots.forEach(l => {
                         l.price = val;
+                        l.sellPrice = val;
                         l._lastModifiedBy = dName;
                         l._lastModified = nowTs;
                     });
@@ -1630,6 +1718,7 @@
         // التصدير والاستيراد والتعديل الشامل للأسعار
         // ==========================================
         function exportInventoryExcel() {
+            closeAllMenus();
             productsDB = DB.getProducts() || [];
             const activeProducts = productsDB.filter(p => !p.isDeleted && !p.isArchived);
             
@@ -1652,6 +1741,7 @@
         }
 
         function triggerExcelImport() {
+            closeAllMenus();
             document.getElementById('excelFileInput').value = '';
             document.getElementById('excelFileInput').click();
         }
@@ -1706,17 +1796,24 @@
                             };
 
                             if (target === 'sell') {
-                                p.price = calcNewPrice(p.price);
+                                p.price = calcNewPrice(p.price ?? p.sellPrice);
+                                p.sellPrice = p.price;
                                 p._lastValidPrice = p.price;
                             } else {
-                                p.purchasePrice = calcNewPrice(p.purchasePrice);
+                                p.purchasePrice = calcNewPrice(p.purchasePrice ?? p.buyPrice);
+                                p.buyPrice = p.purchasePrice;
                                 p._lastValidPurchase = p.purchasePrice;
                             }
 
                             if (Array.isArray(p.lots)) {
                                 p.lots.forEach(lot => {
-                                    if (target === 'sell') lot.price = calcNewPrice(lot.price);
-                                    else lot.purchasePrice = calcNewPrice(lot.purchasePrice);
+                                    if (target === 'sell') {
+                                        lot.price = calcNewPrice(lot.price ?? lot.sellPrice);
+                                        lot.sellPrice = lot.price;
+                                    } else {
+                                        lot.purchasePrice = calcNewPrice(lot.purchasePrice ?? lot.buyPrice);
+                                        lot.buyPrice = lot.purchasePrice;
+                                    }
                                     lot._lastModifiedBy = dName;
                                     lot._lastModified = nowTs;
                                 });
@@ -1753,9 +1850,10 @@
                     const json = XLSX.utils.sheet_to_json(worksheet);
                     
                     if (json && json.length > 0) {
-                        productsDB = DB.getProducts() || [];
+                        let allProductsDB = DB.getProducts(true) || [];
+                        productsDB = allProductsDB.filter(p => !p.isDeleted && !p.isArchived);
                         const dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
-                        const todayStr = new Date().toISOString().split('T')[0];
+                        const todayStr = getTodayLocalStr();
                         const nowTs = Date.now();
                         let addedCount = 0;
                         let skippedCount = 0;
@@ -1766,7 +1864,7 @@
                             if (!name) return;
 
                             const normName = getNormalizedName(name);
-                            const isDuplicate = productsDB.some(p => !p.isDeleted && !p.isArchived && getNormalizedName(p.name) === normName);
+                            const isDuplicate = productsDB.some(p => getNormalizedName(p.name) === normName);
                             if (isDuplicate) {
                                 skippedCount++;
                                 return;
@@ -1774,7 +1872,7 @@
 
                             const category = cleanProductText(item["الصنف"] || item["category"] || "عام") || "عام";
                             let barcode = cleanProductText(item["الكود"] || item["الباركود"] || item["barcode"] || "");
-                            if (!barcode || productsDB.some(p => !p.isDeleted && !p.isArchived && String(p.barcode) === barcode)) {
+                            if (!barcode || productsDB.some(p => String(p.barcode) === barcode)) {
                                 barcode = getSmallestAvailableBarcode();
                             }
 
@@ -1782,26 +1880,37 @@
                             const purchase = Math.max(0, parseFloat(item["سعر الشراء"] || item["purchasePrice"]) || 0);
                             const price = Math.max(0, parseFloat(item["سعر البيع"] || item["price"]) || 0);
 
-                            const newProd = {
-                                id: (window.Utils && typeof window.Utils.generateUniqueId === 'function')
+                            const archivedMatch = allProductsDB.find(p => (p.isDeleted || p.isArchived) && getNormalizedName(p.name) === normName);
+                            const prodId = archivedMatch
+                                ? archivedMatch.id
+                                : ((window.Utils && typeof window.Utils.generateUniqueId === 'function')
                                     ? window.Utils.generateUniqueId()
-                                    : ('prod_' + nowTs + '_' + idx),
+                                    : ('prod_' + nowTs + '_' + idx));
+
+                            const newProd = {
+                                id: prodId,
                                 name: name,
                                 category: category,
                                 barcode: barcode,
                                 autoParentId: null,
                                 autoConversionRate: 50,
                                 purchasePrice: purchase,
+                                buyPrice: purchase,
                                 price: price,
+                                sellPrice: price,
                                 _lastValidPurchase: purchase,
                                 _lastValidPrice: price,
                                 _lastValidSupplier: 'استيراد إكسيل',
                                 hasImage: false,
+                                isArchived: false,
+                                isDeleted: false,
                                 lots: [{
                                     supplier: 'استيراد إكسيل',
                                     stock: stock,
                                     purchasePrice: purchase,
+                                    buyPrice: purchase,
                                     price: price,
+                                    sellPrice: price,
                                     date: todayStr,
                                     _device: dName,
                                     _lastModifiedBy: dName,
@@ -1813,12 +1922,19 @@
                             };
 
                             recalculateProductStock(newProd);
+                            if (archivedMatch) {
+                                let archIdx = allProductsDB.findIndex(x => String(x.id) === String(archivedMatch.id));
+                                if (archIdx > -1) allProductsDB[archIdx] = newProd;
+                            } else {
+                                allProductsDB.push(newProd);
+                            }
                             productsDB.push(newProd);
                             addedCount++;
                         });
 
                         if (addedCount > 0) {
-                            DB.saveProducts(productsDB);
+                            DB.saveProducts(allProductsDB);
+                            productsDB = DB.getProducts() || [];
                             window.renderInventoryTable();
                         }
                         notifyUser(`✅ تم استيراد ${addedCount} صنف بنجاح${skippedCount > 0 ? ` (وتخطي ${skippedCount} صنف مكرر)` : ''}!`, "success");
@@ -1890,8 +2006,10 @@
             if (inputElem.files && inputElem.files[0]) {
                 preview.src = URL.createObjectURL(inputElem.files[0]);
                 preview.hidden = false;
+                preview.style.display = '';
             } else {
                 preview.hidden = true;
+                preview.style.display = 'none';
                 preview.src = '';
             }
         }

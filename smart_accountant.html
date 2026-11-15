@@ -100,6 +100,8 @@
         .state-red { background: var(--color-val-red, #ef4444); color: #fff; }
         .state-green { background: var(--color-val-green, #10b981); color: #fff; }
         
+        .note-table tr.selected-row, tr.selected-row { background-color: rgba(239, 68, 68, 0.35) !important; outline: 2px solid var(--color-val-red, #ef4444); }
+
         .bottom-filter { flex: 1; background: var(--bg-dark-1, #19172c); border: 1px solid var(--neon-border, #a855f7); border-radius: 12px; padding: 0 12px; height: 45px; display: none; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; color: var(--text-main, #fff); position: relative; margin: 0; }
     </style>
 </head>
@@ -177,7 +179,7 @@
                 <div class="panel-item" onclick="window.location.href='expenses_summary.html'">تقرير مصروفات مجمل</div>
             </div>
 
- <button class="accordion" onclick="window.location.href='treasury_movement.html'">الخزينة (عرض الحركات)</button>
+            <button class="accordion" onclick="window.location.href='treasury.html'">الخزينة (عرض الحركات)</button>
             
         </div>
 
@@ -352,7 +354,6 @@
     </div>
 
     <script src="db.js"></script>
-    <script src="ai_brain.js"></script>
     
     <script>
         window.addEventListener('DOMContentLoaded', () => {
@@ -496,45 +497,89 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
             }
         }
 
+// دوال مساعدة موحدة للتواريخ والأسماء وتكلفة الصنف بالتوافق التام مع db.js
+function getSafeTimeMs(val) {
+            if (window.Utils && typeof window.Utils.getSafeTime === 'function') {
+                return window.Utils.getSafeTime(val);
+            }
+            if (!val) return 0;
+            let d = new Date(val);
+            return isNaN(d.getTime()) ? 0 : d.getTime();
+        }
+
+        function normText(str) {
+            if (window.Utils && typeof window.Utils.normalizeName === 'function') {
+                return window.Utils.normalizeName(str);
+            }
+            return String(str || '').trim().toLowerCase();
+        }
+
         function isSameDay(d1, d2) {
             return d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth() && d1.getDate() === d2.getDate();
         }
 
+        // حساب صافي الفاتورة مع منع خصم الفاتورة مرتين (Double Discount Protection)
+        function getInvoiceNetTotal(inv) {
+            let rawTotal = Math.abs(parseFloat(inv.total) || 0);
+            let rawDiscount = Math.abs(parseFloat(inv.discount) || 0);
+            let checkoutPaid = parseFloat(inv.initialPaid ?? inv.paid) || 0;
+            let origRem = parseFloat(inv.initialRemaining ?? inv.remaining) || 0;
+            let isDiscSubtracted = (Math.abs((checkoutPaid + origRem) - rawTotal) < 0.05 && rawDiscount > 0);
+            return isDiscSubtracted ? rawTotal : Math.max(0, rawTotal - rawDiscount);
+        }
+
+        // استخراج تكلفة الشراء الدقيقة للصنف (شاملاً الأصناف المؤرشفة والدفعات lots)
+        function getItemUnitCost(item, productsDB) {
+            let pPrice = parseFloat(item.purchasePrice ?? item.buyPrice ?? item.costPrice);
+            if (!isNaN(pPrice) && pPrice > 0) return pPrice;
+
+            let itemNormName = normText(item.name);
+            let p = productsDB.find(x => x && (
+                (item.id !== undefined && item.id !== null && String(x.id) === String(item.id)) ||
+                (itemNormName && normText(x.name) === itemNormName)
+            ));
+
+            if (!p) return 0;
+
+            let surfaceCost = parseFloat(p.purchasePrice ?? p.buyPrice ?? p.costPrice) || 0;
+            if (surfaceCost > 0) return surfaceCost;
+
+            if (Array.isArray(p.lots) && p.lots.length > 0) {
+                let lastLot = p.lots[p.lots.length - 1];
+                return parseFloat(lastLot.purchasePrice || lastLot.buyPrice || lastLot.costPrice) || 0;
+            }
+            return 0;
+        }
+
         function calculateOverviewStats() {
             if (typeof DB === 'undefined') return;
-            let invoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices() : [];
-            let productsDB = (typeof DB.getProducts === 'function') ? DB.getProducts() : []; 
+            // استدعاء العملاء أولاً لضمان تحديث الفواتير وحساب الأرصدة بدقة
+            if (typeof DB.getCustomers === 'function') DB.getCustomers(false, false);
+            let invoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices(false) : [];
+            let productsDB = (typeof DB.getProducts === 'function') ? DB.getProducts(true) : []; 
             
             let today = new Date();
-            let yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+            let yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
             
             let sToday = 0, sYesterday = 0, sThisMonth = 0, sLastMonth = 0, sTotal = 0;
             let pToday = 0, pYesterday = 0, pThisMonth = 0, pLastMonth = 0, pTotal = 0;
 
             invoices.forEach(inv => {
-                if (inv.type === 'quotation') return;
-                if (inv.isCanceled) return;
+                if (!inv || inv.type === 'quotation' || inv.isCanceled || inv.type === 'canceled' || inv.isDeleted || inv.status === 'deleted') return;
                 
-                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
-                let isReturn = (inv.type === 'return'); 
+                let invTime = getSafeTimeMs(inv.date || inv.timestamp) || Date.now();
+                let invDate = new Date(invTime); 
+                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return'); 
                 
-                let rawTotal = parseFloat(inv.total) || 0;
-                let rawDiscount = parseFloat(inv.discount) || 0;
-                let finalReq = Math.abs(rawTotal) - Math.abs(rawDiscount);
-                
-                if (isReturn) finalReq = -finalReq; 
+                let netTotal = getInvoiceNetTotal(inv);
+                let finalReq = isReturn ? -netTotal : netTotal; 
                 
                 let invCost = 0;
-                if(inv.items) {
+                if (Array.isArray(inv.items)) {
                     inv.items.forEach(item => { 
-                        let pPrice = parseFloat(item.purchasePrice);
-                        if (isNaN(pPrice) || pPrice === 0) {
-                            let p = productsDB.find(x => x.id === item.id);
-                            if (p) {
-                                if (p.lots && p.lots.length > 0) pPrice = parseFloat(p.lots[p.lots.length - 1].purchasePrice) || 0;
-                                else pPrice = parseFloat(p.purchasePrice) || 0;
-                            } else { pPrice = 0; }
-                        }
+                        if (!item) return;
+                        let pPrice = getItemUnitCost(item, productsDB);
                         invCost += pPrice * Math.abs(parseFloat(item.qty) || 0); 
                     });
                 }
@@ -542,7 +587,9 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
                 if (isReturn) invCost = -invCost; 
                 let invProfit = finalReq - invCost;
                 
-                sTotal += finalReq; pTotal += invProfit;
+                sTotal += finalReq;
+                pTotal += invProfit;
+
                 if (isSameDay(invDate, today)) { sToday += finalReq; pToday += invProfit; }
                 if (isSameDay(invDate, yesterday)) { sYesterday += finalReq; pYesterday += invProfit; }
                 
@@ -571,62 +618,58 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
             if (typeof DB === 'undefined') return;
             let filterType = document.getElementById('date-filter').value;
             let today = new Date();
-            let yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+            let yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
 
-            let invoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices() : [];
-            let returnsDB = (typeof DB.getSalesReturns === 'function') ? DB.getSalesReturns() : []; 
-            let purchaseInvoices = (typeof DB.getPurchaseInvoices === 'function') ? DB.getPurchaseInvoices() : [];
-            let expensesDB = (typeof DB.getExpenses === 'function') ? DB.getExpenses() : [];
-            let customers = (typeof DB.getCustomers === 'function') ? DB.getCustomers() : [];
-            let productsDB = (typeof DB.getProducts === 'function') ? DB.getProducts() : []; 
+            // 1. استدعاء العملاء والموردين أولاً لتشغيل محرك تسوية السندات وتحديث inv.paid و inv.computedRemaining
+            let customers = (typeof DB.getCustomers === 'function') ? DB.getCustomers(false, false) : [];
+            let suppliers = (typeof DB.getSuppliers === 'function') ? DB.getSuppliers(false, false) : [];
+
+            // 2. قراءة الفواتير والمصروفات والأصناف (بما فيها المؤرشفة) بعد تحديث الأرصدة
+            let invoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices(false) : [];
+            let returnsDB = (typeof DB.getSalesReturns === 'function') ? DB.getSalesReturns(false) : []; 
+            let purchaseInvoices = (typeof DB.getPurchaseInvoices === 'function') ? DB.getPurchaseInvoices(false) : [];
+            let expensesDB = (typeof DB.getExpenses === 'function') ? DB.getExpenses(false) : [];
+            let productsDB = (typeof DB.getProducts === 'function') ? DB.getProducts(true) : []; 
 
             let colReturns = 0, colNetSales = 0, colDiscount = 0, colPaid = 0, colDeferred = 0, colProfits = 0;
             let colExpenses = 0, colVouchers = 0;
 
             returnsDB.forEach(ret => {
-                let retDate = new Date(ret.date);
-                if(checkDateFilter(retDate, filterType, today, yesterday)) colReturns += Math.abs(parseFloat(ret.total) || 0);
+                if (!ret || ret.isCanceled || ret.isDeleted || ret.status === 'deleted') return;
+                if (checkDateFilter(ret.date || ret.timestamp, filterType, today, yesterday)) {
+                    colReturns += Math.abs(parseFloat(ret.total) || 0);
+                }
             });
 
             invoices.forEach(inv => {
-                if (inv.type === 'quotation') return;
-                if (inv.isCanceled) return;
-                
-                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
-                if(!checkDateFilter(invDate, filterType, today, yesterday)) return;
+                if (!inv || inv.type === 'quotation' || inv.isCanceled || inv.type === 'canceled' || inv.isDeleted || inv.status === 'deleted') return;
+                if (!checkDateFilter(inv.date || inv.timestamp, filterType, today, yesterday)) return;
 
-                let isReturn = (inv.type === 'return');
-                
-                let rawTotal = parseFloat(inv.total) || 0;
-                let rawDiscount = parseFloat(inv.discount) || 0;
-                let finalReq = Math.abs(rawTotal) - Math.abs(rawDiscount);
-                if (isReturn) finalReq = -finalReq;
+                let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
+                let rawDiscount = Math.abs(parseFloat(inv.discount) || 0);
+                let netTotal = getInvoiceNetTotal(inv);
+                let finalReq = isReturn ? -netTotal : netTotal;
                 
                 let invCost = 0;
-                if(inv.items) { 
+                if (Array.isArray(inv.items)) { 
                     inv.items.forEach(item => { 
-                        let pPrice = parseFloat(item.purchasePrice);
-                        if (isNaN(pPrice) || pPrice === 0) {
-                            let p = productsDB.find(x => x.id === item.id);
-                            if (p) {
-                                if (p.lots && p.lots.length > 0) pPrice = parseFloat(p.lots[p.lots.length - 1].purchasePrice) || 0;
-                                else pPrice = parseFloat(p.purchasePrice) || 0;
-                            } else { pPrice = 0; }
-                        }
+                        if (!item) return;
+                        let pPrice = getItemUnitCost(item, productsDB);
                         invCost += pPrice * Math.abs(parseFloat(item.qty) || 0); 
                     }); 
                 }
                 if (isReturn) invCost = -invCost;
 
                 if (isReturn) {
-                    colReturns += Math.abs(finalReq);
+                    colReturns += Math.abs(netTotal);
                 }
                 
                 colNetSales += finalReq;
-                colDiscount += Math.abs(rawDiscount);
+                colDiscount += rawDiscount;
                 
                 let paid = Math.abs(parseFloat(inv.paid) || 0);
-                let deferred = Math.abs(inv.computedRemaining !== undefined ? inv.computedRemaining : inv.remaining || 0);
+                let deferred = Math.abs(inv.computedRemaining !== undefined ? parseFloat(inv.computedRemaining) : (parseFloat(inv.remaining) || 0));
                 
                 if (isReturn) { colPaid -= paid; colDeferred -= deferred; } 
                 else { colPaid += paid; colDeferred += deferred; }
@@ -635,16 +678,18 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
             });
 
             expensesDB.forEach(exp => {
-                let expDate = new Date(exp.date);
-                if(checkDateFilter(expDate, filterType, today, yesterday)) colExpenses += parseFloat(exp.amount) || 0;
+                if (!exp) return;
+                if (checkDateFilter(exp.date || exp.timestamp, filterType, today, yesterday)) {
+                    colExpenses += parseFloat(exp.amount) || 0;
+                }
             });
 
             customers.forEach(c => {
-                if(c.transactions) {
+                if (c && Array.isArray(c.transactions)) {
                     c.transactions.forEach(tx => {
-                        let txDate = new Date(tx.date);
-                        if(checkDateFilter(txDate, filterType, today, yesterday)) {
-                            if(tx.type === 'receipt') colVouchers += parseFloat(tx.amount) || 0;
+                        if (!tx || tx.type === 'log' || tx.isCanceled || tx.isDeleted || tx.status === 'deleted') return;
+                        if (checkDateFilter(tx.date || tx.timestamp, filterType, today, yesterday)) {
+                            if (tx.type === 'receipt') colVouchers += parseFloat(tx.amount) || 0;
                         }
                     });
                 }
@@ -666,12 +711,23 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
 
             let colPurchasesTotal = 0, colPurchasesPaid = 0, colPurchasesDeferred = 0;
             purchaseInvoices.forEach(inv => {
-                if (inv.isCanceled) return;
-                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
-                if(!checkDateFilter(invDate, filterType, today, yesterday)) return;
-                colPurchasesTotal += parseFloat(inv.total) || 0;
-                colPurchasesPaid += parseFloat(inv.paid) || 0;
-                colPurchasesDeferred += parseFloat(inv.remaining) || 0;
+                if (!inv || inv.type === 'quotation' || inv.isCanceled || inv.type === 'canceled' || inv.isDeleted || inv.status === 'deleted') return;
+                if (!checkDateFilter(inv.date || inv.timestamp, filterType, today, yesterday)) return;
+
+                let isReturn = (inv.type === 'return' || inv.type === 'purchase_return' || inv.type === 'return_purchase');
+                let netReq = getInvoiceNetTotal(inv);
+                let paidVal = Math.abs(parseFloat(inv.paid) || 0);
+                let remVal = Math.abs(inv.computedRemaining !== undefined ? parseFloat(inv.computedRemaining) : (parseFloat(inv.remaining) || 0));
+
+                if (isReturn) {
+                    colPurchasesTotal -= netReq;
+                    colPurchasesPaid -= paidVal;
+                    colPurchasesDeferred -= remVal;
+                } else {
+                    colPurchasesTotal += netReq;
+                    colPurchasesPaid += paidVal;
+                    colPurchasesDeferred += remVal;
+                }
             });
 
             document.getElementById('col-purchases-total').innerHTML = colPurchasesTotal.toFixed(2) + ' <span>ج</span>';
@@ -679,16 +735,31 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
             document.getElementById('col-purchases-deferred').innerHTML = colPurchasesDeferred.toFixed(2) + ' <span>ج</span>';
         }
 
-        function checkDateFilter(itemDate, filterType, today, yesterday) {
-            let diffDays = (today - itemDate) / (1000 * 3600 * 24);
+        function checkDateFilter(dateVal, filterType, today, yesterday) {
             if (filterType === 'all_time') return true;
+            let itemTime = getSafeTimeMs(dateVal);
+            if (!itemTime) return false;
+            let itemDate = new Date(itemTime);
+
             if (filterType === 'today') return isSameDay(itemDate, today);
             if (filterType === 'yesterday') return isSameDay(itemDate, yesterday);
-            if (filterType === '7days') return diffDays <= 7;
-            if (filterType === '30days') return diffDays <= 30;
-            if (filterType === 'this_month') return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear();
+            if (filterType === '7days') {
+                let d = new Date(today);
+                d.setDate(today.getDate() - 7);
+                d.setHours(0, 0, 0, 0);
+                return itemTime >= d.getTime();
+            }
+            if (filterType === '30days') {
+                let d = new Date(today);
+                d.setDate(today.getDate() - 30);
+                d.setHours(0, 0, 0, 0);
+                return itemTime >= d.getTime();
+            }
+            if (filterType === 'this_month') {
+                return itemDate.getMonth() === today.getMonth() && itemDate.getFullYear() === today.getFullYear();
+            }
             if (filterType === 'last_month') {
-                let lm = new Date(today.getFullYear(), today.getMonth()-1, 1);
+                let lm = new Date(today.getFullYear(), today.getMonth() - 1, 1);
                 return itemDate.getMonth() === lm.getMonth() && itemDate.getFullYear() === lm.getFullYear();
             }
             return false;
@@ -696,14 +767,14 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
 
         function populateSuppliers() {
             if (typeof DB === 'undefined') return;
-            let suppliers = (typeof DB.getSuppliers === 'function') ? DB.getSuppliers() : [];
+            let suppliers = (typeof DB.getSuppliers === 'function') ? DB.getSuppliers(false, false) : [];
             let menu = document.getElementById('menu-supplier-filter');
             if(!menu) return;
             
             menu.innerHTML = `<div onclick="selectCustomOption(event, 'supplier-filter', 'all', 'كل الموردين', 'suppliers')">كل الموردين</div>`;
             
             suppliers.forEach(s => {
-                if (s.isCanceled || s.hidden) return;
+                if (!s || s.isCanceled || s.isDeleted || s.isArchived || s.hidden) return;
                 
                 let div = document.createElement('div');
                 div.innerText = s.name;
@@ -713,99 +784,104 @@ let savedSection = sessionStorage.getItem('smartAcc_currentSection') || 'col-not
         }
 
         function getLastPurchasedQty(productName, targetSupplierName) {
-            if (typeof DB.getPurchaseInvoices !== 'function') return null;
-            let pInvoices = DB.getPurchaseInvoices().sort((a,b) => new Date(b.date) - new Date(a.date));
+            if (typeof DB === 'undefined' || typeof DB.getPurchaseInvoices !== 'function') return null;
+            let pInvoices = DB.getPurchaseInvoices(false).slice().sort((a, b) => getSafeTimeMs(b.date || b.timestamp) - getSafeTimeMs(a.date || a.timestamp));
+            let normProd = normText(productName);
+            let normSup = normText(targetSupplierName);
+
             for (let inv of pInvoices) {
-                if (inv.supplier === targetSupplierName && inv.items) {
-                    let foundItem = inv.items.find(i => i.name === productName);
-                    if (foundItem) return parseFloat(foundItem.qty);
+                if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.isDeleted || inv.status === 'deleted') continue;
+                if (normText(inv.supplier) === normSup && Array.isArray(inv.items)) {
+                    let foundItem = inv.items.find(i => i && normText(i.name) === normProd);
+                    if (foundItem) return parseFloat(foundItem.qty) || null;
                 }
             }
             return null;
         }
 
-function runSmartInventory(mode) {
+        function runSmartInventory(mode) {
             if (typeof DB === 'undefined') return;
             let daysLimit = 30; 
             let activeSupplierName = 'all';
 
             if(mode === 'shortages') {
-                daysLimit = parseInt(document.getElementById('shortages-period').value) || 30;
+                daysLimit = parseInt(document.getElementById('shortages-period').value, 10) || 30;
             } else if (mode === 'suppliers') {
-                daysLimit = parseInt(document.getElementById('suppliers-period').value) || 30;
+                daysLimit = parseInt(document.getElementById('suppliers-period').value, 10) || 30;
                 activeSupplierName = document.getElementById('supplier-filter').value;
             }
             
-            let allProducts = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts() : [];
+            let allProducts = (typeof DB.getProducts === 'function') ? DB.getProducts(false) : [];
             if (allProducts.length === 0) {
                 let localData = localStorage.getItem('seraj_products');
-                if (localData) allProducts = JSON.parse(localData);
+                if (localData) {
+                    try { allProducts = JSON.parse(localData); } catch(e) {}
+                }
             }
             
-            // الفلتر الأساسي (شامل إخفاء الأصناف الفرعية/اللمبات)
+            // الفلتر الأساسي (شامل إخفاء الأصناف الفرعية/اللمبات والأصناف المؤرشفة)
             let products = allProducts.filter(p => {
-                if (p.isDeleted === true || String(p.isDeleted).toLowerCase() === 'true' ||
+                if (!p || p.isArchived === true || p.isDeleted === true || String(p.isDeleted).toLowerCase() === 'true' ||
                     p.deleted === true || String(p.deleted).toLowerCase() === 'true' ||
                     p.archived === true || String(p.archived).toLowerCase() === 'true' || 
-                    p.autoParentId) { // p.autoParentId هو اللي بيخفي اللمبة
+                    p.autoParentId) {
                     return false;
                 }
                 return true;
             });
 
-            let salesInvoices = (typeof DB !== 'undefined' && typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices() : [];
+            let salesInvoices = (typeof DB.getSalesInvoices === 'function') ? DB.getSalesInvoices(false) : [];
             let today = new Date();
+            let cutoffDate = new Date(today);
+            cutoffDate.setDate(today.getDate() - daysLimit);
+            cutoffDate.setHours(0, 0, 0, 0);
+            let cutoffTime = cutoffDate.getTime();
+
             let periodSales = {}; 
 
             salesInvoices.forEach(inv => {
-                if (inv.type === 'quotation') return;
-                if (inv.isCanceled) return;
+                if (!inv || inv.type === 'quotation' || inv.isCanceled || inv.type === 'canceled' || inv.isDeleted || inv.status === 'deleted') return;
 
-                let invDate = new Date(inv.date || inv.timestamp || Date.now()); 
-                let daysDiff = (today.getTime() - invDate.getTime()) / (1000 * 3600 * 24);
-                
-                if(daysDiff <= daysLimit && inv.items) {
-                    let isReturn = (inv.type === 'return');
+                let invTime = getSafeTimeMs(inv.date || inv.timestamp);
+                if (invTime >= cutoffTime && Array.isArray(inv.items)) {
+                    let isReturn = (inv.type === 'return' || inv.type === 'return_sale' || inv.type === 'sales_return');
                     let multiplier = isReturn ? -1 : 1; 
 
                     inv.items.forEach(item => {
-                        if(!periodSales[item.id]) periodSales[item.id] = 0;
-                        periodSales[item.id] += (parseFloat(item.qty) || 0) * multiplier;
+                        if (!item || item.id === undefined || item.id === null) return;
+                        let idKey = String(item.id);
+                        if (!periodSales[idKey]) periodSales[idKey] = 0;
+                        periodSales[idKey] += (parseFloat(item.qty) || 0) * multiplier;
                     });
                 }
             });
 
-            // إضافة السحب الناتج عن فك الكراتين تلقائياً (عشان يطلب الكرتونة)
-            products.forEach(p => {
-                if (p.lots && p.lots.length > 0) {
-                    p.lots.forEach(lot => {
-                        if (lot.isAutoUnpack && lot.unpackedCartons > 0) {
-                            let lotDate = new Date(lot.date || today);
-                            let daysDiff = (today.getTime() - lotDate.getTime()) / (1000 * 3600 * 24);
-                            if (daysDiff <= daysLimit) {
-                                if(!periodSales[p.id]) periodSales[p.id] = 0;
-                                periodSales[p.id] += lot.unpackedCartons; 
-                            }
-                        }
-                    });
+            // تحويل مبيعات الأصناف الفرعية (اللمبات/القطع) إلى استهلاك من الصنف الرئيسي (الكرتونة)
+            allProducts.forEach(subP => {
+                if (!subP || !subP.autoParentId || subP.isArchived || subP.isDeleted) return;
+                let subSold = periodSales[String(subP.id)] || 0;
+                let rate = parseFloat(subP.autoConversionRate) || 50;
+                if (subSold > 0 && rate > 0) {
+                    let parentIdKey = String(subP.autoParentId);
+                    periodSales[parentIdKey] = (periodSales[parentIdKey] || 0) + (subSold / rate);
                 }
             });
 
             // ================= عرض نواقص المخزن =================
             if (mode === 'shortages') {
                 let shBody = document.getElementById('shortages-body');
+                if (!shBody) return;
                 shBody.innerHTML = '';
                 let hasShortages = false;
                 
                 products.forEach(p => {
-                    let soldInPeriod = periodSales[p.id] || 0;
-                    let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
+                    let soldInPeriod = periodSales[String(p.id)] || 0;
+                    let currentStock = (Array.isArray(p.lots) && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
                     
                     if (soldInPeriod > 0 && currentStock < soldInPeriod) {
                         hasShortages = true;
                         let statusText = currentStock <= 0 ? '<div style="color:#ff1a40; font-size:12px; margin-top:3px;">(نفد تماماً)</div>' : '';
                         
-                        // 🌟 تحسين التصميم: مساحات أوسع، خط أتخن وأوضح للموبايل 🌟
                         shBody.insertAdjacentHTML('beforeend', `
                         <tr style="border-bottom: 1px solid rgba(168, 85, 247, 0.2);">
                             <td style="text-align: right; padding: 14px 10px;">
@@ -823,20 +899,22 @@ function runSmartInventory(mode) {
             // ================= عرض طلبات الموردين =================
             else if (mode === 'suppliers') {
                 let supBody = document.getElementById('smart-orders-body');
+                if (!supBody) return;
                 supBody.innerHTML = '';
                 let hasOrders = false;
+                let normActiveSup = normText(activeSupplierName);
 
                 products.forEach(p => {
-                    let soldInPeriod = periodSales[p.id] || 0;
-                    let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
+                    let soldInPeriod = periodSales[String(p.id)] || 0;
+                    let currentStock = (Array.isArray(p.lots) && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
                     
-                    let pSupplier = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].supplier : (p.supplier || 'بدون مورد');
+                    let pSupplier = (Array.isArray(p.lots) && p.lots.length > 0 && p.lots[p.lots.length - 1].supplier) ? p.lots[p.lots.length - 1].supplier : (p.supplier || 'بدون مورد');
                     let belongsToSupplier = false;
 
                     if (activeSupplierName === 'all') {
                         belongsToSupplier = true;
                     } else {
-                        if (p.supplier === activeSupplierName || (p.lots && p.lots.some(l => l.supplier === activeSupplierName))) {
+                        if (normText(p.supplier) === normActiveSup || (Array.isArray(p.lots) && p.lots.some(l => l && normText(l.supplier) === normActiveSup))) {
                             belongsToSupplier = true;
                             pSupplier = activeSupplierName;
                         }
@@ -872,14 +950,15 @@ function runSmartInventory(mode) {
         // ================= العقل البرمجي للنوتة الذكية =================
         let smartNotesDB = [];
         try {
-            smartNotesDB = JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]');
+            smartNotesDB = (typeof DB !== 'undefined' && typeof DB.getSmartNotes === 'function')
+                ? DB.getSmartNotes()
+                : JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]');
         } catch(e) {
             smartNotesDB = [];
         }
         let currentEditingNoteId = null;
 
-function renderNotesList() {
-            // تحديث البيانات دائماً من الداتابيز المركزية لضمان قراءة تعديلات الأجهزة الأخرى فوراً
+        function renderNotesList() {
             if (typeof DB !== 'undefined' && typeof DB.getSmartNotes === 'function') {
                 smartNotesDB = DB.getSmartNotes();
             } else {
@@ -919,18 +998,17 @@ function renderNotesList() {
                     return getPriority(a) - getPriority(b);
                 });
 
-                // عرض حتى 4 أصناف
                 let maxDisplay = 4;
                 let displayItems = sortedItems.slice(0, maxDisplay);
                 let remainingCount = sortedItems.length - maxDisplay;
 
                 let leftItemsHtml = '';
                 displayItems.forEach(item => {
-                    let itemColor = '#f59e0b'; // برتقالي افتراضي
+                    let itemColor = '#f59e0b';
                     if (item.stateColor === 'state-red') itemColor = '#ef4444';
                     else if (item.stateColor === 'state-green') itemColor = '#00ff66';
 
-                    let cleanName = (item.name || '').replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
+                    let cleanName = String(item.name || '').replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
                     leftItemsHtml += `<div style="color: ${itemColor}; font-size: 12px; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; text-align: left; line-height: 1.3;">• ${cleanName}</div>`;
                 });
 
@@ -939,13 +1017,8 @@ function renderNotesList() {
                 }
 
                 card.innerHTML = `
-                    <!-- 1. اليمين: الملاحظة / التعليق -->
                     <div style="flex: 1; text-align: right; font-size: 13px; color: #d1d5db; overflow: hidden; text-overflow: ellipsis; white-space: normal; line-height: 1.4; padding-left: 8px;">${rightComment}</div>
-                    
-                    <!-- 2. الوسط: اسم الملاحظة كبير وبالأخضر المتوهج -->
                     <div style="flex: 1.2; text-align: center; color: #00ff66; font-size: 21px; font-weight: bold; text-shadow: 0 0 10px rgba(0, 255, 102, 0.5); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 5px;">${centerTitle}</div>
-                    
-                    <!-- 3. الشمال: الأصناف مرتبة حسب الأولوية والألوان -->
                     <div style="flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; overflow: hidden; padding-right: 8px;">
                         ${leftItemsHtml}
                     </div>
@@ -957,6 +1030,32 @@ function renderNotesList() {
         window.addEventListener('DOMContentLoaded', () => {
             renderNotesList();
         });
+
+        // الاستماع للتحديثات الفورية من db.js والسحابة (مع منع التكرار المزدوج في نفس اللحظة)
+        const _refreshSmartAccountantUI = (window.Utils && typeof window.Utils.debounce === 'function')
+            ? window.Utils.debounce(() => {
+                populateSuppliers();
+                calculateOverviewStats();
+                calculateCollectedData();
+                runSmartInventory('shortages');
+                runSmartInventory('suppliers');
+                let modal = document.getElementById('note-modal');
+                if (!modal || modal.style.display === 'none') {
+                    renderNotesList();
+                }
+            }, 150)
+            : () => {
+                populateSuppliers();
+                calculateOverviewStats();
+                calculateCollectedData();
+                runSmartInventory('shortages');
+                runSmartInventory('suppliers');
+                let modal = document.getElementById('note-modal');
+                if (!modal || modal.style.display === 'none') {
+                    renderNotesList();
+                }
+            };
+        window.addEventListener('seraj:updated', _refreshSmartAccountantUI);
 
         function openNoteModal(noteId) {
             let modal = document.getElementById('note-modal');
@@ -972,23 +1071,29 @@ function renderNotesList() {
             let tbody = document.getElementById('note-table-body');
             if (tbody) tbody.innerHTML = '';
 
+            let allProducts = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts(true) : [];
+
             if (noteId) {
-                currentEditingNoteId = noteId;
-                let note = smartNotesDB.find(n => n.id === noteId);
+                currentEditingNoteId = String(noteId);
+                let note = smartNotesDB.find(n => n && String(n.id) === String(noteId));
                 if (note) {
                     document.getElementById('note-title').value = note.title || '';
                     document.getElementById('note-comment').value = note.comment || '';
                     if (note.items && Array.isArray(note.items)) {
-    note.items.slice().reverse().forEach(item => {
-        // التحقق مما إذا كان الاسم يحتوي على كلمة مؤرشف لكي نظل مميزين لها
-        let archivedFlag = item.name.includes('(مؤرشف)');
-        let cleanName = item.name.replace(' <span style="color:#ff1a40; font-size:11px;">(مؤرشف)</span>', '');
-        addNoteRow(cleanName, item.qty, item.state, item.stateColor, item.supplier, archivedFlag);
-    });
-}
+                        note.items.slice().reverse().forEach(item => {
+                            let rawName = String(item.name || '');
+                            let cleanName = rawName.replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
+                            let normItemName = normText(cleanName);
+                            let matchedProd = allProducts.find(p => p && normText(p.name) === normItemName);
+                            let isProdArchived = matchedProd ? Boolean(matchedProd.isArchived || matchedProd.isDeleted || matchedProd.deleted || matchedProd.archived) : false;
+                            let archivedFlag = Boolean(item.isArchived || isProdArchived || rawName.includes('(مؤرشف)'));
+
+                            addNoteRow(cleanName, item.qty, item.state, item.stateColor, item.supplier, archivedFlag);
+                        });
+                    }
                 }
             } else {
-                currentEditingNoteId = Date.now().toString();
+                currentEditingNoteId = (typeof window.generateUniqueId === 'function') ? String(window.generateUniqueId()) : Date.now().toString();
                 document.getElementById('note-title').value = '';
                 document.getElementById('note-comment').value = '';
                 document.getElementById('note-title').focus();
@@ -1000,13 +1105,12 @@ function renderNotesList() {
             if (modal) modal.style.display = 'none';
         }
 
-          let searchTimer;
-         function smartSearch() {
-             clearTimeout(searchTimer);
-                searchTimer = setTimeout(() => {
-                    // ضع هنا اسم دالة البحث الخاصة بك، وهي غالباً عندنا handleNoteSearch
-                   let query = document.getElementById('note-search').value;
-               handleNoteSearch(query);
+        let searchTimer;
+        function smartSearch() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                let query = document.getElementById('note-search').value;
+                handleNoteSearch(query);
             }, 150); 
         }
 
@@ -1018,7 +1122,6 @@ function renderNotesList() {
                 return;
             }
             
-            // استخدام (true) لجلب كافة الأصناف (بما فيها المؤرشفة) للبحث فقط
             let products = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts(true) : [];
             if (products.length === 0) {
                 let localData = localStorage.getItem('seraj_products');
@@ -1027,17 +1130,18 @@ function renderNotesList() {
                 }
             }
 
+            let normQ = normText(query);
+            let tokens = normQ.split(' ').filter(Boolean);
+
             let filtered = products.filter(p => {
                 if (!p || !p.name) return false;
-                let q = query.toLowerCase();
-                let matchName = p.name.toLowerCase().includes(q);
-                let matchBarcode = p.barcode && String(p.barcode).toLowerCase().includes(q);
-                return matchName || matchBarcode;
+                let hay = normText(p.name + ' ' + (p.barcode || '') + ' ' + (p.code || ''));
+                return tokens.every(t => hay.includes(t));
             });
             
             resultsDiv.innerHTML = '';
             
-            // 1. خيار الإضافة يتم وضعه أولاً في قمة القائمة فوق خالص
+            // 1. خيار الإضافة الحرة في قمة القائمة
             let addFreeDiv = document.createElement('div');
             addFreeDiv.style.cssText = `padding: 12px 15px; border-bottom: 1px solid #374151; color: white; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; background: rgba(59, 130, 246, 0.2); text-decoration: none !important;`;
             addFreeDiv.innerHTML = `<span style="color:#4ade80;">➕ إضافة "${query}"</span> <span style="color:#9ca3af; font-size:13px;">(صنف حر)</span>`;
@@ -1048,21 +1152,21 @@ function renderNotesList() {
             };
             resultsDiv.appendChild(addFreeDiv);
             
-            // 2. عرض نتائج البحث الخاصة بالمخزن تحتها مباشرة مع إزالة أي خطوط تحت النصوص
+            // 2. عرض نتائج البحث الخاصة بالمخزن
             filtered.forEach(p => {
-                let currentStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
+                let currentStock = (Array.isArray(p.lots) && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || parseFloat(p.qty) || 0);
                 
-                let isArchived = p.isDeleted || p.deleted || p.archived;
+                let isArchived = Boolean(p.isArchived || p.isDeleted || p.deleted || p.archived);
                 let archivedTag = isArchived ? `<span style="color:#ff1a40; font-size:11px; margin-right:5px; font-weight:bold;">(مؤرشف)</span>` : '';
                 let itemStyle = isArchived ? `background: rgba(220, 38, 38, 0.15); border-right: 3px solid #ff1a40;` : '';
 
-                // تنظيف اسم الصنف من أي أكواد مخفية قد تسبب ظهور خطوط (مثل <u> أو <a>)
-                let cleanName = (p.name || '').replace(/<[^>]*>?/gm, '');
+                let cleanName = String(p.name || '').replace(/<[^>]*>?/gm, '');
 
                 let div = document.createElement('div');
                 div.style.cssText = `padding: 12px 15px; border-bottom: 1px solid #374151; color: white; font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center; text-decoration: none !important; ${itemStyle}`;
-                div.innerHTML = `<div><span>${cleanName}</span> ${archivedTag}</div> <span style="color:#f59e0b; font-size:13px;">رصيد: ${currentStock}</span>`;  div.onclick = () => {
-                    selectItemForNote(p.name, currentStock, false, isArchived);
+                div.innerHTML = `<div><span>${cleanName}</span> ${archivedTag}</div> <span style="color:#f59e0b; font-size:13px;">رصيد: ${currentStock}</span>`;
+                div.onclick = () => {
+                    selectItemForNote(cleanName, currentStock, false, isArchived);
                     resultsDiv.style.display = 'none';
                     document.getElementById('note-search').value = '';
                 };
@@ -1074,12 +1178,14 @@ function renderNotesList() {
 
         function getLastPurchaseDetails(productName) {
             let details = { qty: 1, supplier: '' };
+            let normProd = normText(productName);
+
             if (typeof DB !== 'undefined' && typeof DB.getPurchaseInvoices === 'function') {
-                let pInvoices = (DB.getPurchaseInvoices() || []).slice().sort((a,b) => new Date(b.date) - new Date(a.date));
+                let pInvoices = (DB.getPurchaseInvoices(false) || []).slice().sort((a, b) => getSafeTimeMs(b.date || b.timestamp) - getSafeTimeMs(a.date || a.timestamp));
                 for (let inv of pInvoices) {
-                    if (inv.isCanceled) continue;
+                    if (!inv || inv.isCanceled || inv.type === 'canceled' || inv.isDeleted || inv.status === 'deleted') continue;
                     if (inv.items && Array.isArray(inv.items)) {
-                        let found = inv.items.find(i => i.name === productName);
+                        let found = inv.items.find(i => i && normText(i.name) === normProd);
                         if (found) {
                             details.qty = parseFloat(found.qty) || 1;
                             details.supplier = inv.supplier || '';
@@ -1088,11 +1194,11 @@ function renderNotesList() {
                     }
                 }
             }
-            // لو مفيش فاتورة مشتريات، نشوف لو المورد متسجل على كارت الصنف نفسه
-            let products = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts() : [];
-            let prod = products.find(x => x.name === productName);
+            // لو مفيش فاتورة مشتريات، نشوف لو المورد متسجل على كارت الصنف نفسه (شاملاً المؤرشف)
+            let products = (typeof DB !== 'undefined' && typeof DB.getProducts === 'function') ? DB.getProducts(true) : [];
+            let prod = products.find(x => x && normText(x.name) === normProd);
             if (prod) {
-                if (prod.lots && prod.lots.length > 0 && prod.lots[prod.lots.length - 1].supplier) {
+                if (Array.isArray(prod.lots) && prod.lots.length > 0 && prod.lots[prod.lots.length - 1].supplier) {
                     details.supplier = prod.lots[prod.lots.length - 1].supplier;
                 } else if (prod.supplier) {
                     details.supplier = prod.supplier;
@@ -1111,6 +1217,7 @@ function renderNotesList() {
             let tbody = document.getElementById('note-table-body');
             if (!tbody) return;
             let tr = document.createElement('tr');
+            tr.dataset.isArchived = isArchived ? '1' : '0';
             
             tr.onclick = function(e) {
                 if (e.target.tagName === 'INPUT' || e.target.classList.contains('state-badge')) return;
@@ -1118,14 +1225,12 @@ function renderNotesList() {
             };
 
             let colorCls = stateColorClass || 'state-orange';
-            
-            // لو الصنف مؤرشف، نميز اسمه في الجدول بوضع كلمة (مؤرشف) بلون مختلف ونميز الصف خفيفاً
-            let displayName = isArchived ? `${name} <span style="color:#ff1a40; font-size:11px;">(مؤرشف)</span>` : name;
+            let cleanName = String(name || '').replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
+            let displayName = isArchived ? `${cleanName} <span style="color:#ff1a40; font-size:11px;">(مؤرشف)</span>` : cleanName;
             if (isArchived) tr.style.background = "rgba(220, 38, 38, 0.08)";
 
             tr.innerHTML = `
                 <td style="text-align:right; padding-right:8px; text-decoration: none !important;">${displayName}</td>
-                <!-- تم إضافة min="0" لمنع السالب حسب الدستور المركزي -->
                 <td><input type="number" class="note-td-input qty-val" value="${qty}" min="0"></td>
                 <td><span class="state-badge ${colorCls}" onclick="cycleStateColor(this)">${stateVal}</span></td>
                 <td><input type="text" class="note-td-input sup-val" value="${supplier || ''}" placeholder="المورد"></td>
@@ -1133,16 +1238,24 @@ function renderNotesList() {
             tbody.insertBefore(tr, tbody.firstChild);
         }
 
-        // دالة حذف الصفوف المحددة
-        function deleteSelectedRows() {
+        // دالة حذف الصفوف المحددة باستخدام نوافذ النظام المركزية
+        async function deleteSelectedRows() {
             let tbody = document.getElementById('note-table-body');
             if (!tbody) return;
             let selectedRows = tbody.querySelectorAll('tr.selected-row');
             if (selectedRows.length === 0) {
-                alert("برجاء تحديد صنف واحد على الأقل للحذف (اضغط على الصنف لتعلميه).");
+                if (typeof SerajAlert === 'function') {
+                    await SerajAlert("برجاء تحديد صنف واحد على الأقل للحذف (اضغط على الصنف لتحديده).", "error");
+                } else {
+                    alert("برجاء تحديد صنف واحد على الأقل للحذف (اضغط على الصنف لتحديده).");
+                }
                 return;
             }
-            if (confirm("هل أنت متأكد من حذف الأصناف المحددة من هذه المفكره الذكيه؟")) {
+            let confirmed = (typeof SerajConfirm === 'function')
+                ? await SerajConfirm("هل أنت متأكد من حذف الأصناف المحددة من هذه المفكرة الذكية؟")
+                : confirm("هل أنت متأكد من حذف الأصناف المحددة من هذه المفكرة الذكية؟");
+
+            if (confirmed) {
                 selectedRows.forEach(row => row.remove());
             }
         }
@@ -1161,7 +1274,6 @@ function renderNotesList() {
         }
 
         function saveNote() {
-            // 1. جلب البيانات من الواجهة
             let titleInput = document.getElementById('note-title');
             let commentInput = document.getElementById('note-comment');
             let title = titleInput ? titleInput.value.trim() : '';
@@ -1172,9 +1284,9 @@ function renderNotesList() {
             if (tbody) {
                 let rows = tbody.querySelectorAll('tr');
                 rows.forEach(tr => {
-                    // تنظيف اسم الصنف من أي أكواد مخفية أو كلمة (مؤرشف) لضمان حفظه بشكل نظيف
                     let rawName = tr.cells[0].innerText || '';
                     let name = rawName.replace(/<[^>]*>?/gm, '').replace('(مؤرشف)', '').trim();
+                    let isArchived = (tr.dataset.isArchived === '1') || rawName.includes('(مؤرشف)');
                     
                     let qtyInput = tr.querySelector('.qty-val');
                     let qty = qtyInput ? qtyInput.value : 0;
@@ -1189,12 +1301,11 @@ function renderNotesList() {
                     let supplier = supplierInput ? supplierInput.value : '';
                     
                     if(name !== '') {
-                        items.push({ name, qty, state: stateVal, stateColor, supplier });
+                        items.push({ name, qty, state: stateVal, stateColor, supplier, isArchived });
                     }
                 });
             }
             
-            // 2. جلب أحدث نسخة من النوتات من المحرك المركزي مباشرة (لمنع تضارب البيانات)
             let currentNotesDB = [];
             if (typeof window.DB !== 'undefined' && typeof window.DB.getSmartNotes === 'function') {
                 currentNotesDB = window.DB.getSmartNotes() || [];
@@ -1202,9 +1313,8 @@ function renderNotesList() {
                 try { currentNotesDB = JSON.parse(localStorage.getItem('seraj_smart_notes') || '[]'); } catch(e) {}
             }
             
-            let existingIndex = currentNotesDB.findIndex(n => n.id === currentEditingNoteId);
+            let existingIndex = currentNotesDB.findIndex(n => n && String(n.id) === String(currentEditingNoteId));
 
-            // 3. الحذف التلقائي لو النوتة فارغة
             if (title === '' && items.length === 0) {
                 if (existingIndex > -1) {
                     currentNotesDB.splice(existingIndex, 1);
@@ -1219,54 +1329,37 @@ function renderNotesList() {
                 return;
             }
             
-            // 4. تجهيز كائن النوتة وتوليد ID من المحرك المركزي للنوتة الجديدة
             let finalTitle = title !== '' ? title : 'ملاحظة بدون اسم';
-            let finalId = currentEditingNoteId;
-            if (!finalId) {
-                finalId = (typeof window.generateUniqueId === 'function') ? window.generateUniqueId() : Date.now().toString();
-            }
+            let finalId = currentEditingNoteId ? String(currentEditingNoteId) : ((typeof window.generateUniqueId === 'function') ? String(window.generateUniqueId()) : Date.now().toString());
+            let todayLocal = (window.Utils && typeof window.Utils.getLocalDateString === 'function') ? window.Utils.getLocalDateString() : new Date().toISOString().slice(0, 10);
 
             let noteObj = { 
                 id: finalId, 
                 title: finalTitle, 
                 comment, 
                 items, 
-                date: new Date().toISOString(),
+                date: todayLocal,
+                timestamp: Date.now(),
                 _lastModified: Date.now(),
                 updatedBy: (typeof window.myDeviceName !== 'undefined') ? window.myDeviceName : (localStorage.getItem('seraj_device_name') || 'جهاز بالمحل')
             };
             
-            // 5. التحديث أو الإضافة للمصفوفة
             if (existingIndex > -1) {
                 currentNotesDB[existingIndex] = noteObj;
             } else {
                 currentNotesDB.unshift(noteObj);
             }
             
-            // 6. الإرسال للمحرك المركزي (db.js) ليقوم بالحفظ والمزامنة فوراً
             if (typeof window.DB !== 'undefined' && typeof window.DB.saveSmartNotes === 'function') {
                 window.DB.saveSmartNotes(currentNotesDB);
             } else {
                 localStorage.setItem('seraj_smart_notes', JSON.stringify(currentNotesDB));
             }
             
-            // تحديث المتغير المحلي لضمان استقرار العرض
-            if (typeof smartNotesDB !== 'undefined') {
-                smartNotesDB = currentNotesDB;
-            }
+            smartNotesDB = currentNotesDB;
             
-            // 7. إغلاق المودال وإعادة رسم الكروت
             renderNotesList();
             closeNoteModal();
-        }
-    </script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
-                    .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
-            });
         }
     </script>
 </body>

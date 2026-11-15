@@ -241,16 +241,8 @@
             overflow: visible !important;
         }
     </style>
-    <!-- تم حذف كود style الداخلي بالكامل -->
-<head>
-    <!-- ... -->
-    <link rel="stylesheet" href="style.css">
-    <!-- ... -->
 </head>
 <body class="treasury-page-active">
-    <!-- ... الهيكل كما هو بدون تغيير IDs أو JavaScript ... -->
-</body></head>
-<body>
 
     <!-- نافذة أمان الخزينة -->
     <div class="modal-overlay" id="pinModal" style="display: none;">
@@ -1178,7 +1170,7 @@
                 let deviceName = m._device || m.device || m.addedBy || m.cashier || m.userName || m.user_name || 'غير مسجل';
                 let editTag = (m._lastModifiedBy && m._lastModifiedBy !== deviceName) ? `<span style="color:#facc15; margin-right:4px;">✏️ ${m._lastModifiedBy}</span>` : '';
                 
-                let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
+                let typeLabels = { 'sales': '🛒 بيع', 'return_sale': '↩️ مرتجع', 'return_purchase': '↩️ مرتجع شراء', 'purchase': '📦 شراء', 'customers': '👤 عميل', 'customer_receipt': '👤 تحصيل عميل', 'customer_payment': '👤 صرف عميل', 'suppliers': '🏢 مورد', 'supplier_receipt': '🏢 قبض مورد', 'supplier_payment': '🏢 صرف مورد', 'purchase_payment': '🏢 صرف مورد', 'expenses': '💸 مصروف', 'direct': '💰 حركة مباشرة', 'correction': '⚖️ تسوية' };
                 let typeStr = typeLabels[m.type] || 'حركة خزينة';
                 let invoiceNum = m.invoiceNo || (!m.invoiceNo && m.type !== 'direct' && m.type !== 'expenses' ? m.refId || m.receiptNo : '');
                 let invNoStr = invoiceNum ? ` <span style="color:#facc15; font-size:13px;">(#${invoiceNum})</span>` : '';
@@ -1494,8 +1486,12 @@
         }
 
                 function printThermalStatement() { 
-            closeAllMenus(); 
-            let list = [...treasuryMovements], activeView = document.querySelector('.active-view').id, reportTitle = "تقرير حركة الخزينة والمصروفات";
+            closeAllMenus();
+            treasuryMovements = (typeof DB !== 'undefined') ? DB.getTreasuryMoves(false) : [];
+            let list = [...treasuryMovements];
+            let activeViewEl = document.querySelector('.active-view');
+            let activeView = activeViewEl ? activeViewEl.id : 'treasury-main-view';
+            let reportTitle = "تقرير حركة الخزينة والمصروفات";
             
             const now = new Date();
             const todayStr = getLocalDateStr(now);
@@ -1503,9 +1499,18 @@
             const yestStr = getLocalDateStr(yestDate);
 
             if(activeView === 'treasury-expense-list-view' || activeView === 'treasury-expense-form-view') {
-                list = list.filter(m => m.type === 'expenses'); reportTitle = "تقرير المصروفات النثرية";
+                list = list.filter(m => m.type === 'expenses');
+                reportTitle = "تقرير المصروفات النثرية";
             } else {
-                if(currentMovementFilter !== 'all') list = list.filter(m => m.type === currentMovementFilter);
+                if(currentMovementFilter !== 'all') {
+                    if(currentMovementFilter === 'customers') {
+                        list = list.filter(m => m.type === 'customer_receipt' || m.type === 'customer_payment' || m.type === 'customers');
+                    } else if (currentMovementFilter === 'suppliers') {
+                        list = list.filter(m => m.type === 'supplier_receipt' || m.type === 'supplier_payment' || m.type === 'purchase_payment' || m.type === 'suppliers');
+                    } else {
+                        list = list.filter(m => m.type === currentMovementFilter);
+                    }
+                }
                 if(currentVaultFilter !== 'all') list = list.filter(m => (m.vault || 'main') === currentVaultFilter);
             }
 
@@ -1533,28 +1538,28 @@
                     return d.getMonth() === lastM.getMonth() && d.getFullYear() === lastM.getFullYear();
                 }
                 if(currentDurationFilter === 'custom' && customStartDate && customEndDate) {
-                    let sTime = getSafeTime(customStartDate);
-                    let eTime = getSafeTime(customEndDate) + 86399999;
+                    let sTime = getSafeTime(customStartDate) - 43200000;
+                    let eTime = getSafeTime(customEndDate) + 43200000;
                     return itemTime >= sTime && itemTime <= eTime;
                 }
                 return true;
             });
 
             // ترتيب للطباعة: الأحدث أولاً
-            list.sort((a, b) => getSafeTime(b.date || b.timestamp) - getSafeTime(a.date || a.timestamp));
+            list.sort((a, b) => getSafeTime(b.timestamp || b.date) - getSafeTime(a.timestamp || a.date));
 
-            document.getElementById('printDate').innerText = `التاريخ: ${new Date().toISOString().slice(0,10)}`;
-
+            document.getElementById('printDate').innerText = `التاريخ: ${getLocalDateStr(now)}`;
             document.querySelector('#thermalPrintArea div:nth-child(2)').innerText = reportTitle;
 
             let itemsHtml = '', tAdd = 0, tDed = 0;
             list.forEach(m => {
-                tAdd += (m.amountAdd || 0); tDed += (m.amountDeduct || 0);
+                tAdd += (parseFloat(m.amountAdd) || 0);
+                tDed += (parseFloat(m.amountDeduct) || 0);
                 itemsHtml += `<div style="margin-bottom:8px; border-bottom:1px dotted #ccc; padding-bottom:4px;">
                     <div>${m.notes}</div>
                     <div style="display:flex; justify-content:space-between; font-size:11px;">
-                        <span>إضافة: ${(m.amountAdd||0).toFixed(2)}</span>
-                        <span>خصم: ${(m.amountDeduct||0).toFixed(2)}</span>
+                        <span>إضافة: ${(parseFloat(m.amountAdd)||0).toFixed(2)}</span>
+                        <span>خصم: ${(parseFloat(m.amountDeduct)||0).toFixed(2)}</span>
                     </div>
                 </div>`;
             });
@@ -1563,16 +1568,17 @@
             window.print(); 
         }
 
-        function handlePdfMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات PDF"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; window.print(); }; document.getElementById('ioModal').style.display = 'flex'; }
+        function handlePdfMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات PDF"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; printThermalStatement(); }; document.getElementById('ioModal').style.display = 'flex'; }
         function handleExcelMenu() { closeAllMenus(); document.getElementById('ioModalTitle').innerText = "خيارات ملفات Excel"; document.getElementById('ioExportBtn').onclick = () => { document.getElementById('ioModal').style.display='none'; exportExcel(); }; document.getElementById('ioModal').style.display = 'flex'; }
         async function exportExcel() {
-    if(treasuryMovements.length === 0) return await SerajAlert("لا توجد بيانات لتصديرها!");
-    if(typeof exportToExcel === 'function') {
-        exportToExcel(treasuryMovements, "تقرير_حركة_الخزينة");
-    } else {
-        await SerajAlert("ملف print_manager.js غير متصل أو الدالة غير موجودة!");
-    }
-}
+            treasuryMovements = (typeof DB !== 'undefined') ? DB.getTreasuryMoves(false) : [];
+            if(treasuryMovements.length === 0) return await SerajAlert("لا توجد بيانات لتصديرها!");
+            if(typeof exportToExcel === 'function') {
+                exportToExcel(treasuryMovements, "تقرير_حركة_الخزينة");
+            } else {
+                await SerajAlert("دالة التصدير غير متصلة!");
+            }
+        }
 
         window.onload = () => {
             applySavedTheme();

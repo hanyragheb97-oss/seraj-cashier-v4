@@ -346,8 +346,8 @@
     let editingInvoiceData = null; 
 
     try {
-        productsDB = DB.getProducts() || [];
-        customersDB = DB.getCustomers() || [];
+        productsDB = DB.getProducts(true) || [];
+        customersDB = DB.getCustomers(false, false) || [];
         invoicesDB = DB.getSalesInvoices(true) || [];
     } catch(e) {
         console.error(e);
@@ -498,24 +498,42 @@
         }
     }
 
-    function closeEditItemModal() { document.getElementById('editItemModal').style.display = 'none'; }
+    window.isEditingNow = false;
+
+    function syncEditingLockState() {
+        let editView = document.getElementById('full-edit-view');
+        let saveModal = document.getElementById('saveEditModalOverlay');
+        let itemModal = document.getElementById('editItemModal');
+        window.isEditingNow = Boolean(
+            (editView && editView.classList.contains('active-view')) ||
+            (saveModal && saveModal.style.display === 'flex') ||
+            (itemModal && itemModal.style.display === 'flex')
+        );
+    }
+
+    function closeEditItemModal() {
+        document.getElementById('editItemModal').style.display = 'none';
+        syncEditingLockState();
+    }
 
     function switchView(viewId) {
         document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active-view'));
         document.getElementById(viewId).classList.add('active-view');
+        syncEditingLockState();
         if(viewId === 'invoices-list-view') renderInvoicesHistory();
     }
 
     function handleSearchInput() {
-        const query = document.getElementById('historySearchInput').value.trim().toLowerCase();
+        const rawQuery = document.getElementById('historySearchInput').value.trim();
+        const normQ = normCustName(rawQuery);
         const searchTypeRadio = document.querySelector('input[name="searchType"]:checked');
         const searchType = searchTypeRadio ? searchTypeRadio.value : 'customer';
         
         const dropdown = document.getElementById('customerDropdown');
         dropdown.innerHTML = '';
         
-        if (searchType === 'customer' && query.length > 0) {
-            const filtered = customersDB.filter(c => c.name && c.name.toLowerCase().includes(query)).slice(0, 30);
+        if (searchType === 'customer' && normQ.length > 0) {
+            const filtered = customersDB.filter(c => c.name && normCustName(c.name).includes(normQ)).slice(0, 30);
             if (filtered.length > 0) {
                 dropdown.style.display = 'block';
                 filtered.forEach(c => {
@@ -548,21 +566,30 @@
         return idStr;
     }
 
-        function getFilteredInvoices() {
+    function getFilteredInvoices() {
         const filterType = document.getElementById('invoiceTypeFilter').value;
-        const searchQuery = document.getElementById('historySearchInput').value.trim().toLowerCase();
+        const rawSearchQuery = document.getElementById('historySearchInput').value.trim();
+        const searchQuery = rawSearchQuery.toLowerCase();
+        const normSearchQuery = normCustName(rawSearchQuery);
         const searchTypeRadio = document.querySelector('input[name="searchType"]:checked');
         const searchType = searchTypeRadio ? searchTypeRadio.value : 'customer';
         
-        // الترتيب الدقيق: الأحدث زمنياً أولاً، ثم الرقم الأكبر في حال تساوي الوقت (Tie-breaker)
+        // الترتيب الدقيق: الأحدث زمنياً أولاً، ثم الرقم التسلسلي الأكبر في حال تساوي الوقت (يدعم A-105)
         let sortedInvoices = [...invoicesDB].sort((a, b) => {
-            let timeA = a.timestamp || (a.date ? new Date(a.date).getTime() : 0);
-            let timeB = b.timestamp || (b.date ? new Date(b.date).getTime() : 0);
+            let timeA = (window.Utils && typeof window.Utils.getSafeTime === 'function')
+                ? window.Utils.getSafeTime(a.timestamp || a.date)
+                : (a.timestamp || (a.date ? new Date(a.date).getTime() : 0));
+            let timeB = (window.Utils && typeof window.Utils.getSafeTime === 'function')
+                ? window.Utils.getSafeTime(b.timestamp || b.date)
+                : (b.timestamp || (b.date ? new Date(b.date).getTime() : 0));
             if (timeB !== timeA) return timeB - timeA;
             
-            // معيار فاصل: الـ ID الأكبر (الأحدث) في الأعلى
-            let idA = parseInt(a.id) || 0;
-            let idB = parseInt(b.id) || 0;
+            let idA = (window.Utils && typeof window.Utils.extractSerialNum === 'function')
+                ? window.Utils.extractSerialNum(a.id)
+                : (parseInt(a.id) || 0);
+            let idB = (window.Utils && typeof window.Utils.extractSerialNum === 'function')
+                ? window.Utils.extractSerialNum(b.id)
+                : (parseInt(b.id) || 0);
             return idB - idA;
         });
 
@@ -581,29 +608,26 @@
             if (filterType === 'delayed') {
                 if (isQuote || isReturn) return false;
                 let rem = inv.calculatedRemaining !== undefined ? inv.calculatedRemaining : (parseFloat(inv.remaining) || 0);
-                // الفاتورة الآجلة هي التي بها متبقي فقط، بغض النظر عن نوعها القديم
                 if (rem <= 0) return false; 
             }
             
             if (searchQuery !== '') {
-                let invIdStr = (inv.id || '').toString();
-                let cName = inv.customer ? inv.customer.toLowerCase() : "مبيعات نقدية";
-                let invDate = (inv.date || '').split('T')[0];
+                let invIdStr = String(inv.id || '').toLowerCase();
+                let cNameNorm = normCustName(inv.customer || "مبيعات نقدية");
+                let invDate = String(inv.date || '').split('T')[0];
 
                 if (searchType === 'number' && !invIdStr.includes(searchQuery)) return false;
-                if (searchType === 'customer' && !cName.includes(searchQuery)) return false;
+                if (searchType === 'customer' && !cNameNorm.includes(normSearchQuery)) return false;
                 if (searchType === 'date' && !invDate.includes(searchQuery)) return false;
             }
 
-            // فلاتر التاريخ الدقيقة (النصية الصريحة)
-            let cleanInvDate = (inv.date || '').split('T')[0];
+            let cleanInvDate = String(inv.date || '').split('T')[0];
             if (dateFilterRange.type === 'exact' && cleanInvDate !== dateFilterRange.value) return false;
             if (dateFilterRange.type === 'range' && (cleanInvDate < dateFilterRange.from || cleanInvDate > dateFilterRange.to)) return false;
 
             return true;
         });
 
-        // عرض أحدث 50 فاتورة فقط في الوضع الافتراضي (latest50) ولم يتم إدخال بحث
         if (dateFilterRange.type === 'latest50' && searchQuery === '') {
             return result.slice(0, 50);
         }
@@ -614,10 +638,10 @@
     window.renderInvoicesHistory = renderInvoicesHistory;
     function renderInvoicesHistory() {
         if(typeof DB !== 'undefined') {
-            // سحب العملاء أولاً يجبر النظام على مراجعة السندات وتصفير الفواتير المسددة
-            customersDB = DB.getCustomers() || []; 
+            // سحب العملاء أولاً (شاملاً عملاء الصفر) والأصناف (شاملاً المؤرشف) لضمان دقة التسويات
+            customersDB = DB.getCustomers(false, false) || []; 
             invoicesDB = DB.getSalesInvoices(true) || [];
-            productsDB = DB.getProducts() || [];
+            productsDB = DB.getProducts(true) || [];
         }
 
         const container = document.getElementById('invoiceListContainer');
@@ -717,44 +741,74 @@
         return name.toString().trim().toLowerCase();
     }
 
-    // 1. دالة رد بضاعة للمخزن (إضافة لـ lots[0] + إعادة حساب p.stock + تحديث الختم الزمني p._lastModified)
+    // 1. دالة رد بضاعة للمخزن (تحافظ على الرصيد غير المربوط بدفعات وتوحد الأسعار والتاريخ المحلي)
     function addStockToProduct(productId, qtyToReturn, fallbackPrice = 0) {
         let p = productsDB.find(x => String(x.id) === String(productId));
         if (!p) return;
         let qty = parseFloat(qtyToReturn) || 0;
         if (qty <= 0) return;
 
+        let localToday = (window.Utils && typeof window.Utils.getLocalDateString === 'function')
+            ? window.Utils.getLocalDateString()
+            : new Date().toISOString().split('T')[0];
+        let sellP = parseFloat(p.sellPrice ?? p.price) || parseFloat(fallbackPrice) || 0;
+        let buyP = parseFloat(p.purchasePrice ?? p.buyPrice) || 0;
+
         if (!Array.isArray(p.lots)) p.lots = [];
         if (p.lots.length > 0) {
             p.lots[0].stock = (parseFloat(p.lots[0].stock) || 0) + qty;
         } else {
+            let existingDirectStock = parseFloat(p.stock) || 0;
             p.lots.push({
-                stock: qty,
-                purchasePrice: parseFloat(p.purchasePrice) || 0,
-                price: parseFloat(p.price) || parseFloat(fallbackPrice) || 0,
+                stock: existingDirectStock + qty,
+                purchasePrice: buyP,
+                buyPrice: buyP,
+                price: sellP,
+                sellPrice: sellP,
                 supplier: p.supplier || '---',
-                date: typeof window.Utils !== 'undefined' && typeof window.Utils.getSafeTime === 'function' ? window.Utils.getSafeTime().split('T')[0] : new Date().toISOString().split('T')[0]
+                date: localToday
             });
         }
         p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
         p._lastModified = Date.now();
     }
 
-    // 2. دالة خصم بضاعة من المخزن بنظام (FIFO) + معالجة العجز + إعادة حساب p.stock + تحديث الختم الزمني p._lastModified
+    // 2. دالة خصم بضاعة من المخزن بنظام (FIFO) مع حماية أسعار الصنف السطحية عند نفاد الدفعات
     function deductStockFromProductFIFO(productId, qtyToDeduct, fallbackPrice = 0) {
         let p = productsDB.find(x => String(x.id) === String(productId));
         if (!p) return;
         let remaining = parseFloat(qtyToDeduct) || 0;
         if (remaining <= 0) return;
 
+        let localToday = (window.Utils && typeof window.Utils.getLocalDateString === 'function')
+            ? window.Utils.getLocalDateString()
+            : new Date().toISOString().split('T')[0];
+
         if (!Array.isArray(p.lots)) p.lots = [];
+        if (p.lots.length > 0) {
+            let lastLot = p.lots[p.lots.length - 1];
+            if (!p.price && !p.sellPrice) {
+                p.price = parseFloat(lastLot.sellPrice ?? lastLot.price) || parseFloat(fallbackPrice) || 0;
+                p.sellPrice = p.price;
+            }
+            if (!p.purchasePrice && !p.buyPrice) {
+                p.purchasePrice = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice) || 0;
+                p.buyPrice = p.purchasePrice;
+            }
+        }
+
+        let sellP = parseFloat(p.sellPrice ?? p.price) || parseFloat(fallbackPrice) || 0;
+        let buyP = parseFloat(p.purchasePrice ?? p.buyPrice) || 0;
+
         if (p.lots.length === 0 && (parseFloat(p.stock) || 0) !== 0) {
             p.lots.push({
                 stock: parseFloat(p.stock) || 0,
-                purchasePrice: parseFloat(p.purchasePrice) || 0,
-                price: parseFloat(p.price) || parseFloat(fallbackPrice) || 0,
+                purchasePrice: buyP,
+                buyPrice: buyP,
+                price: sellP,
+                sellPrice: sellP,
                 supplier: p.supplier || '---',
-                date: typeof window.Utils !== 'undefined' && typeof window.Utils.getSafeTime === 'function' ? window.Utils.getSafeTime().split('T')[0] : new Date().toISOString().split('T')[0]
+                date: localToday
             });
         }
 
@@ -771,10 +825,9 @@
             }
         }
 
-        // حذف الدفعات الصفرية
+        // حذف الدفعات الصفرية بعد تأمين الأسعار السطحية على الصنف
         p.lots = p.lots.filter(l => (parseFloat(l.stock) || 0) !== 0);
 
-        // إذا تبقى عجز (بيع بالسالب) ننشئ أو نحدث دفعة العجز السالبة
         if (remaining > 0) {
             let deficitLot = p.lots.find(l => (parseFloat(l.stock) || 0) < 0);
             if (deficitLot) {
@@ -782,15 +835,16 @@
             } else {
                 p.lots.push({
                     stock: -remaining,
-                    purchasePrice: parseFloat(p.purchasePrice) || 0,
-                    price: parseFloat(p.price) || parseFloat(fallbackPrice) || 0,
+                    purchasePrice: buyP,
+                    buyPrice: buyP,
+                    price: sellP,
+                    sellPrice: sellP,
                     supplier: p.supplier || 'عجز مخزني',
-                    date: typeof window.Utils !== 'undefined' && typeof window.Utils.getSafeTime === 'function' ? window.Utils.getSafeTime().split('T')[0] : new Date().toISOString().split('T')[0]
+                    date: localToday
                 });
             }
         }
 
-        // إجبارياً إعادة حساب الرصيد الإجمالي وتحديث الختم الزمني
         p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
         p._lastModified = Date.now();
     }
@@ -907,10 +961,15 @@
         const inv = invoicesDB.find(i => String(i.id) === String(selectedInvoiceId));
         if(!inv) return;
         
+        window.isEditingNow = true;
         originalInvoiceData = JSON.parse(JSON.stringify(inv)); 
         editingInvoiceData = JSON.parse(JSON.stringify(inv)); 
         if(!editingInvoiceData.items) editingInvoiceData.items = [];
         
+        let checkoutCash = (inv.initialPaid !== undefined && inv.initialPaid !== null && !isNaN(parseFloat(inv.initialPaid)))
+            ? parseFloat(inv.initialPaid)
+            : (parseFloat(inv.paid) || 0);
+
         let headerHtml = `
             <div class="filter-header-row">
                 <span>فاتورة: <strong>${formatIdDisplay(inv.id)}</strong></span>
@@ -918,7 +977,7 @@
             </div>
             <div class="filter-header-row">
                 <span>العميل: <strong>${inv.customer || "نقدي"}</strong></span>
-                <span class="val-green">مدفوع: <strong>${inv.paid||0} ج</strong></span>
+                <span class="val-green">مدفوع بالفاتورة: <strong>${checkoutCash} ج</strong></span>
             </div>
         `;
         document.getElementById('editInvoiceHeader').innerHTML = headerHtml;
@@ -1066,20 +1125,23 @@
         renderEditTable();
     }
 
-    // توحيد نتائج البحث في شاشة التعديل بالتقسيمة الثلاثية الموحدة (.dropdown-item > .search-col-name + .search-col-price + .search-col-stock)
+    // توحيد نتائج البحث في شاشة التعديل بالتقسيمة الثلاثية الموحدة مع حفظ الحقول الأساسية للصنف فقط
     function searchProductsForEdit() {
-        const query = document.getElementById('editProductSearch').value.trim().toLowerCase();
+        const rawQuery = document.getElementById('editProductSearch').value.trim();
+        const normQ = normCustName(rawQuery);
         const resultsDiv = document.getElementById('editProductResults');
         resultsDiv.innerHTML = '';
-        if(query.length === 0) { resultsDiv.style.display = 'none'; return; }
-        const filtered = productsDB.filter(p => p.name && p.name.toLowerCase().includes(query)).slice(0, 30);
+        if(normQ.length === 0) { resultsDiv.style.display = 'none'; return; }
+        const filtered = productsDB.filter(p => p && !p.isDeleted && !p.isArchived && p.name && normCustName(p.name).includes(normQ)).slice(0, 30);
         if(filtered.length > 0) {
             resultsDiv.style.display = 'block';
             filtered.forEach(p => {
                 const div = document.createElement('div');
                 div.className = 'dropdown-item'; 
                 
-                let dispPrice = parseFloat((p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0)) || 0;
+                let lastLot = (Array.isArray(p.lots) && p.lots.length > 0) ? p.lots[p.lots.length - 1] : null;
+                let dispPrice = parseFloat(lastLot ? (lastLot.price ?? lastLot.sellPrice) : (p.price ?? p.sellPrice)) || parseFloat(p.price ?? p.sellPrice) || 0;
+                let buyPrice = parseFloat(lastLot ? (lastLot.purchasePrice ?? lastLot.buyPrice) : (p.purchasePrice ?? p.buyPrice)) || parseFloat(p.purchasePrice ?? p.buyPrice) || 0;
                 let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((s, l) => s + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
                 let imgHtml = p.image ? `<img src="${p.image}" style="width:30px; height:30px; border-radius:6px; object-fit:cover;">` : `<div style="width:30px; height:30px; border-radius:6px; background:var(--bg-dark-2, #120f29); display:flex; align-items:center; justify-content:center; font-size:16px;">📦</div>`;
                 
@@ -1096,7 +1158,6 @@
                     </div>
                 `;
 
-                // الدالة المسؤولة عن النزول في الجدول وتفريغ مربع البحث
                 div.onmousedown = (e) => {
                     e.preventDefault();
                     const ex = editingInvoiceData.items.findIndex(i => String(i.id) === String(p.id));
@@ -1104,7 +1165,15 @@
                         editingInvoiceData.items[ex].qty += 1;
                         editingInvoiceData.items[ex].total = editingInvoiceData.items[ex].qty * editingInvoiceData.items[ex].price;
                     } else {
-                        editingInvoiceData.items.push({...p, price: dispPrice, qty: 1, total: dispPrice});
+                        // حفظ الحقول الأساسية للصنف فقط دون نسخ lots أو image لمنع تضخم الفواتير
+                        editingInvoiceData.items.push({
+                            id: p.id,
+                            name: p.name,
+                            price: dispPrice,
+                            purchasePrice: buyPrice,
+                            qty: 1,
+                            total: dispPrice
+                        });
                     }
                     document.getElementById('editProductSearch').value = '';
                     resultsDiv.style.display = 'none';
@@ -1127,14 +1196,21 @@
                 return alert("لا يمكنك حفظ فاتورة فارغة!");
             }
         }
+        window.isEditingNow = true;
+
         let subTotal = editingInvoiceData.items.reduce((s, i) => s + i.total, 0);
         let tName = editingInvoiceData.type === 'return' ? "فاتورة مرتجع" : ((editingInvoiceData.type === 'quotation' || editingInvoiceData.type === 'quote') ? "عرض سعر" : "فاتورة بيع");
         document.getElementById('modalInvoiceIdText').innerText = formatIdDisplay(editingInvoiceData.id);
         document.getElementById('modalInvoiceTypeBadge').innerText = tName;
         
+        // عرض النقدية المدفوعة في الفاتورة نفسها فقط (initialPaid ?? paid) دون خلطها بالسندات اللاحقة
+        let checkoutPaidVal = (editingInvoiceData.initialPaid !== undefined && editingInvoiceData.initialPaid !== null && !isNaN(parseFloat(editingInvoiceData.initialPaid)))
+            ? parseFloat(editingInvoiceData.initialPaid)
+            : (parseFloat(editingInvoiceData.paid) || 0);
+
         document.getElementById('modalTotal').value = subTotal;
         document.getElementById('modalDiscount').value = editingInvoiceData.discount || 0;
-        document.getElementById('modalPaid').value = editingInvoiceData.paid || 0;
+        document.getElementById('modalPaid').value = checkoutPaidVal;
         document.getElementById('modalDate').value = editingInvoiceData.date || '';
         document.getElementById('modalCustomer').value = editingInvoiceData.customer || "";
         let vVal = editingInvoiceData.vault || "main";
@@ -1184,7 +1260,6 @@
             paidInput.readOnly = true;
         } else {
             paidInput.readOnly = false;
-            // 🔓 تم إزالة القفل هنا: لم نعد نجبر المدفوع على التساوي مع المطلوب
         }
         
         let paid = parseFloat(paidInput.value) || 0;
@@ -1193,7 +1268,6 @@
         let remInput = document.getElementById('modalRemaining');
         remInput.value = rem.toFixed(2);
         
-        // 💡 لمسة جمالية: لو الرقم سالب (دفع بزيادة) يظهر بلون أخضر لأنه باقي للزبون أو رصيد له
         if (rem < 0) {
             remInput.className = 'val-green';
         } else {
@@ -1225,7 +1299,6 @@
                 div.style.justifyContent = 'space-between';
                 div.style.alignItems = 'center';
                 
-                // حساب الرصيد وتحديد إذا كان له أو عليه لإظهاره بجانب الاسم
                 let cBal = parseFloat(c.balance) || 0;
                 let isDebt = (cBal < 0 || c.isNetDebt === true);
                 let badgeHtml = '';
@@ -1253,7 +1326,6 @@
             resultsDiv.style.display = 'none';
         }
 
-        // عرض الرصيد أسفل المربع بعد الاختيار
         let exactMatch = customersDB.find(c => normCustName(c.name) === normQuery);
         if(exactMatch) {
             let bal = parseFloat(exactMatch.balance) || 0;
@@ -1287,7 +1359,7 @@
         let isReturn = (oldInv.type === 'return' || oldInv.type === 'return_sale');
 
         let finalDiscount = parseFloat(document.getElementById('modalDiscount').value) || 0;
-        let finalDate = document.getElementById('modalDate').value || (typeof window.Utils !== 'undefined' && typeof window.Utils.getSafeTime === 'function' ? window.Utils.getSafeTime().split('T')[0] : new Date().toISOString().split('T')[0]);
+        let finalDate = document.getElementById('modalDate').value || (typeof window.Utils !== 'undefined' && typeof window.Utils.getLocalDateString === 'function' ? window.Utils.getLocalDateString() : new Date().toISOString().split('T')[0]);
         let finalCust = document.getElementById('modalCustomer').value.trim();
         let finalVault = document.getElementById('modalVaultSelect').value;
         let finalNotes = document.getElementById('modalNotes') ? document.getElementById('modalNotes').value.trim() : (oldInv.notes || "");
@@ -1300,13 +1372,11 @@
 
         let finalPaid = parseFloat(document.getElementById('modalPaid').value) || 0;
         
-        // 💡 التعديل هنا: لو مفيش عميل (بيع نقدي) والمدفوع أكبر من المطلوب، نحفظ المدفوع بقيمة الفاتورة فقط عشان الخزينة تظبط وماتسجلش الباقي الوهمي
         if (finalCust === "" && finalPaid > finalReq && !isNowQuotation && !isReturn) {
             finalPaid = finalReq;
         }
 
-        let finalRem = finalReq - finalPaid;
-        finalRem = Math.round(finalRem * 100) / 100;
+        let finalRem = Math.round((finalReq - finalPaid) * 100) / 100;
 
         if (finalRem > 0 && finalCust === "" && !isNowQuotation && !isReturn) {
             if (typeof SerajAlert === 'function') SerajAlert("❌ تنبيه هام: لا يمكن حفظ فاتورة آجلة (بها متبقي) بدون تسجيل اسم العميل!");
@@ -1315,25 +1385,16 @@
         }
 
         let safeOldItems = oldInv.items || [];
-        let oldPaid = parseFloat(oldInv.paid) || 0;
-        let oldVault = oldInv.vault || 'main';
 
-        // 1. فك ارتباط سندات التحصيل وحساب المدفوع النقدي الفعلي وقت البيع (checkoutPaid)
-        let allocatedFromVouchers = (!wasQuotation) ? releaseAllocatedVouchers(oldInv) : 0;
-        let checkoutPaid = Math.max(0, Math.round((oldPaid - allocatedFromVouchers) * 100) / 100);
-
-        if (allocatedFromVouchers > 0 && finalPaid === oldPaid) {
-            finalPaid = checkoutPaid;
-            finalRem = Math.round((finalReq - finalPaid) * 100) / 100;
-        }
-
-
-        // 3. البحث عن العميل بـ normalizeName قبل إنشاء عميل جديد (دون المساس برصيده أو معاملاته)
+        // البحث عن العميل بـ normalizeName وإنشاء عميل جديد بمعرف قياسي generateUniqueId
         let finalCustId = null; 
         if(finalCust !== "") {
             let c = customersDB.find(x => normCustName(x.name) === normCustName(finalCust));
             if(!c && !isNowQuotation) { 
-                c = {id: Date.now(), name: finalCust, balance: 0, _lastModified: Date.now()}; 
+                let newCustId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
+                    ? window.Utils.generateUniqueId()
+                    : String(Date.now());
+                c = { id: newCustId, name: finalCust, balance: 0, transactions: [], _lastModified: Date.now() }; 
                 customersDB.push(c); 
                 DB.saveCustomers(customersDB);
             }
@@ -1343,8 +1404,7 @@
             }
         }
 
-        
-        // 5. تسوية المخزن والدفعات (FIFO + تحديث p.stock + تحديث p._lastModified لكل صنف)
+        // تسوية المخزن والدفعات (FIFO + تحديث p.stock + تحديث p._lastModified لكل صنف)
         if (!wasQuotation) {
             safeOldItems.forEach(oldItem => {
                 if (isReturn) {
@@ -1374,7 +1434,23 @@
             newType = finalRem > 0 ? 'delayed' : 'sales';
         }
 
+        // تنقية الأصناف المحفوظة داخل الفاتورة لمنع حفظ lots أو الصور داخل الفاتورة
+        let cleanItems = editingInvoiceData.items.map(item => ({
+            id: item.id,
+            name: item.name,
+            price: parseFloat(item.price) || 0,
+            purchasePrice: parseFloat(item.purchasePrice) || 0,
+            qty: parseFloat(item.qty) || 0,
+            total: Math.round(((parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0)) * 100) / 100
+        }));
+
+        // الحفاظ على الختم الزمني الأصلي للفاتورة ومزامنته مع التاريخ المختار فقط
+        let alignedTimestamp = (window.Utils && typeof window.Utils.alignTimestampWithDate === 'function')
+            ? window.Utils.alignTimestampWithDate(finalDate, oldInv.timestamp)
+            : (oldInv.timestamp || Date.now());
+
         invoicesDB[dbIndex] = {
+            ...oldInv,
             id: editingInvoiceData.id,
             type: newType,
             isCanceled: oldInv.isCanceled || false, 
@@ -1382,28 +1458,54 @@
             customer: finalCust !== "" ? finalCust : null,
             customerId: finalCustId, 
             total: finalReq,
-            remaining: finalRem,
             discount: finalDiscount,
+            initialPaid: finalPaid,
             paid: finalPaid,
+            initialRemaining: finalRem,
+            remaining: finalRem,
+            _editedInitialPaid: true,
             vault: finalVault,
-            items: editingInvoiceData.items,
+            items: cleanItems,
             notes: finalNotes,
-            timestamp: Date.now(),
+            timestamp: alignedTimestamp,
             _lastModified: Date.now(),
             _device: oldInv._device || null, 
             _lastModifiedBy: localStorage.getItem('seraj_device_name') || 'غير معروف'
         };
+        delete invoicesDB[dbIndex]._convertingFromQuote;
         DB.saveSalesInvoices(invoicesDB);
 
+        // إذا تم تحويل عرض سعر إلى فاتورة بيع حقيقية وكان المدفوع 0 (آجلة)، نضمن تسجيلها في كاميرا الخزينة
+        if (wasQuotation && !isNowQuotation && finalPaid === 0 && typeof DB.recordTreasuryTransaction === 'function') {
+            let currentMoves = DB.getTreasuryMoves(true, true);
+            if (!DB._hasTreasuryMoveForInvoice(invoicesDB[dbIndex], currentMoves)) {
+                DB.recordTreasuryTransaction({
+                    type: 'sales',
+                    vault: finalVault || 'main',
+                    amountAdd: 0,
+                    amountDeduct: 0,
+                    amount: 0,
+                    date: finalDate,
+                    timestamp: alignedTimestamp,
+                    invoiceNo: invoicesDB[dbIndex].id,
+                    customerId: finalCustId || null,
+                    customer: finalCust !== "" ? finalCust : null,
+                    notes: `فاتورة مبيعات آجلة (مسدد 0) رقم #${invoicesDB[dbIndex].id}${finalCust ? ' - ' + finalCust : ''} (إجمالي: ${finalReq})`
+                });
+            }
+        }
+
         closeSaveEditModal();
-        renderInvoicesHistory();
         switchView('invoices-list-view');
         
         if (typeof SerajAlert === 'function') SerajAlert("تم حفظ التعديلات وتحديث الخزينة والأرصدة بنجاح!");
         else alert("تم حفظ التعديلات وتحديث الخزينة والأرصدة بنجاح!");
     }
 
-    function closeSaveEditModal() { document.getElementById('saveEditModalOverlay').style.display = 'none'; }
+    function closeSaveEditModal() {
+        document.getElementById('saveEditModalOverlay').style.display = 'none';
+        syncEditingLockState();
+    }
 
     function openInvoiceDetails(invoiceId) {
         const inv = invoicesDB.find(i => String(i.id) === String(invoiceId));
@@ -1474,8 +1576,8 @@
             itemsHtml += `<tr><td>${item.name}</td><td>${item.price}</td><td>${item.qty}</td><td>${itemTot.toFixed(2)}</td></tr>`;
         });
         
-        let finalReq = sub - (parseFloat(inv.discount)||0);
-        let rem = finalReq - (parseFloat(inv.paid)||0);
+        let finalReq = Math.max(0, sub - (parseFloat(inv.discount)||0));
+        let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : Math.max(0, finalReq - (parseFloat(inv.paid)||0));
 
         let accountHtml = '';
         if (inv.customer) {
@@ -1562,28 +1664,24 @@
         window.print();
     }
 
-    // دالة مساعدة لتنزيل ملف إكسيل
+    // دالة مساعدة لتنزيل ملف إكسيل بجدول عربي منسق (تتعامل مع المصفوفات الثنائية بدقة)
     function triggerDirectExcelDownload(rowsArray, fileName) {
-        if (window.Utils && typeof window.Utils.exportToExcel === 'function') {
-            window.Utils.exportToExcel(rowsArray, fileName);
-            return;
+        if (!Array.isArray(rowsArray) || rowsArray.length === 0) return;
+        let trs = rowsArray.map((row, rIdx) => {
+            if (!Array.isArray(row) || row.length === 0) return '<tr><td colspan="4">&nbsp;</td></tr>';
+            let tag = rIdx === 0 ? 'th' : 'td';
+            let style = rIdx === 0
+                ? 'border:1px solid #333;padding:8px;background:#e2e8f0;font-weight:bold;text-align:center;'
+                : 'border:1px solid #333;padding:6px;text-align:center;';
+            let cells = row.map(c => `<${tag} style="${style}">${window.Utils ? window.Utils.sanitizeHTML(String(c ?? '')) : String(c ?? '')}</${tag}>`).join('');
+            return `<tr>${cells}</tr>`;
+        }).join('');
+
+        let tempTable = document.createElement('table');
+        tempTable.innerHTML = `<tbody>${trs}</tbody>`;
+        if (typeof window.exportToExcel === 'function') {
+            window.exportToExcel(tempTable, fileName);
         }
-        if (typeof exportToExcel === 'function') {
-            exportToExcel(rowsArray, fileName);
-            return;
-        }
-        let csvContent = "\uFEFF" + rowsArray.map(row => 
-            row.map(cell => `"${String(cell !== undefined && cell !== null ? cell : '').replace(/"/g, '""')}"`).join(",")
-        ).join("\r\n");
-        let blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        let link = document.createElement("a");
-        let url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", fileName.replace(/\.xlsx$/i, '.csv'));
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
     }
 
     // 2. تصدير قائمة الفواتير إلى إكسيل مباشر
@@ -1599,7 +1697,7 @@
         list.forEach(inv => {
             let safeItems = inv.items || [];
             let sub = safeItems.reduce((s, i) => s + (i.total !== undefined ? parseFloat(i.total) : ((parseFloat(i.price)||0) * (parseFloat(i.qty)||0))), 0);
-            let fin = sub - (parseFloat(inv.discount)||0);
+            let fin = Math.max(0, sub - (parseFloat(inv.discount)||0));
             let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : (parseFloat(inv.remaining) || 0);
             let paid = parseFloat(inv.paid) || 0;
             let tType = inv.isCanceled ? 'ملغية' : (inv.type === 'return' ? 'مرتجع' : (inv.type === 'quotation' || inv.type === 'quote') ? 'عرض سعر' : (rem > 0) ? 'آجل' : 'مسدد');
@@ -1607,7 +1705,8 @@
             excelData.push([formatIdDisplay(inv.id), inv.customer||'نقدي', inv.date||'', tType, fin.toFixed(2), paid.toFixed(2), rem.toFixed(2)]);
         });
 
-        triggerDirectExcelDownload(excelData, "سجل_الفواتير_" + new Date().toISOString().slice(0,10) + ".xlsx");
+        let localDate = (window.Utils && typeof window.Utils.getLocalDateString === 'function') ? window.Utils.getLocalDateString() : new Date().toISOString().slice(0,10);
+        triggerDirectExcelDownload(excelData, "سجل_الفواتير_" + localDate + ".xls");
     }
 
     // 3. تصدير فاتورة مفردة إلى إكسيل مباشر
@@ -1629,16 +1728,17 @@
             excelData.push([item.name, item.price, item.qty, itemTot.toFixed(2)]);
             sub += itemTot;
         });
-        let finalReq = sub - (parseFloat(inv.discount)||0);
+        let finalReq = Math.max(0, sub - (parseFloat(inv.discount)||0));
         let paid = parseFloat(inv.paid)||0;
+        let rem = inv.computedRemaining !== undefined ? inv.computedRemaining : Math.max(0, finalReq - paid);
         excelData.push([]);
         excelData.push(["الإجمالي", sub.toFixed(2)]);
         excelData.push(["الخصم", (parseFloat(inv.discount)||0).toFixed(2)]);
         excelData.push(["الصافي المطلوب", finalReq.toFixed(2)]);
         excelData.push(["المدفوع", paid.toFixed(2)]);
-        excelData.push(["المتبقي", (finalReq - paid).toFixed(2)]);
+        excelData.push(["المتبقي", rem.toFixed(2)]);
 
-        triggerDirectExcelDownload(excelData, `فاتورة_رقم_${formatIdDisplay(inv.id)}.xlsx`);
+        triggerDirectExcelDownload(excelData, `فاتورة_رقم_${formatIdDisplay(inv.id)}.xls`);
     }
 
     // دالة التصدير المباشر للـ PDF عبر الدالة المركزية window.Utils.downloadRealPDF بدون فتح شاشة الطباعة
@@ -1815,11 +1915,12 @@
         let filterLabel = document.getElementById('customFilterLabel') ? document.getElementById('customFilterLabel').innerText : 'سجل الفواتير';
         let durationLabel = document.getElementById('currentDurationLabelOutside') ? document.getElementById('currentDurationLabelOutside').innerText : '';
 
+        let localReportDate = (window.Utils && typeof window.Utils.getLocalDateString === 'function') ? window.Utils.getLocalDateString() : new Date().toISOString().slice(0,10);
         let a4ListHtml = `
             <div dir="rtl">
                 <div>
                     <h1>سراج LED - ${filterLabel}</h1>
-                    <div>الفترة: ${durationLabel} | تاريخ التقرير: ${new Date().toISOString().slice(0,10)}</div>
+                    <div>الفترة: ${durationLabel} | تاريخ التقرير: ${localReportDate}</div>
                 </div>
                 <table class="list-print-table">
                     <thead>
@@ -1846,7 +1947,7 @@
             </div>
         `;
 
-        generateAndDownloadRealPDF(a4ListHtml, `سجل_الفواتير_${new Date().toISOString().slice(0,10)}.pdf`);
+        generateAndDownloadRealPDF(a4ListHtml, `سجل_الفواتير_${localReportDate}.pdf`);
     }
     
     window.onload = () => { 
@@ -1863,16 +1964,6 @@
         filterByDate('أحدث 50 فاتورة'); 
     };
 </script>
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js')
-                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
-                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
-        });
-    }
-</script>
-
 <script>
 document.addEventListener('click', function(event) {
     if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
@@ -1893,16 +1984,14 @@ document.addEventListener('click', function(event) {
         if (!updatedKey || updatedKey.includes('sales_invoices') || updatedKey.includes('products') || updatedKey.includes('customers')) {
             if (typeof DB !== 'undefined') {
                 invoicesDB = DB.getSalesInvoices(true) || [];
-                productsDB = DB.getProducts() || [];
-                customersDB = DB.getCustomers() || [];
+                productsDB = DB.getProducts(true) || [];
+                customersDB = DB.getCustomers(false, false) || [];
             }
             
             // إعادة رسم الجدول وتحديث البيانات بدون إغلاق شاشة التعديل أو نافذة الحفظ إذا كانت مفتوحة حالياً
-            let isEditingNow = document.getElementById('full-edit-view').classList.contains('active-view') || 
-                               document.getElementById('saveEditModalOverlay').style.display === 'flex' ||
-                               document.getElementById('editItemModal').style.display === 'flex';
+            if (typeof syncEditingLockState === 'function') syncEditingLockState();
                                
-            if (!isEditingNow && typeof window.renderInvoicesHistory === 'function') {
+            if (!window.isEditingNow && typeof window.renderInvoicesHistory === 'function') {
                 window.renderInvoicesHistory();
             }
         }

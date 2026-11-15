@@ -382,11 +382,14 @@ window.addEventListener('seraj:updated', (e) => {
     let isList = document.getElementById('customers-list-view').classList.contains('active-view');
     if (isList) {
         renderCustomersList();
-    } else if (currentActiveCustomerId && document.getElementById('customer-account-view').classList.contains('active-view')) {
+    } else if (currentActiveCustomerId) {
         const updatedCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
         if (updatedCustomer) {
             updateAccountSummary(updatedCustomer);
             renderAccountTransactions(updatedCustomer);
+            if (document.getElementById('customer-statement-view').classList.contains('active-view')) {
+                renderStatementTable(updatedCustomer);
+            }
         }
     }
 });
@@ -500,13 +503,17 @@ function closeModals(e) {
 function handleSearchKey(e) {
     if(e.key === 'Enter') {
         e.preventDefault();
-        const query = document.getElementById('customerSearch').value.trim().toLowerCase();
-        if(!query) return;
-        let matched = customersDB.find(c => c.name.toLowerCase() === query || c.name.toLowerCase().includes(query));
+        const rawVal = document.getElementById('customerSearch').value.trim();
+        if(!rawVal) return;
+        const normQ = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(rawVal) : rawVal.toLowerCase();
+        let matched = customersDB.find(c => {
+            let normC = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(c.name) : String(c.name || '').toLowerCase();
+            return normC === normQ || normC.includes(normQ);
+        });
         if(matched) openCustomerAccount(matched.id);
         else {
             openAddCustomerModal();
-            document.getElementById('newCustName').value = document.getElementById('customerSearch').value;
+            document.getElementById('newCustName').value = rawVal;
         }
     }
 }
@@ -570,10 +577,10 @@ function renderCustomersList() {
         }
     }
 
-    const rawQuery = document.getElementById('customerSearch').value.trim().toLowerCase();
+    const rawInput = document.getElementById('customerSearch').value.trim();
+    const rawQuery = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(rawInput) : rawInput.toLowerCase();
     const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
     const tbody = document.getElementById('customersTableBody');
-// ... بقية الكود كما هو بدون تغيير
 
     tbody.innerHTML = '';
     document.getElementById('customers-list-view').scrollTop = 0;
@@ -584,16 +591,19 @@ function renderCustomersList() {
         filtered = customersDB.map(c => ({ customer: c, score: 0 }));
     } else {
         filtered = customersDB.map(c => {
-            let cName = String(c.name || '').toLowerCase();
-            let cPhone = String(c.phone || '').toLowerCase();
+            let cName = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(c.name || '') : String(c.name || '').toLowerCase();
+            let cPhone = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(c.phone || '') : String(c.phone || '').toLowerCase();
             let fullString = cName + " " + cPhone;
 
             let score = 0;
+            let allMatched = true;
             searchWords.forEach(word => {
                 if (fullString.includes(word)) score += 1;
+                else allMatched = false;
             });
 
-            if (score > 0) {
+            if (!allMatched) score = 0;
+            else if (score > 0) {
                 if (cName.startsWith(rawQuery)) score += 5;
                 else if (cName.startsWith(searchWords[0])) score += 2;
             }
@@ -612,8 +622,8 @@ function renderCustomersList() {
             return currentSortAsc ? numA - numB : numB - numA;
         }
         else if(currentSortField === 'date') {
-            let dateA = valA.lastActivityDate && valA.lastActivityDate !== '---' && valA.lastActivityDate !== 'لا يوجد' ? new Date(valA.lastActivityDate).getTime() : 0;
-            let dateB = valB.lastActivityDate && valB.lastActivityDate !== '---' && valB.lastActivityDate !== 'لا يوجد' ? new Date(valB.lastActivityDate).getTime() : 0;
+            let dateA = valA.lastActivityDate && valA.lastActivityDate !== '---' && valA.lastActivityDate !== 'لا يوجد' ? getSafeTime(valA.lastActivityDate) : 0;
+            let dateB = valB.lastActivityDate && valB.lastActivityDate !== '---' && valB.lastActivityDate !== 'لا يوجد' ? getSafeTime(valB.lastActivityDate) : 0;
             return currentSortAsc ? dateA - dateB : dateB - dateA;
         }
         return 0;
@@ -651,7 +661,7 @@ function renderCustomersList() {
 
 function openEditCustomerModal(id) {
     closeAllMenus();
-    let c = customersDB.find(x => x.id === id);
+    let c = customersDB.find(x => String(x.id) === String(id));
     if(!c) return;
     history.pushState({ modalOpen: true }, '');
     document.getElementById('editCustId').value = c.id;
@@ -663,7 +673,7 @@ function openEditCustomerModal(id) {
 
 function saveEditedCustomer(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
-    let id = parseFloat(document.getElementById('editCustId').value);
+    let id = document.getElementById('editCustId').value;
     let c = customersDB.find(x => String(x.id) === String(id));
     if(!c) return;
 
@@ -688,7 +698,7 @@ function saveEditedCustomer(e) {
             type: 'log',
             amount: 0,
             notes: `تغيير اسم العميل من (${oldName}) إلى (${newName})`,
-            date: new Date().toISOString().split('T')[0],
+            date: window.Utils.getLocalDateString(),
             _device: localStorage.getItem('seraj_device_name') || 'غير معروف'
         });
 
@@ -724,7 +734,7 @@ function saveEditedCustomer(e) {
 
 async function deleteCustomer(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
-    let id = parseFloat(document.getElementById('editCustId').value);
+    let id = document.getElementById('editCustId').value;
     let c = customersDB.find(x => String(x.id) === String(id));
     if(!c) return;
 
@@ -770,7 +780,8 @@ function saveNewCustomer(e) {
         return SerajAlert(`⚠️ عذراً، هذا العميل مسجل مسبقاً باسم: "${existing.name}" ولا يمكن تكراره!`, "error");
     }
 
-    customersDB.push({ id: Date.now(), name: name, phone: phone, balance: 0, transactions: [] });
+    let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function') ? window.Utils.generateUniqueId() : Date.now();
+    customersDB.push({ id: newId, name: name, phone: phone, balance: 0, transactions: [] });
 
     if(typeof DB !== 'undefined') {
         DB.saveCustomers(customersDB);
@@ -794,7 +805,7 @@ function openCustomerAccount(id) {
     }
 
     currentActiveCustomerId = id;
-    const c = customersDB.find(x => x.id === id);
+    const c = customersDB.find(x => String(x.id) === String(id));
     if(!c) return;
     document.getElementById('accountHeaderTitle').innerHTML = `حسابات العميل: <span class="tag-customer">${c.name}</span>`;
     if(!c.transactions) c.transactions = [];
@@ -805,6 +816,7 @@ function openCustomerAccount(id) {
 }
 
 function updateAccountSummary(customer) {
+    if (!customer && currentActiveCustomerId) customer = DB.calculateCustomerBalances(currentActiveCustomerId);
     if(!customer) return;
     
     let currentBal = customer.displayCurrentBalance || 0;
@@ -871,7 +883,7 @@ function setAccountFilter(mode, e) {
 
 function openStatementView() {
     closeAllMenus();
-    const c = customersDB.find(x => x.id === currentActiveCustomerId);
+    const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
     if(!c) return;
     document.getElementById('statementHeaderTitle').innerHTML = `كشف حساب العميل: <span class="tag-customer">${c.name}</span>`;
     renderStatementTable(c);
@@ -900,7 +912,7 @@ function filterByDate(label, duration, event) {
     if(outLabel) outLabel.innerText = label;
     closeAllMenus();
 
-    const c = customersDB.find(x => x.id === currentActiveCustomerId);
+    const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
     if(c) {
         renderStatementTable(c);
         renderAccountTransactions(c);
@@ -924,7 +936,7 @@ function applyCustomDateRange(e) {
 
     if (typeof closeModals === 'function') closeModals();
 
-    let currentCustomer = customersDB.find(x => x.id === currentActiveCustomerId);
+    let currentCustomer = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
     if(currentCustomer) {
         renderStatementTable(currentCustomer);
         renderAccountTransactions(currentCustomer);
@@ -932,24 +944,20 @@ function applyCustomDateRange(e) {
 }
 
 function getSafeTime(dateString) {
+    if (window.Utils && typeof window.Utils.getSafeTime === 'function') {
+        return window.Utils.getSafeTime(dateString);
+    }
     if (!dateString) return 0;
     let d = new Date(dateString).getTime();
-    if (!isNaN(d)) return d;
-    if (dateString.includes('/')) {
-        let p = dateString.split('/');
-        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
-    }
-    if (dateString.includes('-') && dateString.split('-')[0].length <= 2) {
-        let p = dateString.split('-');
-        if (p.length === 3) return new Date(`${p[2]}-${p[1]}-${p[0]}`).getTime() || 0;
-    }
-    return 0;
+    return isNaN(d) ? 0 : d;
 }
 
 function renderStatementTable(customer) {
-            const tbody = document.getElementById('statementTableBody');
-            tbody.innerHTML = '';
+            if (!customer && currentActiveCustomerId) customer = DB.calculateCustomerBalances(currentActiveCustomerId);
             if (!customer) return;
+            const tbody = document.getElementById('statementTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
 
             // سحب كشف الحساب المحسوب مركزياً من المحرك الرئيسي بالقرش
             let stmt = DB.getCustomerStatement(customer.id, currentStatementDuration, customStartDate, customEndDate);
@@ -1034,23 +1042,35 @@ function renderStatementTable(customer) {
             tbody.appendChild(trNet);
         }
 
+function _getNetInvoiceAmount(inv) {
+    let totalVal = parseFloat(inv.total) || 0;
+    let discVal = parseFloat(inv.discount) || 0;
+    let checkoutPaid = parseFloat(inv.initialPaid ?? inv.paid) || 0;
+    let origRem = parseFloat(inv.initialRemaining ?? inv.remaining) || 0;
+    let isDiscSubtracted = (Math.abs((checkoutPaid + origRem) - totalVal) < 0.05 && discVal > 0);
+    return Math.max(0, isDiscSubtracted ? totalVal : (totalVal - discVal));
+}
+
 function renderAccountTransactions(customer) {
+    if (!customer && currentActiveCustomerId) customer = DB.calculateCustomerBalances(currentActiveCustomerId);
     const listContainer = document.getElementById('accountTransactionsTableBody');
-    if (!listContainer) return;
+    if (!listContainer || !customer) return;
     listContainer.innerHTML = '';
-    if (!customer) return;
 
     let allSalesInvoices = [];
     if (typeof DB !== 'undefined') allSalesInvoices = DB.getSalesInvoices() || [];
+    let cNorm = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(customer.name || '') : String(customer.name || '').trim();
 
     let customerInvoices = allSalesInvoices.filter(inv => {
-        if(String(inv.customerId) !== String(customer.id) && String(inv.customer || '').trim() !== String(customer.name || '').trim()) return false;
+        if (!inv) return false;
+        let invNorm = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(inv.customer || inv.customerName || '') : String(inv.customer || '').trim();
+        let isMatch = (String(inv.customerId) === String(customer.id) || (cNorm !== '' && invNorm === cNorm));
+        if(!isMatch) return false;
         if(inv.type === 'quotation') return false;
         if(inv.isDeleted || inv.deleted || inv.status === 'deleted' || inv.type === 'deleted') return false;
         if(inv.isCancelled || inv.isCanceled || inv.cancelled || inv.canceled || inv.status === 'cancelled' || inv.type === 'canceled') return false;
         return true;
     });
-    customerInvoices.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
     let displayList = [];
 
@@ -1058,7 +1078,7 @@ function renderAccountTransactions(customer) {
         customerInvoices.forEach(inv => {
             let rem = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
             if (rem > 0) {
-                let totalReq = (parseFloat(inv.total) || 0) - (parseFloat(inv.discount) || 0);
+                let totalReq = _getNetInvoiceAmount(inv);
                 let isReturn = inv.type === 'return' || inv.type === 'return_sale';
                 let invoiceTypeName = isReturn ? 'فاتورة مرتجع آجل' : 'فاتورة آجل';
 
@@ -1079,7 +1099,7 @@ function renderAccountTransactions(customer) {
         customerInvoices.forEach(inv => {
             let rem = inv.calculatedRemaining !== undefined ? parseFloat(inv.calculatedRemaining) : (parseFloat(inv.remaining) || 0);
             let isDef = rem > 0;
-            let totalReq = (parseFloat(inv.total) || 0) - (parseFloat(inv.discount) || 0);
+            let totalReq = _getNetInvoiceAmount(inv);
             let isReturn = inv.type === 'return' || inv.type === 'return_sale';
             let invoiceTypeName = isReturn ? '<span class="val-red">فاتورة مرتجع</span>' : 'فاتورة';
 
@@ -1096,7 +1116,7 @@ function renderAccountTransactions(customer) {
             });
         });
     } else if (currentFilterMode === 'vouchers') {
-        let vouchers = customer.transactions || [];
+        let vouchers = (customer.transactions || []).filter(t => t && !t.isCanceled && !t.isDeleted && t.status !== 'deleted');
         vouchers.forEach(t => {
             if (t.type === 'log') {
                 displayList.push({
@@ -1132,14 +1152,14 @@ function renderAccountTransactions(customer) {
     let now = new Date();
     displayList.forEach(item => {
         if (!item.date) { filteredByDateList.push(item); return; }
-        let itemDate = new Date(item.date);
-        if(isNaN(itemDate.getTime())) itemDate = new Date();
+        let safeMs = getSafeTime(item.date);
+        let itemDate = safeMs > 0 ? new Date(safeMs) : new Date();
         let include = false;
 
         if (currentStatementDuration === 'allTime') { include = true; }
         else if (currentStatementDuration === 'custom') {
-            let startTime = new Date(customStartDate || 0).getTime();
-            let endTime = new Date(customEndDate || new Date()).getTime() + 86399999;
+            let startTime = getSafeTime(customStartDate) - 43200000;
+            let endTime = getSafeTime(customEndDate) + 43200000;
             if (itemDate.getTime() >= startTime && itemDate.getTime() <= endTime) include = true;
         } else {
             if (currentStatementDuration === 'today' && itemDate.toDateString() === now.toDateString()) include = true;
@@ -1148,14 +1168,14 @@ function renderAccountTransactions(customer) {
                 if (itemDate.toDateString() === y.toDateString()) include = true;
             }
             else if (currentStatementDuration === '7days') {
-                let d = new Date(now); d.setDate(now.getDate() - 7);
+                let d = new Date(now); d.setDate(now.getDate() - 7); d.setHours(0, 0, 0, 0);
                 if (itemDate >= d) include = true;
             }
             else if (currentStatementDuration === 'thisMonth') {
                 if (itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear()) include = true;
             }
             else if (currentStatementDuration === '30days') {
-                let d = new Date(now); d.setDate(now.getDate() - 30);
+                let d = new Date(now); d.setDate(now.getDate() - 30); d.setHours(0, 0, 0, 0);
                 if (itemDate >= d) include = true;
             }
             else if (currentStatementDuration === 'lastMonth') {
@@ -1168,10 +1188,12 @@ function renderAccountTransactions(customer) {
     displayList = filteredByDateList;
 
     displayList.sort((a, b) => {
-        let timeB = new Date(b.date || 0).getTime();
-        let timeA = new Date(a.date || 0).getTime();
+        let timeB = getSafeTime(b.date);
+        let timeA = getSafeTime(a.date);
         if (timeB !== timeA) return timeB - timeA;
-        return String(b.rawObj.id || '').localeCompare(String(a.rawObj.id || ''));
+        let seqB = (window.Utils && window.Utils.extractSerialNum) ? window.Utils.extractSerialNum(b.rawObj.id) : 0;
+        let seqA = (window.Utils && window.Utils.extractSerialNum) ? window.Utils.extractSerialNum(a.rawObj.id) : 0;
+        return seqB - seqA;
     });
 
     if (displayList.length === 0) {
@@ -1239,18 +1261,27 @@ function renderAccountTransactions(customer) {
 
 function exportExcel() {
     closeAllMenus();
-    if (typeof exportToExcel === 'function') {
-        exportToExcel('customers', currentActiveCustomerId);
-    } else if (typeof PrintManager !== 'undefined') {
-        if (document.getElementById('customers-list-view').classList.contains('active-view')) {
-            PrintManager.exportToExcel(customersDB, 'customers_list');
-        } else {
-            const c = customersDB.find(x => x.id === currentActiveCustomerId);
+    let isList = document.getElementById('customers-list-view').classList.contains('active-view');
+    if (typeof PrintManager !== 'undefined') {
+        if (isList && typeof PrintManager.exportToExcel === 'function') {
+            return PrintManager.exportToExcel(customersDB, 'customers_list');
+        } else if (!isList && typeof PrintManager.exportStatementToExcel === 'function') {
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
             if(!c) return SerajAlert("لم يتم تحديد عميل!");
-            PrintManager.exportStatementToExcel(c);
+            return PrintManager.exportStatementToExcel(c);
+        }
+    }
+    if (typeof exportToExcel === 'function') {
+        if (isList) {
+            exportToExcel('mainCustomersTable', 'قائمة_العملاء.xls');
+        } else {
+            const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
+            if(!c) return SerajAlert("لم يتم تحديد عميل!");
+            renderStatementTable(c);
+            exportToExcel('printableStatementTable', `كشف_حساب_${c.name.trim()}.xls`);
         }
     } else {
-        SerajAlert("⚠️ دالة التصدير للإكسيل المركزية غير متوفرة (print_manager.js).");
+        SerajAlert("⚠️ دالة التصدير للإكسيل غير متوفرة.");
     }
 }
 
@@ -1274,18 +1305,29 @@ function importCustomersExcel(event) {
 
             if(json && json.length > 0) {
                 let importedCount = 0;
+                let localToday = window.Utils.getLocalDateString();
+
                 json.forEach(item => {
                     let name = String(item["العميل"] || item["اسم العميل"] || item["الاسم"] || item["name"] || "").trim();
                     let phone = String(item["الموبايل"] || item["رقم الموبايل"] || item["phone"] || "").trim();
                     let balance = parseFloat(item["الرصيد النهائي"] || item["الرصيد"] || item["balance"]) || 0;
 
                     if(name && name !== "" && name !== "undefined") {
-                        let exists = customersDB.find(c => c.name === name);
+                        let normName = (window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(name) : name;
+                        let exists = customersDB.find(c => ((window.Utils && window.Utils.normalizeName) ? window.Utils.normalizeName(c.name) : c.name) === normName);
                         if(!exists) {
                             customersDB.push({
-                                id: Date.now() + Math.random(),
-                                name: name, phone: phone, balance: balance,
-                                transactions: balance > 0 ? [{id: Date.now(), type: 'payment', amount: balance, date: new Date().toISOString().split('T')[0], notes: 'رصيد افتتاحي إكسيل'}] : []
+                                id: window.Utils.generateUniqueId(),
+                                name: name,
+                                phone: phone,
+                                balance: balance,
+                                transactions: balance !== 0 ? [{
+                                    id: window.Utils.generateUniqueId(),
+                                    type: balance > 0 ? 'payment' : 'receipt',
+                                    amount: Math.abs(balance),
+                                    date: localToday,
+                                    notes: 'رصيد افتتاحي إكسيل'
+                                }] : []
                             });
                             importedCount++;
                         }
@@ -1293,9 +1335,12 @@ function importCustomersExcel(event) {
                 });
 
                 if(importedCount > 0) {
-                    if(typeof DB !== 'undefined') DB.saveCustomers(customersDB);
+                    if(typeof DB !== 'undefined') {
+                        DB.saveCustomers(customersDB);
+                        customersDB = DB.getCustomers();
+                    }
                     renderCustomersList();
-                    SerajAlert(`تم استيراد ${importedCount} عميل بنجاح!`);
+                    SerajAlert(`تم استيراد ${importedCount} عميل بنجاح!`, "success");
                 } else {
                     SerajAlert("لم يتم استيراد أي عملاء. قد يكونوا مسجلين مسبقاً أو الأسماء غير مكتوبة في العمود الصحيح.");
                 }
@@ -1334,7 +1379,6 @@ function exportPdfStatement() {
                     if (cells.length === 1) {
                         rowsHtml += `<tr><td colspan="3" style="text-align:center; font-weight:bold; padding:10px; border:1px solid #000; color:#000;">${cells[0].innerText.trim()}</td></tr>`;
                     } else if (cells.length === 3) {
-                        // تفريق بين سطر الإجمالي وسطر الحركة العادية
                         let isTotal = tr.innerText.includes("إجمالي الحركات") || tr.innerText.includes("رصيد حساب سابق");
                         
                         if (isTotal) {
@@ -1345,7 +1389,6 @@ function exportPdfStatement() {
                                 <td style="text-align:center; font-weight:bold; padding:10px; border:1px solid #000; color:#008800;">${cells[2].innerText.trim()}</td>
                             </tr>`;
                         } else {
-                            // سطر حركة عادية (مدمج فيه الملاحظات)
                             rowsHtml += `
                             <tr>
                                 <td style="text-align:right; padding:8px; border:1px solid #000; color:#000;">${cells[0].innerHTML}</td>
@@ -1354,7 +1397,6 @@ function exportPdfStatement() {
                             </tr>`;
                         }
                     } else if (cells.length === 2) {
-                        // الرصيد النهائي
                         rowsHtml += `
                         <tr style="background:#e5e7eb;">
                             <td style="text-align:right; font-size:16px; font-weight:bold; padding:12px; border:1px solid #000; color:#000;">${cells[0].innerText.trim()}</td>
@@ -1375,7 +1417,7 @@ function exportPdfStatement() {
                             <div style="margin-top:4px;"><strong>رقم الموبايل:</strong> ${c.phone || '---'}</div>
                         </div>
                         <div style="text-align:left;">
-                            <div><strong>تاريخ الكشف:</strong> ${new Date().toISOString().split('T')[0]}</div>
+                            <div><strong>تاريخ الكشف:</strong> ${window.Utils.getLocalDateString()}</div>
                             <div style="margin-top:4px;"><strong>الفترة:</strong> ${durationText}</div>
                         </div>
                     </div>
@@ -1401,13 +1443,36 @@ function exportPdfStatement() {
 
 function printThermalStatement() {
     closeAllMenus();
-    const c = customersDB.find(x => x.id === currentActiveCustomerId);
+    const c = customersDB.find(x => String(x.id) === String(currentActiveCustomerId));
     if(c) {
+        let stmt = DB.getCustomerStatement(c.id, currentStatementDuration, customStartDate, customEndDate);
         document.getElementById('printCustomerName').innerText = `العميل: ${c.name}`;
-        document.getElementById('printDate').innerText = `التاريخ: ${new Date().toISOString().slice(0,10)}`;
-        let tbody = document.getElementById('statementTableBody');
-        document.getElementById('printItemsContainer').innerHTML = tbody.innerHTML;
-        document.getElementById('printTotalBalance').innerText = `الرصيد النهائي (الصافي): ${(c.balance||0).toFixed(2)}`;
+        document.getElementById('printDate').innerText = `التاريخ: ${window.Utils.getLocalDateString()}`;
+
+        let itemsHtml = '';
+        if (stmt) {
+            if (currentStatementDuration !== 'allTime' && (stmt.prevAleih > 0 || stmt.prevLeh > 0)) {
+                let prevNet = stmt.prevAleih - stmt.prevLeh;
+                itemsHtml += `<div style="border-bottom:1px dashed #000; padding:4px 0; font-weight:bold;">
+                    رصيد سابق: ${prevNet > 0 ? ('عليه ' + prevNet.toFixed(2)) : ('له ' + Math.abs(prevNet).toFixed(2))}
+                </div>`;
+            }
+            stmt.rows.forEach(r => {
+                let cleanTitle = String(r.title || '').replace(/<[^>]*>?/gm, '');
+                let notePart = (r.notes && r.notes !== '---') ? ` (${r.notes})` : '';
+                itemsHtml += `<div style="border-bottom:1px dotted #ccc; padding:4px 0; font-size:12px;">
+                    <div style="font-weight:bold;">${cleanTitle}${notePart}</div>
+                    <div style="display:flex; justify-content:space-between; font-size:11px;">
+                        <span>${r.date || ''}</span>
+                        <span>عليه: ${(r.aleih || 0).toFixed(2)} | له: ${(r.leh || 0).toFixed(2)}</span>
+                    </div>
+                </div>`;
+            });
+            let net = stmt.netDebt;
+            let netText = net > 0 ? `عليه مديونية: ${Math.abs(net).toFixed(2)}` : (net < 0 ? `له تسديد: ${Math.abs(net).toFixed(2)}` : `الرصيد مصفر (0.00)`);
+            document.getElementById('printItemsContainer').innerHTML = itemsHtml;
+            document.getElementById('printTotalBalance').innerHTML = `إجمالي عليه: ${stmt.totalAleih.toFixed(2)} | إجمالي له: ${stmt.totalLeh.toFixed(2)}<br>الرصيد النهائي: ${netText}`;
+        }
         window.print();
     } else {
         window.print();
@@ -1425,7 +1490,7 @@ window.openPaymentModalFromInline = function(e) {
         }
 
         let inv = activeSelectedInvoice.rawObj;
-        let rem = parseFloat(inv.remaining) || 0;
+        let rem = parseFloat(inv.calculatedRemaining ?? inv.remaining) || 0;
         let safeId = String(inv.id || '').slice(-6);
 
         let titleEl = document.getElementById('payModalHeaderTitle');
@@ -1441,7 +1506,12 @@ window.openPaymentModalFromInline = function(e) {
         if(notesEl) notesEl.value = '';
 
         let dateEl = document.getElementById('payModalDateInput');
-        if(dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+        if(dateEl) dateEl.value = window.Utils.getLocalDateString();
+
+        let treasSel = document.getElementById('payModalTreasurySelect');
+        if(treasSel) treasSel.value = 'main';
+        let treasLbl = document.getElementById('payModalTreasuryLabel');
+        if(treasLbl) treasLbl.innerText = 'الخزينة الرئيسية (كاش)';
 
         let modalEl = document.getElementById('invoicePaymentModal');
         if(modalEl) {
@@ -1461,7 +1531,6 @@ function openPaymentModalFromInline(e) {
 function confirmInvoicePayment(e) {
     if(e) { e.preventDefault(); e.stopPropagation(); }
     
-    // 1. الحماية من الدبل كليك
     let btn = e ? (e.target || e.currentTarget) : null;
     if (btn && btn.disabled) return;
     if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
@@ -1472,11 +1541,11 @@ function confirmInvoicePayment(e) {
     }
 
     let inv = activeSelectedInvoice.rawObj;
-    let rem = parseFloat(inv.remaining) || 0;
+    let rem = parseFloat(inv.calculatedRemaining ?? inv.remaining) || 0;
     let maxRem = rem || ((parseFloat(inv.total)||0) - (parseFloat(inv.discount)||0));
     let pAmount = Math.max(0, parseFloat(document.getElementById('payModalAmountInput').value) || 0);
     let customNotes = document.getElementById('payModalNotesInput').value.trim();
-    let date = document.getElementById('payModalDateInput').value;
+    let date = document.getElementById('payModalDateInput').value || window.Utils.getLocalDateString();
     let treasuryKey = document.getElementById('payModalTreasurySelect').value;
 
     if(pAmount <= 0 || pAmount > maxRem) {
@@ -1490,22 +1559,19 @@ function confirmInvoicePayment(e) {
         return;
     }
 
-    // 2. إخفاء الشاشة المنبثقة فوراً لمنع التهنيج والدبل كليك
     closeModals();
 
-    // 3. تأخير الحفظ لحظياً عشان المتصفح يلحق يخفي الشاشة ويكون سلس
     setTimeout(() => {
-// سحب حرف الجهاز المخصص، وتوليد رقم تسلسلي يدمج الحرف مع الرقم (مثال: A-1005)
-let devPrefix = localStorage.getItem('seraj_device_prefix') || 'V';
-let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generateUniqueId === 'function') 
-    ? window.Utils.generateUniqueId() 
-    : Date.now().toString());
+        let devPrefix = localStorage.getItem('seraj_device_prefix') || 'V';
+        let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generateUniqueId === 'function') 
+            ? window.Utils.generateUniqueId() 
+            : Date.now().toString());
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
-        let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `تحصيل فاتورة رقم ${inv.id}`;
+        let notes = customNotes ? `${customNotes} (فاتورة ${inv.id})` : `تحصيل نقدي (فاتورة ${inv.id})`;
         let allocatedInvoices = [{ id: inv.id, deducted: pAmount }];
 
         if(!c.transactions) c.transactions = [];
-        c.lastActivityDate = date || new Date().toISOString().split('T')[0];
+        c.lastActivityDate = date;
 
         let newTx = {
             id: receiptId,
@@ -1530,9 +1596,11 @@ let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generate
                     vault: treasuryKey,
                     amountAdd: pAmount,
                     amountDeduct: 0,
-                    amount: pAmount, // الحقل الصريح المطلوب للخزينة
+                    amount: pAmount,
                     notes: `سند تحصيل رقم ${receiptId} من العميل: ${c.name.trim()} (${notes})`,
                     date: date,
+                    invoiceNo: inv.id,
+                    allocatedInvoices: allocatedInvoices,
                     customerId: String(c.id),
                     customer: c.name.trim()
                 });
@@ -1566,7 +1634,7 @@ function saveTransaction(e) {
     
     let amount = Math.max(0, parseFloat(document.getElementById('transAmount').value) || 0);
     let notes = document.getElementById('transNotes').value.trim();
-    let date = document.getElementById('transDate').value || new Date().toISOString().split('T')[0];
+    let date = document.getElementById('transDate').value || window.Utils.getLocalDateString();
     let treasuryKey = document.getElementById('transTreasurySelect').value; 
     let txType = document.querySelector('input[name="transType"]:checked').value;
 
@@ -1575,16 +1643,14 @@ function saveTransaction(e) {
         return SerajAlert("أدخل مبلغ صحيح!"); 
     }
 
-    // إخفاء الشاشة فوراً
     closeModals();
 
     setTimeout(() => {
         if(!c.transactions) c.transactions = [];
-// سحب حرف الجهاز المخصص، وتوليد رقم تسلسلي يدمج الحرف مع الرقم (مثال: A-1005)
-let devPrefix = localStorage.getItem('seraj_device_prefix') || 'V';
-let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generateUniqueId === 'function') 
-    ? window.Utils.generateUniqueId() 
-    : Date.now().toString());
+        let devPrefix = localStorage.getItem('seraj_device_prefix') || 'V';
+        let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generateUniqueId === 'function') 
+            ? window.Utils.generateUniqueId() 
+            : Date.now().toString());
             
         let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
@@ -1612,7 +1678,7 @@ let receiptId = devPrefix + '-' + ((window.Utils && typeof window.Utils.generate
                     vault: treasuryKey, 
                     amountAdd: txType === 'receipt' ? amount : 0, 
                     amountDeduct: txType === 'payment' ? amount : 0,
-                    amount: amount, // الحقل الصريح
+                    amount: amount,
                     notes: `سند ${txType === 'receipt' ? 'تحصيل' : 'سحب'} رقم ${receiptId}: ${c.name.trim()} - ${newTx.notes}`, 
                     date: date, 
                     customerId: String(c.id),
@@ -1688,7 +1754,8 @@ function openViewModalFromOpt(e) {
         }
 
         document.getElementById('viewModalTitle').innerHTML = `عرض تفاصيل الفاتورة رقم <span class="invoice-number">${inv.id.toString().slice(-6)}</span>`;
-        let finalReq = (parseFloat(inv.total)||0) - (parseFloat(inv.discount)||0);
+        let finalReq = typeof _getNetInvoiceAmount === 'function' ? _getNetInvoiceAmount(inv) : ((parseFloat(inv.total)||0) - (parseFloat(inv.discount)||0));
+        let remVal = parseFloat(inv.calculatedRemaining ?? inv.remaining) || 0;
 
         document.getElementById('viewModalContent').innerHTML = `
             <div style="margin-bottom:10px; display:flex; justify-content:space-between;">
@@ -1710,7 +1777,7 @@ function openViewModalFromOpt(e) {
             <div style="text-align:left; font-size:16px; font-weight:bold;">
                 <div>إجمالي الفاتورة: <span style="color:#38bdf8;">${finalReq.toFixed(2)}</span></div>
                 <div>المدفوع: <span class="badge-paid">${(parseFloat(inv.paid)||0).toFixed(2)}</span></div>
-                <div>المتبقي (الآجل): <span class="badge-unpaid">${(parseFloat(inv.remaining) || 0).toFixed(2)}</span></div>
+                <div>المتبقي (الآجل): <span class="badge-unpaid">${remVal.toFixed(2)}</span></div>
             </div>
         `;
     }
@@ -1747,7 +1814,6 @@ async function deleteVoucherFromInline(e) {
     let isConfirmed = await SerajConfirm(`هل أنت متأكد من حذف السند رقم ${v.id} بقيمة ${v.amount}؟`);
     if(!isConfirmed) return;
 
-    // 🛑 التزاماً بالقواعد: نحذف السند من العميل فقط ونترك db.js يتدخل
     c.transactions = (c.transactions || []).filter(x => String(x.id) !== String(v.id));
 
     if(typeof DB !== 'undefined') {
@@ -1757,7 +1823,6 @@ async function deleteVoucherFromInline(e) {
             DB.deleteItem('treasury_moves', String(v.id), 'hard');
         }
 
-        // 🛑 إعادة تحميل العملاء بعد أن قام المحرك باسترجاع مديونيات الفواتير
         customersDB = DB.getCustomers();
     }
 
@@ -1793,7 +1858,7 @@ function saveEditedVoucher(e) {
     }
 
     let newAmount = Math.max(0, parseFloat(document.getElementById('editTransAmount').value) || 0);
-    let newDate = document.getElementById('editTransDate').value || new Date().toISOString().split('T')[0];
+    let newDate = document.getElementById('editTransDate').value || window.Utils.getLocalDateString();
     let newNotes = document.getElementById('editTransNotes').value.trim();
     let newTreasury = document.getElementById('editTransTreasurySelect').value;
     let newType = document.querySelector('input[name="editTransType"]:checked').value;
@@ -1803,14 +1868,16 @@ function saveEditedVoucher(e) {
         return SerajAlert("أدخل مبلغ صحيح!"); 
     }
 
-    // إخفاء الشاشة فوراً
     closeModals();
 
     setTimeout(() => {
         c.lastActivityDate = newDate;
 
         if(typeof DB !== 'undefined') {
-            let newAllocatedInvoices = []; 
+            let preservedAllocations = Array.isArray(v.allocatedInvoices)
+                ? v.allocatedInvoices.map((a, idx) => (idx === 0 && v.allocatedInvoices.length === 1) ? { ...a, deducted: newAmount } : { ...a })
+                : [];
+
             let updatedVoucher = {
                 id: v.id,
                 type: newType,
@@ -1820,7 +1887,7 @@ function saveEditedVoucher(e) {
                 date: newDate,
                 _device: v._device,
                 _lastModifiedBy: localStorage.getItem('seraj_device_name') || 'غير معروف',
-                allocatedInvoices: newAllocatedInvoices
+                allocatedInvoices: preservedAllocations
             };
 
             let tIndex = c.transactions.findIndex(x => String(x.id) === String(v.id));
@@ -1829,9 +1896,6 @@ function saveEditedVoucher(e) {
 
             DB.saveCustomers(customersDB);
 
-            if (typeof DB.deleteItem === 'function') {
-                DB.deleteItem('treasury_moves', String(v.id), 'hard');
-            }
             if (typeof DB.recordTreasuryTransaction === 'function') {
                 DB.recordTreasuryTransaction({
                     id: String(v.id),
@@ -1839,9 +1903,10 @@ function saveEditedVoucher(e) {
                     vault: newTreasury,
                     amountAdd: newType === 'receipt' ? newAmount : 0,
                     amountDeduct: newType === 'payment' ? newAmount : 0,
-                    amount: newAmount, // الحقل الصريح
+                    amount: newAmount,
                     notes: `سند ${newType === 'receipt' ? 'تحصيل' : 'سحب'} رقم ${v.id}: ${c.name.trim()} - ${newNotes}`,
                     date: newDate,
+                    allocatedInvoices: preservedAllocations,
                     customerId: String(c.id),
                     customer: c.name.trim()
                 });
@@ -1865,10 +1930,15 @@ function openAddTransactionModalDirect(e) {
     if(typeof closeAllMenus === 'function') closeAllMenus();
     document.getElementById('transAmount').value = '';
     document.getElementById('transNotes').value = '';
-    document.getElementById('transDate').value = new Date().toISOString().split('T')[0];
+    document.getElementById('transDate').value = window.Utils.getLocalDateString();
 
     let receiptRadio = document.querySelector('input[name="transType"][value="receipt"]');
     if (receiptRadio) receiptRadio.checked = true;
+
+    let treasSel = document.getElementById('transTreasurySelect');
+    if (treasSel) treasSel.value = 'main';
+    let treasLbl = document.getElementById('transTreasuryLabel');
+    if (treasLbl) treasLbl.innerText = 'الخزينة الرئيسية (كاش)';
 
     let modal = document.getElementById('addTransactionModal');
     modal.style.setProperty('background', 'transparent', 'important');
@@ -1889,15 +1959,7 @@ window.onload = () => {
 };
 </script>
 
-<script>
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js')
-                .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
-                .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
-        });
-    }
-</script>
+
 
 <script>
 document.addEventListener('click', function(event) {

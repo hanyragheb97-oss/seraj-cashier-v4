@@ -664,43 +664,48 @@ window.Utils = {
         return `${devPrefix}-${nextNum}`;
     },
 
+    _seqInitialized: false,
     generateUniqueId: function(prefix = '') {
         let lastSeq = parseInt(localStorage.getItem('seraj_short_seq_id') || '1000', 10);
         if (isNaN(lastSeq) || lastSeq < 1000) lastSeq = 1000;
 
-        try {
-            const checkMax = (arr) => {
-                if (!Array.isArray(arr)) return;
-                arr.forEach(item => {
-                    if (!item) return;
-                    let numId = parseInt(String(item.id || '').replace(/\D/g, ''), 10);
-                    if (!isNaN(numId) && numId >= 1000 && numId < 100000000 && numId > lastSeq) {
-                        lastSeq = numId;
-                    }
-                    if (Array.isArray(item.transactions)) {
-                        item.transactions.forEach(tx => {
-                            let txNum = parseInt(String(tx?.id || '').replace(/\D/g, ''), 10);
-                            if (!isNaN(txNum) && txNum >= 1000 && txNum < 100000000 && txNum > lastSeq) {
-                                lastSeq = txNum;
-                            }
-                        });
-                    }
-                });
-            };
-            checkMax(safeParseJSON(localStorage.getItem('seraj_products'), []));
-            checkMax(safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []));
-            checkMax(safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []));
-            checkMax(safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []));
-            checkMax(safeParseJSON(localStorage.getItem('seraj_customers'), []));
-            checkMax(safeParseJSON(localStorage.getItem('seraj_suppliers'), []));
-        } catch (e) {}
+        // فحص الجداول مرة واحدة فقط عند بداية الجلسة لمنع أي تجميد أثناء استيراد الإكسيل
+        if (!this._seqInitialized) {
+            this._seqInitialized = true;
+            try {
+                const checkMax = (arr) => {
+                    if (!Array.isArray(arr)) return;
+                    arr.forEach(item => {
+                        if (!item) return;
+                        let numId = parseInt(String(item.id || '').replace(/\D/g, ''), 10);
+                        if (!isNaN(numId) && numId >= 1000 && numId < 100000000 && numId > lastSeq) {
+                            lastSeq = numId;
+                        }
+                        if (Array.isArray(item.transactions)) {
+                            item.transactions.forEach(tx => {
+                                let txNum = parseInt(String(tx?.id || '').replace(/\D/g, ''), 10);
+                                if (!isNaN(txNum) && txNum >= 1000 && txNum < 100000000 && txNum > lastSeq) {
+                                    lastSeq = txNum;
+                                }
+                            });
+                        }
+                    });
+                };
+                checkMax(safeParseJSON(localStorage.getItem('seraj_products'), []));
+                checkMax(safeParseJSON(localStorage.getItem('seraj_sales_invoices'), []));
+                checkMax(safeParseJSON(localStorage.getItem('seraj_purchase_invoices'), []));
+                checkMax(safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []));
+                checkMax(safeParseJSON(localStorage.getItem('seraj_customers'), []));
+                checkMax(safeParseJSON(localStorage.getItem('seraj_suppliers'), []));
+            } catch (e) {}
+        }
 
         let nextSeq = lastSeq + 1;
         localStorage.setItem('seraj_short_seq_id', String(nextSeq));
         return prefix ? `${prefix}${nextSeq}` : String(nextSeq);
     },
 
-    // دالة تصدير PDF حقيقية مركزية تدعم html2pdf والطباعة المباشرة كبديل أوفلاين
+    // دالة تصدير PDF ذكية تدعم: عنصر DOM، أو اسم ID للعنصر، أو كود HTML كامل
     downloadRealPDF: function(htmlOrElement, fileName = 'seraj_report.pdf') {
         return new Promise((resolve) => {
             let cleanFileName = String(fileName || 'seraj_report.pdf');
@@ -711,11 +716,21 @@ window.Utils = {
                 let targetEl = null;
 
                 if (typeof htmlOrElement === 'string') {
-                    container = document.createElement('div');
-                    container.style.cssText = 'position:fixed; left:-9999px; top:0; width:210mm; background:#fff; color:#000; padding:15px; direction:rtl; font-family:Cairo, sans-serif; z-index:-1;';
-                    container.innerHTML = htmlOrElement;
-                    document.body.appendChild(container);
-                    targetEl = container;
+                    let trimmed = htmlOrElement.trim();
+                    let byId = !trimmed.includes('<') ? document.getElementById(trimmed.replace(/^#/, '')) : null;
+                    if (byId) {
+                        container = document.createElement('div');
+                        container.style.cssText = 'position:fixed; left:-9999px; top:0; width:210mm; background:#fff; color:#000; padding:15px; direction:rtl; font-family:Cairo, Tahoma, sans-serif; z-index:-1;';
+                        container.innerHTML = byId.innerHTML;
+                        document.body.appendChild(container);
+                        targetEl = container;
+                    } else {
+                        container = document.createElement('div');
+                        container.style.cssText = 'position:fixed; left:-9999px; top:0; width:210mm; background:#fff; color:#000; padding:15px; direction:rtl; font-family:Cairo, Tahoma, sans-serif; z-index:-1;';
+                        container.innerHTML = htmlOrElement;
+                        document.body.appendChild(container);
+                        targetEl = container;
+                    }
                 } else if (htmlOrElement instanceof Element) {
                     targetEl = htmlOrElement;
                 } else {
@@ -742,7 +757,7 @@ window.Utils = {
                     try {
                         let printWin = window.open('', '_blank', 'width=900,height=700');
                         if (printWin) {
-                            let contentHtml = typeof htmlOrElement === 'string' ? htmlOrElement : targetEl.outerHTML;
+                            let contentHtml = container ? container.innerHTML : (typeof htmlOrElement === 'string' ? htmlOrElement : targetEl.outerHTML);
                             printWin.document.open();
                             printWin.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${cleanFileName}</title><style>body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:20px;color:#000;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #333;padding:8px;text-align:center;}</style></head><body>${contentHtml}</body></html>`);
                             printWin.document.close();
@@ -836,11 +851,44 @@ if (typeof window.exportToPDF !== 'function') {
     };
 }
 if (typeof window.exportToExcel !== 'function') {
-    window.exportToExcel = function(tableIdOrEl, fileName = 'seraj_export.xls') {
+    window.exportToExcel = function(tableIdOrElOrArray, fileName = 'seraj_export.xls') {
         try {
-            let tableEl = typeof tableIdOrEl === 'string' ? document.getElementById(tableIdOrEl) : (tableIdOrEl || document.querySelector('table'));
-            if (!tableEl) return false;
-            let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" dir="rtl"><head><meta charset="UTF-8"></head><body>${tableEl.outerHTML}</body></html>`;
+            let tableHtml = '';
+            if (Array.isArray(tableIdOrElOrArray)) {
+                if (tableIdOrElOrArray.length === 0) return false;
+                let isAOA = Array.isArray(tableIdOrElOrArray[0]);
+                if (typeof XLSX !== 'undefined' && XLSX.utils && XLSX.writeFile) {
+                    let ws = isAOA ? XLSX.utils.aoa_to_sheet(tableIdOrElOrArray) : XLSX.utils.json_to_sheet(tableIdOrElOrArray);
+                    let wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Report");
+                    let cleanXlsx = String(fileName).replace(/\.(xls|xlsx)$/i, '') + '.xlsx';
+                    XLSX.writeFile(wb, cleanXlsx);
+                    return true;
+                }
+                if (isAOA) {
+                    let trs = tableIdOrElOrArray.map((row, idx) => {
+                        if (!Array.isArray(row) || row.length === 0) return '<tr><td colspan="6">&nbsp;</td></tr>';
+                        let tag = idx === 0 ? 'th' : 'td';
+                        let bg = idx === 0 ? 'background:#eee;font-weight:bold;' : '';
+                        let cells = row.map(c => `<${tag} style="border:1px solid #333;padding:6px;${bg}">${window.Utils.sanitizeHTML(String(c ?? ''))}</${tag}>`).join('');
+                        return `<tr>${cells}</tr>`;
+                    }).join('');
+                    tableHtml = `<table><tbody>${trs}</tbody></table>`;
+                } else {
+                    let headers = Object.keys(tableIdOrElOrArray[0] || {});
+                    let ths = headers.map(h => `<th style="border:1px solid #333;padding:6px;background:#eee;">${window.Utils.sanitizeHTML(String(h))}</th>`).join('');
+                    let trs = tableIdOrElOrArray.map(row => {
+                        let tds = headers.map(h => `<td style="border:1px solid #333;padding:6px;">${window.Utils.sanitizeHTML(String(row[h] ?? ''))}</td>`).join('');
+                        return `<tr>${tds}</tr>`;
+                    }).join('');
+                    tableHtml = `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+                }
+            } else {
+                let tableEl = typeof tableIdOrElOrArray === 'string' ? document.getElementById(tableIdOrElOrArray) : (tableIdOrElOrArray || document.querySelector('table'));
+                if (!tableEl) return false;
+                tableHtml = tableEl.outerHTML;
+            }
+            let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" dir="rtl"><head><meta charset="UTF-8"></head><body>${tableHtml}</body></html>`;
             let blob = new Blob(['\ufeff', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
             let url = URL.createObjectURL(blob);
             let a = document.createElement('a');
@@ -1579,9 +1627,12 @@ function saveAndRenderLocal(col, localArray) {
             if (typeof renderCustomersList === 'function') renderCustomersList();
             if (typeof currentActiveCustomerId !== 'undefined' && currentActiveCustomerId) {
                 try {
-                    if (typeof updateAccountSummary === 'function') updateAccountSummary();
-                    if (typeof renderAccountTransactions === 'function') renderAccountTransactions();
-                    if (typeof renderStatementTable === 'function') renderStatementTable();
+                    let activeCust = (window.DB && typeof window.DB.calculateCustomerBalances === 'function')
+                        ? window.DB.calculateCustomerBalances(currentActiveCustomerId)
+                        : null;
+                    if (typeof updateAccountSummary === 'function') updateAccountSummary(activeCust);
+                    if (typeof renderAccountTransactions === 'function') renderAccountTransactions(activeCust);
+                    if (typeof renderStatementTable === 'function') renderStatementTable(activeCust);
                 } catch (e) {}
             }
         }
@@ -1590,7 +1641,15 @@ function saveAndRenderLocal(col, localArray) {
             if (typeof renderSuppliersList === 'function') renderSuppliersList();
             if (typeof currentActiveSupplierId !== 'undefined' && currentActiveSupplierId) {
                 try {
-                    if (typeof openSupplierAccount === 'function') openSupplierAccount(currentActiveSupplierId);
+                    let activeSupp = (window.DB && typeof window.DB.calculateSupplierBalances === 'function')
+                        ? window.DB.calculateSupplierBalances(currentActiveSupplierId)
+                        : null;
+                    if (typeof updateAccountSummary === 'function') updateAccountSummary(activeSupp);
+                    if (typeof renderAccountTransactions === 'function') renderAccountTransactions(activeSupp);
+                    let stmtView = document.getElementById('supplier-statement-view');
+                    if (stmtView && stmtView.classList.contains('active-view') && typeof renderStatementTable === 'function') {
+                        renderStatementTable(activeSupp);
+                    }
                 } catch (e) {}
             }
             if (typeof populateSuppliers === 'function') populateSuppliers();
@@ -3574,14 +3633,21 @@ saveSalesInvoices: function(data) {
                     appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, false);
                 }
 
-                // لا نعتبر تغير المدفوع تعديلاً للفاتورة إلا إذا تم من خارج صفحة العملاء
-                let wasEditedInHistory = !isCustomerScreen && (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
+                let explicitInitEdit = Boolean(cleanInv._editedInitialPaid);
+                delete cleanInv._editedInitialPaid;
+
+                let wasEditedInHistory = !isCustomerScreen && (explicitInitEdit || cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
                 if (wasEditedInHistory) {
-                    cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
+                    if (explicitInitEdit && cleanInv.initialPaid !== undefined) {
+                        cleanInv.initialPaid = Math.max(0, Math.round((parseFloat(cleanInv.initialPaid) || 0) * 100) / 100);
+                    } else {
+                        cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
+                    }
                     let disc = parseFloat(cleanInv.discount) || 0;
                     let remNow = parseFloat(cleanInv.remaining) || 0;
                     let netReq = (Math.abs((newPaid + remNow) - newTotal) < 0.05 && disc > 0) ? newTotal : Math.max(0, newTotal - disc);
                     cleanInv.initialRemaining = Math.max(0, Math.round((netReq - cleanInv.initialPaid) * 100) / 100);
+                    cleanInv.paid = Math.min(netReq, Math.round((cleanInv.initialPaid + appliedVouchers) * 100) / 100);
                 } else {
                     if (cleanInv.initialPaid === undefined && oldInv.initialPaid !== undefined) cleanInv.initialPaid = oldInv.initialPaid;
                     if (cleanInv.initialRemaining === undefined && oldInv.initialRemaining !== undefined) cleanInv.initialRemaining = oldInv.initialRemaining;
@@ -3620,47 +3686,59 @@ saveSalesInvoices: function(data) {
     _internalSetItem('seraj_sales_invoices', JSON.stringify(cleanData));
     saveArrayToQueueSafely('sales_invoices', cleanData);
 
-    // 1. تسجيل الفواتير الجديدة في كاميرا الخزينة
+    // 1. تسجيل الفواتير الجديدة في كاميرا الخزينة لحظياً (0ms) لمنع سقوط أي فاتورة عند الإغلاق السريع
     if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
-        setTimeout(() => {
-            let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-            newlyCreatedInvoices.forEach(newInv => {
-                if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
-                    let isReturn = (newInv.type === 'return' || newInv.type === 'return_sale' || newInv.type === 'sales_return');
-                    let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
-                    let totalAmt = parseFloat(newInv.total) || 0;
-                    this.recordTreasuryTransaction({
-                        type: isReturn ? 'return_sale' : 'sales',
-                        vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
-                        amountAdd: isReturn ? 0 : paidAmt,
-                        amountDeduct: isReturn ? paidAmt : 0,
-                        amount: paidAmt,
-                        date: newInv.date,
-                        timestamp: newInv.timestamp || Date.now(),
-                        invoiceNo: newInv.id,
-                        customerId: newInv.customerId || null,
-                        customer: newInv.customer || null,
-                        notes: `${isReturn ? 'فاتورة مرتجع بيع' : (paidAmt === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${newInv.id}${newInv.customer ? ' - ' + newInv.customer : ''} (إجمالي: ${totalAmt})`
-                    });
-                }
-            });
-        }, 120);
+        let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+        newlyCreatedInvoices.forEach(newInv => {
+            if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
+                let isReturn = (newInv.type === 'return' || newInv.type === 'return_sale' || newInv.type === 'sales_return');
+                let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
+                let totalAmt = parseFloat(newInv.total) || 0;
+                this.recordTreasuryTransaction({
+                    type: isReturn ? 'return_sale' : 'sales',
+                    vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
+                    amountAdd: isReturn ? 0 : paidAmt,
+                    amountDeduct: isReturn ? paidAmt : 0,
+                    amount: paidAmt,
+                    date: newInv.date,
+                    timestamp: newInv.timestamp || Date.now(),
+                    invoiceNo: newInv.id,
+                    customerId: newInv.customerId || null,
+                    customer: newInv.customer || null,
+                    notes: `${isReturn ? 'فاتورة مرتجع بيع' : (paidAmt === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${newInv.id}${newInv.customer ? ' - ' + newInv.customer : ''} (إجمالي: ${totalAmt})`
+                });
+            }
+        });
     }
 
-    // 2. تسجيل تعديلات أو إلغاء الفواتير في كاميرا الخزينة
+    // 2. تسجيل تعديلات أو إلغاء الفواتير في كاميرا الخزينة لحظياً (0ms)
     if (!this._isCalculatingBalances && editedInvoices.length > 0) {
-        setTimeout(() => {
-            let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-            let tsNow = Date.now();
+        let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+        let tsNow = Date.now();
 
-            editedInvoices.forEach((item, idx) => {
-                let invIdStr = String(item.cleanInv.id);
-                let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
+        editedInvoices.forEach((item, idx) => {
+            let invIdStr = String(item.cleanInv.id);
+            let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
 
-                let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
-                if (recentlyLogged) return;
+            let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
+            if (recentlyLogged) return;
 
-                if (item.action === 'cancel') {
+            if (item.action === 'cancel') {
+                this.recordTreasuryTransaction({
+                    type: 'correction',
+                    vault: item.oldVault,
+                    amountAdd: item.oldIsReturn ? item.oldInitPaid : 0,
+                    amountDeduct: item.oldIsReturn ? 0 : item.oldInitPaid,
+                    amount: item.oldInitPaid,
+                    date: window.Utils.getLocalDateString(tsNow),
+                    timestamp: tsNow + (idx * 2),
+                    invoiceNo: item.cleanInv.id,
+                    customerId: item.cleanInv.customerId || null,
+                    customer: item.cleanInv.customer || null,
+                    notes: `🗑️ إلغاء واسترداد فاتورة مبيعات رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''} (المدفوع المسترد: ${item.oldInitPaid})`
+                });
+            } else if (item.action === 'edit') {
+                if (item.oldInitPaid > 0) {
                     this.recordTreasuryTransaction({
                         type: 'correction',
                         vault: item.oldVault,
@@ -3672,41 +3750,25 @@ saveSalesInvoices: function(data) {
                         invoiceNo: item.cleanInv.id,
                         customerId: item.cleanInv.customerId || null,
                         customer: item.cleanInv.customer || null,
-                        notes: `🗑️ إلغاء واسترداد فاتورة مبيعات رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''} (المدفوع المسترد: ${item.oldInitPaid})`
-                    });
-                } else if (item.action === 'edit') {
-                    if (item.oldInitPaid > 0) {
-                        this.recordTreasuryTransaction({
-                            type: 'correction',
-                            vault: item.oldVault,
-                            amountAdd: item.oldIsReturn ? item.oldInitPaid : 0,
-                            amountDeduct: item.oldIsReturn ? 0 : item.oldInitPaid,
-                            amount: item.oldInitPaid,
-                            date: window.Utils.getLocalDateString(tsNow),
-                            timestamp: tsNow + (idx * 2),
-                            invoiceNo: item.cleanInv.id,
-                            customerId: item.cleanInv.customerId || null,
-                            customer: item.cleanInv.customer || null,
-                            notes: `🔄 عكس لتعديل فاتورة مبيعات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
-                        });
-                    }
-                    let totalAmt = parseFloat(item.cleanInv.total) || 0;
-                    this.recordTreasuryTransaction({
-                        type: item.newIsReturn ? 'return_sale' : 'sales',
-                        vault: item.newVault,
-                        amountAdd: item.newIsReturn ? 0 : item.newInitPaid,
-                        amountDeduct: item.newIsReturn ? item.newInitPaid : 0,
-                        amount: item.newInitPaid,
-                        date: window.Utils.getLocalDateString(tsNow),
-                        timestamp: tsNow + (idx * 2) + 1,
-                        invoiceNo: item.cleanInv.id,
-                        customerId: item.cleanInv.customerId || null,
-                        customer: item.cleanInv.customer || null,
-                        notes: `✏️ بعد التعديل: ${item.newIsReturn ? 'فاتورة مرتجع بيع' : (item.newInitPaid === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''} (إجمالي: ${totalAmt})`
+                        notes: `🔄 عكس لتعديل فاتورة مبيعات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
                     });
                 }
-            });
-        }, 120);
+                let totalAmt = parseFloat(item.cleanInv.total) || 0;
+                this.recordTreasuryTransaction({
+                    type: item.newIsReturn ? 'return_sale' : 'sales',
+                    vault: item.newVault,
+                    amountAdd: item.newIsReturn ? 0 : item.newInitPaid,
+                    amountDeduct: item.newIsReturn ? item.newInitPaid : 0,
+                    amount: item.newInitPaid,
+                    date: window.Utils.getLocalDateString(tsNow),
+                    timestamp: tsNow + (idx * 2) + 1,
+                    invoiceNo: item.cleanInv.id,
+                    customerId: item.cleanInv.customerId || null,
+                    customer: item.cleanInv.customer || null,
+                    notes: `✏️ بعد التعديل: ${item.newIsReturn ? 'فاتورة مرتجع بيع' : (item.newInitPaid === 0 ? 'فاتورة مبيعات آجلة (مسدد 0)' : 'فاتورة مبيعات')} رقم #${item.cleanInv.id}${item.cleanInv.customer ? ' - ' + item.cleanInv.customer : ''} (إجمالي: ${totalAmt})`
+                });
+            }
+        });
     }
 
     if (!this._isCalculatingBalances) {
@@ -3793,13 +3855,21 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
                     appliedVouchers = this._getAppliedVoucherAmountForInvoice(cleanInv, validTxs, true);
                 }
 
-                let wasEditedInHistory = !isSupplierScreen && (cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
+                let explicitInitEdit = Boolean(cleanInv._editedInitialPaid);
+                delete cleanInv._editedInitialPaid;
+
+                let wasEditedInHistory = !isSupplierScreen && (explicitInitEdit || cleanInv.initialPaid === undefined || Math.abs(newTotal - oldTotal) > 0.001 || Math.abs(newPaid - oldPaid) > 0.001);
                 if (wasEditedInHistory) {
-                    cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
+                    if (explicitInitEdit && cleanInv.initialPaid !== undefined) {
+                        cleanInv.initialPaid = Math.max(0, Math.round((parseFloat(cleanInv.initialPaid) || 0) * 100) / 100);
+                    } else {
+                        cleanInv.initialPaid = Math.max(0, Math.round((newPaid - appliedVouchers) * 100) / 100);
+                    }
                     let disc = parseFloat(cleanInv.discount) || 0;
                     let remNow = parseFloat(cleanInv.remaining) || 0;
                     let netReq = (Math.abs((newPaid + remNow) - newTotal) < 0.05 && disc > 0) ? newTotal : Math.max(0, newTotal - disc);
                     cleanInv.initialRemaining = Math.max(0, Math.round((netReq - cleanInv.initialPaid) * 100) / 100);
+                    cleanInv.paid = Math.min(netReq, Math.round((cleanInv.initialPaid + appliedVouchers) * 100) / 100);
                 } else {
                     if (cleanInv.initialPaid === undefined && oldInv.initialPaid !== undefined) cleanInv.initialPaid = oldInv.initialPaid;
                     if (cleanInv.initialRemaining === undefined && oldInv.initialRemaining !== undefined) cleanInv.initialRemaining = oldInv.initialRemaining;
@@ -3838,94 +3908,90 @@ savePurchaseInvoices: function(data, newInvoiceItems = null) {
     _internalSetItem('seraj_purchase_invoices', JSON.stringify(cleanData));
     saveArrayToQueueSafely('purchase_invoices', cleanData);
 
-    // 1. تسجيل فواتير الشراء الجديدة في كاميرا الخزينة
-    if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
-        setTimeout(() => {
-            let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-            newlyCreatedInvoices.forEach(newInv => {
-                if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
-                    let isReturn = (newInv.type === 'return' || newInv.type === 'return_purchase' || newInv.type === 'purchase_return');
-                    let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
-                    let totalAmt = parseFloat(newInv.total) || 0;
-                    this.recordTreasuryTransaction({
-                        type: isReturn ? 'return_purchase' : 'purchase',
-                        vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
-                        amountAdd: isReturn ? paidAmt : 0,
-                        amountDeduct: isReturn ? 0 : paidAmt,
-                        amount: paidAmt,
-                        date: newInv.date,
-                        timestamp: newInv.timestamp || Date.now(),
-                        invoiceNo: newInv.id,
-                        supplierId: newInv.supplierId || null,
-                        supplier: newInv.supplier || null,
-                        notes: `${isReturn ? 'فاتورة مرتجع مشتريات' : (paidAmt === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${newInv.id}${newInv.supplier ? ' - ' + newInv.supplier : ''} (إجمالي: ${totalAmt})`
-                    });
-                }
+// 1. تسجيل فواتير الشراء الجديدة في كاميرا الخزينة لحظياً (0ms) لمنع سقوط أي فاتورة عند الإغلاق السريع
+if (!this._isCalculatingBalances && newlyCreatedInvoices.length > 0) {
+    let currentMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+    newlyCreatedInvoices.forEach(newInv => {
+        if (!this._hasTreasuryMoveForInvoice(newInv, currentMoves)) {
+            let isReturn = (newInv.type === 'return' || newInv.type === 'return_purchase' || newInv.type === 'purchase_return');
+            let paidAmt = Math.max(0, parseFloat(newInv.initialPaid ?? newInv.paid) || 0);
+            let totalAmt = parseFloat(newInv.total) || 0;
+            this.recordTreasuryTransaction({
+                type: isReturn ? 'return_purchase' : 'purchase',
+                vault: newInv.vault || newInv.treasury || newInv.paymentMethod || 'main',
+                amountAdd: isReturn ? paidAmt : 0,
+                amountDeduct: isReturn ? 0 : paidAmt,
+                amount: paidAmt,
+                date: newInv.date,
+                timestamp: newInv.timestamp || Date.now(),
+                invoiceNo: newInv.id,
+                supplierId: newInv.supplierId || null,
+                supplier: newInv.supplier || null,
+                notes: `${isReturn ? 'فاتورة مرتجع مشتريات' : (paidAmt === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${newInv.id}${newInv.supplier ? ' - ' + newInv.supplier : ''} (إجمالي: ${totalAmt})`
             });
-        }, 120);
-    }
+        }
+    });
+}
 
-    // 2. تسجيل تعديلات أو إلغاء فواتير الشراء في كاميرا الخزينة
-    if (!this._isCalculatingBalances && editedInvoices.length > 0) {
-        setTimeout(() => {
-            let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
-            let tsNow = Date.now();
+// 2. تسجيل تعديلات أو إلغاء فواتير الشراء في كاميرا الخزينة لحظياً (0ms)
+if (!this._isCalculatingBalances && editedInvoices.length > 0) {
+    let rawMoves = safeParseJSON(localStorage.getItem('seraj_treasury_moves'), []);
+    let tsNow = Date.now();
 
-            editedInvoices.forEach((item, idx) => {
-                let invIdStr = String(item.cleanInv.id);
-                let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
+    editedInvoices.forEach((item, idx) => {
+        let invIdStr = String(item.cleanInv.id);
+        let shortId = invIdStr.length > 5 ? invIdStr.slice(-5) : invIdStr;
 
-                let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
-                if (recentlyLogged) return;
+        let recentlyLogged = rawMoves.some(m => m && m.type === 'correction' && (tsNow - Number(m.timestamp || 0) < 3000) && (String(m.invoiceNo || '') === invIdStr || String(m.invoiceNo || '') === shortId || String(m.notes || '').includes(invIdStr)));
+        if (recentlyLogged) return;
 
-                if (item.action === 'cancel') {
-                    this.recordTreasuryTransaction({
-                        type: 'correction',
-                        vault: item.oldVault,
-                        amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
-                        amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
-                        amount: item.oldInitPaid,
-                        date: window.Utils.getLocalDateString(tsNow),
-                        timestamp: tsNow + (idx * 2),
-                        invoiceNo: item.cleanInv.id,
-                        supplierId: item.cleanInv.supplierId || null,
-                        supplier: item.cleanInv.supplier || null,
-                        notes: `🗑️ إلغاء واسترداد فاتورة مشتريات رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''} (المدفوع المسترد: ${item.oldInitPaid})`
-                    });
-                } else if (item.action === 'edit') {
-                    if (item.oldInitPaid > 0) {
-                        this.recordTreasuryTransaction({
-                            type: 'correction',
-                            vault: item.oldVault,
-                            amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
-                            amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
-                            amount: item.oldInitPaid,
-                            date: window.Utils.getLocalDateString(tsNow),
-                            timestamp: tsNow + (idx * 2),
-                            invoiceNo: item.cleanInv.id,
-                            supplierId: item.cleanInv.supplierId || null,
-                            supplier: item.cleanInv.supplier || null,
-                            notes: `🔄 عكس لتعديل فاتورة مشتريات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
-                        });
-                    }
-                    let totalAmt = parseFloat(item.cleanInv.total) || 0;
-                    this.recordTreasuryTransaction({
-                        type: item.newIsReturn ? 'return_purchase' : 'purchase',
-                        vault: item.newVault,
-                        amountAdd: item.newIsReturn ? item.newInitPaid : 0,
-                        amountDeduct: item.newIsReturn ? 0 : item.newInitPaid,
-                        amount: item.newInitPaid,
-                        date: window.Utils.getLocalDateString(tsNow),
-                        timestamp: tsNow + (idx * 2) + 1,
-                        invoiceNo: item.cleanInv.id,
-                        supplierId: item.cleanInv.supplierId || null,
-                        supplier: item.cleanInv.supplier || null,
-                        notes: `✏️ بعد التعديل: ${item.newIsReturn ? 'فاتورة مرتجع مشتريات' : (item.newInitPaid === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''} (إجمالي: ${totalAmt})`
-                    });
-                }
+        if (item.action === 'cancel') {
+            this.recordTreasuryTransaction({
+                type: 'correction',
+                vault: item.oldVault,
+                amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
+                amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
+                amount: item.oldInitPaid,
+                date: window.Utils.getLocalDateString(tsNow),
+                timestamp: tsNow + (idx * 2),
+                invoiceNo: item.cleanInv.id,
+                supplierId: item.cleanInv.supplierId || null,
+                supplier: item.cleanInv.supplier || null,
+                notes: `🗑️ إلغاء واسترداد فاتورة مشتريات رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''} (المدفوع المسترد: ${item.oldInitPaid})`
             });
-        }, 120);
-    }
+        } else if (item.action === 'edit') {
+            if (item.oldInitPaid > 0) {
+                this.recordTreasuryTransaction({
+                    type: 'correction',
+                    vault: item.oldVault,
+                    amountAdd: item.oldIsReturn ? 0 : item.oldInitPaid,
+                    amountDeduct: item.oldIsReturn ? item.oldInitPaid : 0,
+                    amount: item.oldInitPaid,
+                    date: window.Utils.getLocalDateString(tsNow),
+                    timestamp: tsNow + (idx * 2),
+                    invoiceNo: item.cleanInv.id,
+                    supplierId: item.cleanInv.supplierId || null,
+                    supplier: item.cleanInv.supplier || null,
+                    notes: `🔄 عكس لتعديل فاتورة مشتريات رقم #${item.cleanInv.id} (المدفوع السابق: ${item.oldInitPaid})`
+                });
+            }
+            let totalAmt = parseFloat(item.cleanInv.total) || 0;
+            this.recordTreasuryTransaction({
+                type: item.newIsReturn ? 'return_purchase' : 'purchase',
+                vault: item.newVault,
+                amountAdd: item.newIsReturn ? item.newInitPaid : 0,
+                amountDeduct: item.newIsReturn ? 0 : item.newInitPaid,
+                amount: item.newInitPaid,
+                date: window.Utils.getLocalDateString(tsNow),
+                timestamp: tsNow + (idx * 2) + 1,
+                invoiceNo: item.cleanInv.id,
+                supplierId: item.cleanInv.supplierId || null,
+                supplier: item.cleanInv.supplier || null,
+                notes: `✏️ بعد التعديل: ${item.newIsReturn ? 'فاتورة مرتجع مشتريات' : (item.newInitPaid === 0 ? 'فاتورة مشتريات آجلة (مسدد 0)' : 'فاتورة مشتريات')} رقم #${item.cleanInv.id}${item.cleanInv.supplier ? ' - ' + item.cleanInv.supplier : ''} (إجمالي: ${totalAmt})`
+            });
+        }
+    });
+}
 
     if (!this._isCalculatingBalances) {
         this.recalculateVaultBalances();
@@ -4560,12 +4626,14 @@ fetchArchivedData: async function(year = new Date().getFullYear()) {
 },
 
 getAggregatedData: function() {
+    let customers = this.getCustomers(false, false);
+    let suppliers = this.getSuppliers(false, false);
     return {
         sales: this.getSalesInvoices(true),
         purchases: this.getPurchaseInvoices(true),
         products: this.getProducts(true),
-        customers: this.getCustomers(false, false),
-        suppliers: this.getSuppliers(false, false),
+        customers: customers,
+        suppliers: suppliers,
         treasuryMoves: this.getTreasuryMoves(true, true),
         expenses: this.getExpenses(false),
         smartNotes: this.getSmartNotes()
@@ -4879,9 +4947,12 @@ const SmartVoice = {
             if (words.length === 0) return;
 
             let qty = 1;
-            // عزل الكمية (الرقم) من بداية الطلب
+            let fullChunkPeeled = this.peeler(words.join(" "));
+            let fullMatchExists = shadowList.some(dbItem => dbItem.peeled === fullChunkPeeled);
+
+            // عزل الكمية فقط في المبيعات والمشتريات إذا لم يكن النص كلمة واحدة (باركود) أو اسم صنف يبدأ برقم
             let firstWordNormalized = words[0].replace(/[٠-٩]/g, d => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
-            if (!isNaN(firstWordNormalized)) {
+            if (activeProfile !== 'inventory' && words.length > 1 && !fullMatchExists && !isNaN(firstWordNormalized)) {
                 qty = parseFloat(firstWordNormalized) || 1;
                 words.shift();
             }
@@ -4895,15 +4966,17 @@ const SmartVoice = {
             let matchedItem = shadowList.find(dbItem => dbItem.peeled === peeledSpoken);
 
             if (matchedItem) {
-                // الصنف موجود وتطابق بالمللي (مع تجاهل النقط والهمزات) -> هينزل بأسعاره ومعلوماته
+                // الصنف موجود وتطابق بالمللي -> قراءة أحدث سعر من آخر دفعة ثم السعر السطحي
                 let pObj = matchedItem.itemObj;
-                let sellP = parseFloat(pObj.sellPrice ?? pObj.price ?? 0) || 0;
+                let sellP = parseFloat(pObj.price ?? pObj.sellPrice ?? 0) || 0;
                 let buyP = parseFloat(pObj.purchasePrice ?? pObj.buyPrice ?? pObj.costPrice ?? pObj.cost ?? 0) || 0;
                 
                 if (Array.isArray(pObj.lots) && pObj.lots.length > 0) {
                     let lastLot = pObj.lots[pObj.lots.length - 1];
-                    if (!sellP) sellP = parseFloat(lastLot.sellPrice ?? lastLot.price ?? 0) || 0;
-                    if (!buyP) buyP = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0) || 0;
+                    let lotSell = parseFloat(lastLot.price ?? lastLot.sellPrice ?? 0) || 0;
+                    let lotBuy = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0) || 0;
+                    if (lotSell > 0) sellP = lotSell;
+                    if (lotBuy > 0) buyP = lotBuy;
                 }
 
                 extractedQueue.push({

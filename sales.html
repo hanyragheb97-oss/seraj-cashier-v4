@@ -10,6 +10,7 @@
 <meta name="theme-color" content="#0b0d1e">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
+<script src="print_manager.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
 </head>
@@ -291,9 +292,24 @@ let invoicesDB = [];
 function loadDB() {
     if (typeof DB !== 'undefined') {
         productsDB = DB.getProducts(true) || [];
-        customersDB = DB.getCustomers(false) || [];
+        customersDB = DB.getCustomers(false, false) || [];
         invoicesDB = DB.getSalesInvoices(true) || [];
     }
+}
+
+// دالة مركزية لاستخراج سعر البيع وسعر التكلفة (الشراء) من أحدث دفعة أو من الصنف مباشرة
+function getProductPrices(p) {
+    if (!p) return { sellPrice: 0, purchasePrice: 0 };
+    let sellP = parseFloat(p.price ?? p.sellPrice ?? 0) || 0;
+    let buyP = parseFloat(p.purchasePrice ?? p.buyPrice ?? p.costPrice ?? p.cost ?? 0) || 0;
+    if (Array.isArray(p.lots) && p.lots.length > 0) {
+        let lastLot = p.lots[p.lots.length - 1];
+        let lotSell = parseFloat(lastLot.price ?? lastLot.sellPrice ?? 0);
+        let lotBuy = parseFloat(lastLot.purchasePrice ?? lastLot.buyPrice ?? 0);
+        if (!isNaN(lotSell) && lotSell > 0) sellP = lotSell;
+        if (!isNaN(lotBuy) && lotBuy > 0) buyP = lotBuy;
+    }
+    return { sellPrice: sellP, purchasePrice: buyP };
 }
 
 let invoice = JSON.parse(localStorage.getItem('seraj_draft_invoice')) || [];
@@ -306,6 +322,9 @@ function saveDraft() {
 
 window.onload = () => {
     applyFallbackTheme();
+    if (typeof DB !== 'undefined' && typeof DB.setActiveVoiceProfile === 'function') {
+        DB.setActiveVoiceProfile('sales');
+    }
     loadDB();
     let draft = JSON.parse(localStorage.getItem('seraj_draft_invoice')) || [];
     invoice = Array.isArray(draft) ? draft : [];
@@ -418,7 +437,7 @@ const smartSearch = (typeof window.debounce === 'function')
         filtered.forEach(item => {
             let p = item.product;
             let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
-            let dispPrice = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (p.price || 0);
+            let dispPrice = getProductPrices(p).sellPrice;
 
             const div = document.createElement('div');
             div.className = 'dropdown-item';
@@ -507,32 +526,41 @@ function checkAndRunAutoUnpackForSale(p) {
         let rate = parseFloat(p.autoConversionRate) || 50;
         let deficitUnits = Math.abs(currentStock);
         let cartonsNeeded = Math.ceil(deficitUnits / rate);
-        let todayStr = new Date().toISOString().split('T')[0];
-        let parentPurchasePrice = parentP.lots && parentP.lots.length > 0 ? parseFloat(parentP.lots[parentP.lots.length - 1].purchasePrice) : 0;
-        if (isNaN(parentPurchasePrice) || parentPurchasePrice === 0) parentPurchasePrice = parseFloat(parentP.purchasePrice) || 0;
-        let unitPurchaseCost = parentPurchasePrice > 0 ? (parentPurchasePrice / rate) : (parseFloat(p.purchasePrice) || 0);
-        let currentSell = (p.lots && p.lots.length > 0) ? p.lots[p.lots.length - 1].price : (parseFloat(p.price) || 0);
+        let todayStr = (window.Utils && typeof window.Utils.getLocalDateString === 'function')
+            ? window.Utils.getLocalDateString()
+            : new Date().toISOString().split('T')[0];
+
+        let parentPrices = getProductPrices(parentP);
+        let parentPurchasePrice = parentPrices.purchasePrice;
+        let unitPurchaseCost = parentPurchasePrice > 0 ? (parentPurchasePrice / rate) : getProductPrices(p).purchasePrice;
+        let currentSell = getProductPrices(p).sellPrice;
 
         if (!Array.isArray(parentP.lots)) parentP.lots = [];
         parentP.lots.push({
             supplier: `سحب تلقائي (فك كرتونة) لصالح : ${p.name}`,
             stock: -cartonsNeeded,
             purchasePrice: parentPurchasePrice,
-            price: parentP.lots.length > 0 ? parentP.lots[parentP.lots.length - 1].price : 0,
+            buyPrice: parentPurchasePrice,
+            price: parentPrices.sellPrice,
+            sellPrice: parentPrices.sellPrice,
             date: todayStr
         });
         parentP.stock = parentP.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
         parentP._lastModified = Date.now();
 
-        let unitsAdded = cartonsNeeded * rate;
-        if (!Array.isArray(p.lots)) p.lots = [];
-        p.lots.unshift({
-            supplier: `سحب تلقائي من : ${parentP.name}`,
-            stock: unitsAdded,
-            purchasePrice: unitPurchaseCost,
-            price: currentSell,
-            date: todayStr
-        });
+        let netUnitsRemaining = (cartonsNeeded * rate) - deficitUnits;
+        p.lots = (p.lots || []).filter(l => (parseFloat(l.stock) || 0) > 0);
+        if (netUnitsRemaining > 0) {
+            p.lots.push({
+                supplier: `سحب تلقائي من : ${parentP.name}`,
+                stock: netUnitsRemaining,
+                purchasePrice: unitPurchaseCost,
+                buyPrice: unitPurchaseCost,
+                price: currentSell,
+                sellPrice: currentSell,
+                date: todayStr
+            });
+        }
         p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
         p._lastModified = Date.now();
     }
@@ -542,7 +570,7 @@ function addProduct(product, qtyOverride = 1) {
     if (!Array.isArray(invoice)) invoice = [];
     const existingIndex = invoice.findIndex(item => item && String(item.id) === String(product.id));
     let totalStock = (product.lots && product.lots.length > 0) ? product.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(product.stock) || 0);
-    let dispPrice = (product.lots && product.lots.length > 0) ? product.lots[product.lots.length - 1].price : (product.price || 0);
+    let { sellPrice: dispPrice, purchasePrice: buyPrice } = getProductPrices(product);
 
     let newQty = existingIndex > -1 ? (parseFloat(invoice[existingIndex].qty) || 0) + qtyOverride : qtyOverride;
     if (newQty > totalStock) showStockWarning(product.name, totalStock);
@@ -550,7 +578,8 @@ function addProduct(product, qtyOverride = 1) {
     if (existingIndex > -1) {
         let updatedItem = invoice.splice(existingIndex, 1)[0];
         updatedItem.qty = newQty;
-        updatedItem.total = updatedItem.price * newQty;
+        if (!updatedItem.purchasePrice) updatedItem.purchasePrice = buyPrice;
+        updatedItem.total = (parseFloat(updatedItem.price) || 0) * newQty;
         invoice.unshift(updatedItem);
     } else {
         invoice.unshift({
@@ -558,7 +587,8 @@ function addProduct(product, qtyOverride = 1) {
             name: product.name,
             barcode: product.barcode || '',
             price: dispPrice,
-            purchasePrice: product.purchasePrice || 0,
+            sellPrice: dispPrice,
+            purchasePrice: buyPrice,
             qty: qtyOverride,
             total: dispPrice * qtyOverride,
             hasImage: product.hasImage
@@ -606,8 +636,8 @@ function renderTable() {
         tr.onclick = (e) => {
             let now = Date.now(); if (now - lastClickTime < 400) { e.preventDefault(); return; } lastClickTime = now;
             if (Math.abs(currentX - startX) < 10 && !isLongPress) {
-                let p = productsDB.find(x => x.id === item.id);
-                let totalStock = (p && p.lots) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? p.stock : 0);
+                let p = productsDB.find(x => x && String(x.id) === String(item.id));
+                let totalStock = (p && p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? (parseFloat(p.stock) || 0) : 0);
                 if (p && invoice[index].qty + 1 > totalStock) { showStockWarning(item.name, totalStock); }
                 invoice[index].qty += 1; invoice[index].total = invoice[index].price * invoice[index].qty; saveDraft(); renderTable();
             }
@@ -660,7 +690,7 @@ function openEditModal(index) {
     document.getElementById('editQty').value = invoice[index].qty;
     document.getElementById('editItemIndex').value = index;
 
-    let p = productsDB.find(x => x.id === invoice[index].id);
+    let p = productsDB.find(x => x && String(x.id) === String(invoice[index].id));
     let slider = document.getElementById('editBatchesSlider');
     slider.innerHTML = '';
     let totalStock = 0;
@@ -671,7 +701,7 @@ function openEditModal(index) {
             slider.innerHTML += `<div class="batch-card"><div>مورد: ${b.supplier}</div><div>شراء: <span class="color-red-val">${b.purchasePrice}</span> ج</div><div>بيع: <span class="color-green-val">${b.price}</span> ج</div><div>تاريخ: ${b.date}</div><div>كمية: <span class="color-green-val">${b.stock}</span></div></div>`;
         });
     } else if (p) {
-        totalStock = p.stock || 0;
+        totalStock = parseFloat(p.stock) || 0;
         slider.innerHTML = `<div class="batch-card"><div>شراء: <span class="color-red-val">${p.purchasePrice || 0}</span> ج</div><div>كمية: <span class="color-green-val">${totalStock}</span></div></div>`;
     }
 
@@ -683,13 +713,18 @@ function openEditModal(index) {
 function saveItemEdit() {
     let idx = document.getElementById('editItemIndex').value;
     let newQty = parseFloat(document.getElementById('editQty').value) || 1;
-    let p = productsDB.find(x => x.id === invoice[idx].id);
-    let totalStock = (p && p.lots) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? p.stock : 0);
+    let p = productsDB.find(x => x && String(x.id) === String(invoice[idx].id));
+    let totalStock = (p && p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (p ? (parseFloat(p.stock) || 0) : 0);
     if (p && newQty > totalStock) showStockWarning(invoice[idx].name, totalStock);
 
-    invoice[idx].price = parseFloat(document.getElementById('editPrice').value) || 0;
+    let newSellPrice = parseFloat(document.getElementById('editPrice').value) || 0;
+    invoice[idx].price = newSellPrice;
+    invoice[idx].sellPrice = newSellPrice;
+    if (!invoice[idx].purchasePrice && p) {
+        invoice[idx].purchasePrice = getProductPrices(p).purchasePrice;
+    }
     invoice[idx].qty = newQty;
-    invoice[idx].total = invoice[idx].price * newQty;
+    invoice[idx].total = newSellPrice * newQty;
     saveDraft();
     closeModals();
     renderTable();
@@ -832,7 +867,10 @@ function calculateModalTotals() {
     let paidInput = document.getElementById('modalPaid');
     let custName = document.getElementById('customerSearchInput').value.trim();
 
-    if (currentInvoiceType === 'return' && custName === "") {
+    if (currentInvoiceType === 'quotation') {
+        paidInput.value = "0.00";
+        paidInput.readOnly = true;
+    } else if (currentInvoiceType === 'return' && custName === "") {
         paidInput.value = finalReq.toFixed(2);
         paidInput.readOnly = true;
     } else {
@@ -866,29 +904,6 @@ function getNextInvoiceNumber(dbArray) {
     return `${devPrefix}-${maxNum + 1}`;
 }
 
-function executePostSavePrint() {
-    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
-    if (modalEl) modalEl.style.display = 'none';
-    
-    if (typeof PrintManager !== 'undefined' && lastSavedInvoice) {
-        PrintManager.printThermalReceipt(lastSavedInvoice);
-    } else if (typeof printLastInvoice === 'function') {
-        printLastInvoice();
-    }
-    lastSavedInvoice = null;
-}
-
-function closePostSavePrintModal() {
-    let modalEl = document.getElementById('postSavePrintModal') || document.getElementById('print-modal');
-    if (modalEl) modalEl.style.display = 'none';
-    lastSavedInvoice = null;
-}
-
-function closePostSavePrintModal() {
-    let modalEl = document.getElementById('postSavePrintModal');
-    if (modalEl) modalEl.style.display = 'none';
-}
-
 let _isConfirmingSave = false;
 
 function confirmSave() {
@@ -906,7 +921,9 @@ function confirmSave() {
     let vaultKey = document.getElementById('modalVaultSelect')?.value || 'main';
     
     let nowDate = new Date();
-    let localTodayStr = nowDate.getFullYear() + '-' + String(nowDate.getMonth() + 1).padStart(2, '0') + '-' + String(nowDate.getDate()).padStart(2, '0');
+    let localTodayStr = (window.Utils && typeof window.Utils.getLocalDateString === 'function')
+        ? window.Utils.getLocalDateString(nowDate)
+        : (nowDate.getFullYear() + '-' + String(nowDate.getMonth() + 1).padStart(2, '0') + '-' + String(nowDate.getDate()).padStart(2, '0'));
     let invDate = document.getElementById('modalDate')?.value || localTodayStr;
     let notes = (document.getElementById('modalNotes')?.value || "").trim();
     
@@ -922,203 +939,225 @@ function confirmSave() {
 
     _isConfirmingSave = true;
 
-    let itemsSnapshot = invoice.map(item => ({
-        ...item,
-        total: parseFloat(((parseFloat(item.price) || 0) * (parseFloat(item.qty) || 0)).toFixed(2))
-    }));
-    let invoiceTypeSnapshot = currentInvoiceType;
-    let customerIdSnapshot = selectedCustomerId;
-    let newInvoiceId = typeof getNextInvoiceNumber === 'function' ? getNextInvoiceNumber(invoicesDB) : window.Utils.generateInvoiceId();
-    let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
-    let invType = (invoiceTypeSnapshot === 'all' && remaining > 0) ? 'delayed' : invoiceTypeSnapshot;
+    try {
+        // 1. تحديث قواعد البيانات أولاً قبل توليد رقم الفاتورة لمنع تكرار الأرقام
+        loadDB();
 
-    lastSavedInvoice = {
-        id: newInvoiceId,
-        type: invType,
-        date: invDate,
-        customerId: customerIdSnapshot,
-        customer: custName || null,
-        total: finalReq,
-        remaining: remaining,
-        initialRemaining: remaining,
-        discount: discount,
-        paid: actualPaid,
-        initialPaid: actualPaid,
-        vault: vaultKey,
-        treasury: vaultKey,
-        notes: notes,
-        items: itemsSnapshot,
-        prevBalance: 0,
-        currentBalance: 0,
-        _device: dName,
-        _lastModifiedBy: dName,
-        timestamp: Date.now(),
-        _lastModified: Date.now()
-    };
+        // 2. تجهيز الأصناف مع ضمان حفظ تكلفة الشراء (purchasePrice) في كل سطر للمحاسب الذكي
+        let itemsSnapshot = invoice.map(item => {
+            let refP = productsDB.find(x => x && String(x.id) === String(item.id));
+            let prices = getProductPrices(refP);
+            let itemSell = parseFloat(item.price ?? item.sellPrice) || prices.sellPrice || 0;
+            let itemBuy = parseFloat(item.purchasePrice ?? item.buyPrice) || prices.purchasePrice || 0;
+            let itemQty = parseFloat(item.qty) || 0;
+            return {
+                ...item,
+                price: itemSell,
+                sellPrice: itemSell,
+                purchasePrice: itemBuy,
+                qty: itemQty,
+                total: parseFloat((itemSell * itemQty).toFixed(2))
+            };
+        });
 
-    localStorage.removeItem('seraj_draft_customer');
-    localStorage.removeItem('seraj_draft_invoice');
-    selectedCustomerId = null;
-    if (custInputEl) custInputEl.value = "";
-    invoice = [];
-    renderTable();
-    closeModals();
+        let invoiceTypeSnapshot = currentInvoiceType;
+        let customerIdSnapshot = selectedCustomerId;
+        let newInvoiceId = typeof getNextInvoiceNumber === 'function' ? getNextInvoiceNumber(invoicesDB) : window.Utils.generateInvoiceId('sales');
+        let dName = localStorage.getItem('seraj_device_name') || localStorage.getItem('cashier_name') || localStorage.getItem('userName') || 'غير مسجل';
+        let invType = (invoiceTypeSnapshot === 'all' && remaining > 0) ? 'delayed' : invoiceTypeSnapshot;
 
-    let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
-    let printModalEl = document.getElementById('postSavePrintModal');
-    if (printSetting === 'ask' && printModalEl) {
-        history.pushState({ modalOpen: true }, '');
-        printModalEl.style.display = 'flex';
-    }
+        let prevBal = 0, currBal = 0;
 
-    setTimeout(() => {
-        try {
-            loadDB();
-            let prevBal = 0, currBal = 0;
+        // 3. مطابقة وحفظ العميل (بمعرف قياسي generateUniqueId عند إنشاء عميل جديد)
+        if (custName !== "" && invoiceTypeSnapshot !== 'quotation') {
+            let c = customerIdSnapshot 
+                ? customersDB.find(x => x && String(x.id) === String(customerIdSnapshot)) 
+                : null;
 
-            // 1. مطابقة وحفظ العميل عبر window.Utils.normalizeName دون لمس c.transactions
-            if (custName !== "" && invoiceTypeSnapshot !== 'quotation') {
-                let c = customerIdSnapshot 
-                    ? customersDB.find(x => x && String(x.id) === String(customerIdSnapshot)) 
-                    : null;
-
-                if (!c) {
-                    let norm = (window.Utils && typeof window.Utils.normalizeName === 'function')
-                        ? window.Utils.normalizeName
-                        : (s) => String(s || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
-                    let cleanTarget = norm(custName);
-                    c = customersDB.find(x => x && !x.isDeleted && norm(x.name) === cleanTarget);
-                }
-
-                if (c) {
-                    customerIdSnapshot = c.id;
-                    prevBal = parseFloat(c.calculatedBalance ?? c.balance) || 0;
-                    c.lastActivityDate = localTodayStr;
-                    c._lastModified = Date.now();
-                } else {
-                    let newId = Date.now();
-                    let newC = {
-                        id: newId,
-                        name: custName,
-                        balance: 0,
-                        lastActivityDate: localTodayStr,
-                        _lastModified: Date.now()
-                    };
-                    customersDB.push(newC);
-                    customerIdSnapshot = newId;
-                    prevBal = 0;
-                }
-
-                let isRet = (invoiceTypeSnapshot === 'return');
-                currBal = isRet ? (prevBal + remaining) : (prevBal - remaining);
-
-                if (lastSavedInvoice) {
-                    lastSavedInvoice.customerId = customerIdSnapshot;
-                    lastSavedInvoice.prevBalance = prevBal;
-                    lastSavedInvoice.currentBalance = currBal;
-                }
-                if (typeof DB !== 'undefined') DB.saveCustomers(customersDB);
+            if (!c) {
+                let norm = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                    ? window.Utils.normalizeName
+                    : (s) => String(s || '').trim().toLowerCase().replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+                let cleanTarget = norm(custName);
+                c = customersDB.find(x => x && !x.isDeleted && !x.isArchived && norm(x.name) === cleanTarget);
             }
 
-            // 2. خصم أو رد المخزن بنظام (FIFO) والدفعة السالبة وختم الوقت
-            if (invoiceTypeSnapshot !== 'quotation') {
-                let isReturn = (invoiceTypeSnapshot === 'return');
-                
-                itemsSnapshot.forEach(item => {
-                    let p = productsDB.find(x => x && String(x.id) === String(item.id));
-                    if (p) {
-                        let qtyToProcess = parseFloat(item.qty) || 0;
-                        if (!Array.isArray(p.lots)) p.lots = [];
+            if (c) {
+                customerIdSnapshot = c.id;
+                prevBal = parseFloat(c.calculatedBalance ?? c.balance) || 0;
+                c.lastActivityDate = localTodayStr;
+                c._lastModified = Date.now();
+            } else {
+                let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
+                    ? window.Utils.generateUniqueId()
+                    : String(Date.now());
+                let newC = {
+                    id: newId,
+                    name: custName,
+                    balance: 0,
+                    lastActivityDate: localTodayStr,
+                    _lastModified: Date.now()
+                };
+                customersDB.push(newC);
+                customerIdSnapshot = newId;
+                prevBal = 0;
+            }
 
-                        if (isReturn) {
-                            if (p.lots.length > 0) {
-                                p.lots[0].stock = (parseFloat(p.lots[0].stock) || 0) + qtyToProcess;
-                            } else {
-                                let baseStock = (parseFloat(p.stock) || 0) + qtyToProcess;
-                                p.lots.push({
-                                    supplier: 'مرتجع مبيعات',
-                                    stock: baseStock,
-                                    purchasePrice: (parseFloat(p.purchasePrice) || 0),
-                                    price: item.price,
-                                    date: invDate
-                                });
-                            }
-                            p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
-                            p._lastModified = Date.now();
+            let isRet = (invoiceTypeSnapshot === 'return');
+            currBal = isRet ? (prevBal + remaining) : (prevBal - remaining);
+
+            if (typeof DB !== 'undefined') DB.saveCustomers(customersDB);
+        }
+
+        // 4. خصم أو رد المخزن بنظام (FIFO) مع حماية أسعار الصنف السطحية عند نفاد الدفعات
+        if (invoiceTypeSnapshot !== 'quotation') {
+            let isReturn = (invoiceTypeSnapshot === 'return');
+            
+            itemsSnapshot.forEach(item => {
+                let p = productsDB.find(x => x && String(x.id) === String(item.id));
+                if (p) {
+                    let latestPrices = getProductPrices(p);
+                    let savedSellPrice = latestPrices.sellPrice || parseFloat(item.price) || 0;
+                    let savedBuyPrice = latestPrices.purchasePrice || parseFloat(item.purchasePrice) || 0;
+
+                    let qtyToProcess = parseFloat(item.qty) || 0;
+                    if (!Array.isArray(p.lots)) p.lots = [];
+
+                    if (isReturn) {
+                        if (p.lots.length > 0) {
+                            p.lots[0].stock = (parseFloat(p.lots[0].stock) || 0) + qtyToProcess;
                         } else {
-                            if (p.lots.length === 0 && (parseFloat(p.stock) || 0) > 0) {
+                            let baseStock = (parseFloat(p.stock) || 0) + qtyToProcess;
+                            p.lots.push({
+                                supplier: 'مرتجع مبيعات',
+                                stock: baseStock,
+                                purchasePrice: savedBuyPrice,
+                                price: item.price || savedSellPrice,
+                                date: invDate
+                            });
+                        }
+                    } else {
+                        if (p.lots.length === 0 && (parseFloat(p.stock) || 0) > 0) {
+                            p.lots.push({
+                                supplier: 'رصيد افتتاحي',
+                                stock: parseFloat(p.stock) || 0,
+                                purchasePrice: savedBuyPrice,
+                                price: savedSellPrice,
+                                date: invDate
+                            });
+                        }
+
+                        p.lots.sort((a, b) => window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date));
+
+                        for (let i = 0; i < p.lots.length; i++) {
+                            if (qtyToProcess <= 0) break;
+                            let currentLotStock = parseFloat(p.lots[i].stock) || 0;
+                            if (currentLotStock > 0) {
+                                if (currentLotStock >= qtyToProcess) {
+                                    p.lots[i].stock = currentLotStock - qtyToProcess;
+                                    qtyToProcess = 0;
+                                } else {
+                                    qtyToProcess -= currentLotStock;
+                                    p.lots[i].stock = 0;
+                                }
+                            }
+                        }
+
+                        p.lots = p.lots.filter(l => (parseFloat(l.stock) || 0) !== 0);
+
+                        if (qtyToProcess > 0) {
+                            let negLot = p.lots.find(l => l.supplier === 'سحب بالسالب (عجز)' || (parseFloat(l.stock) || 0) < 0);
+                            if (negLot) {
+                                negLot.stock = (parseFloat(negLot.stock) || 0) - qtyToProcess;
+                            } else {
                                 p.lots.push({
-                                    supplier: 'رصيد افتتاحي',
-                                    stock: parseFloat(p.stock) || 0,
-                                    purchasePrice: parseFloat(p.purchasePrice) || 0,
-                                    price: parseFloat(p.price) || item.price,
+                                    supplier: 'سحب بالسالب (عجز)',
+                                    stock: -qtyToProcess,
+                                    purchasePrice: savedBuyPrice,
+                                    price: item.price || savedSellPrice,
                                     date: invDate
                                 });
-                            }
-
-                            p.lots.sort((a, b) => window.Utils.getSafeTime(a.date) - window.Utils.getSafeTime(b.date));
-
-                            for (let i = 0; i < p.lots.length; i++) {
-                                if (qtyToProcess <= 0) break;
-                                let currentLotStock = parseFloat(p.lots[i].stock) || 0;
-                                if (currentLotStock > 0) {
-                                    if (currentLotStock >= qtyToProcess) {
-                                        p.lots[i].stock = currentLotStock - qtyToProcess;
-                                        qtyToProcess = 0;
-                                    } else {
-                                        qtyToProcess -= currentLotStock;
-                                        p.lots[i].stock = 0;
-                                    }
-                                }
-                            }
-
-                            p.lots = p.lots.filter(l => (parseFloat(l.stock) || 0) !== 0);
-
-                            if (qtyToProcess > 0) {
-                                let negLot = p.lots.find(l => l.supplier === 'سحب بالسالب (عجز)' || (parseFloat(l.stock) || 0) < 0);
-                                if (negLot) {
-                                    negLot.stock = (parseFloat(negLot.stock) || 0) - qtyToProcess;
-                                } else {
-                                    p.lots.push({
-                                        supplier: 'سحب بالسالب (عجز)',
-                                        stock: -qtyToProcess,
-                                        purchasePrice: (parseFloat(p.purchasePrice) || 0),
-                                        price: item.price,
-                                        date: invDate
-                                    });
-                                }
-                            }
-
-                            p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
-                            p._lastModified = Date.now();
-
-                            if (typeof checkAndRunAutoUnpackForSale === 'function' && p.autoParentId && String(p.autoParentId) !== String(p.id) && (parseFloat(p.autoConversionRate) || 0) > 0) {
-                                try { checkAndRunAutoUnpackForSale(p); } catch (e) {}
                             }
                         }
                     }
-                });
 
-                if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
-            }
+                    // تثبيت الأسعار السطحية على الصنف حتى لا تضيع إذا وصل رصيد كل الدفعات إلى صفر
+                    if (savedSellPrice > 0) {
+                        p.price = savedSellPrice;
+                        p.sellPrice = savedSellPrice;
+                    }
+                    if (savedBuyPrice > 0) {
+                        p.purchasePrice = savedBuyPrice;
+                        p.buyPrice = savedBuyPrice;
+                    }
 
-            // 3. الحفظ المركزي للفاتورة فقط (ملف db.js سيتولى تسجيل حركة الخزينة تلقائياً)
-            invoicesDB.push(lastSavedInvoice);
-            if (typeof DB !== 'undefined') DB.saveSalesInvoices(invoicesDB);
+                    p.stock = p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0);
+                    p._lastModified = Date.now();
 
-            if (printSetting === 'print') {
-                if (typeof PrintManager !== 'undefined') {
-                    PrintManager.printThermalReceipt(lastSavedInvoice);
-                } else if (typeof printLastInvoice === 'function') {
-                    printLastInvoice();
+                    if (!isReturn && typeof checkAndRunAutoUnpackForSale === 'function' && p.autoParentId && String(p.autoParentId) !== String(p.id) && (parseFloat(p.autoConversionRate) || 0) > 0) {
+                        try { checkAndRunAutoUnpackForSale(p); } catch (e) {}
+                    }
                 }
-            }
-        } catch (err) {
-            console.error("خطأ أثناء الحفظ في الخلفية:", err);
-        } finally {
-            _isConfirmingSave = false;
+            });
+
+            if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
         }
-    }, 15);
+
+        // 5. بناء وحفظ الفاتورة مباشرة في المحرك المركزي
+        lastSavedInvoice = {
+            id: newInvoiceId,
+            type: invType,
+            date: invDate,
+            customerId: customerIdSnapshot,
+            customer: custName || null,
+            total: finalReq,
+            remaining: remaining,
+            initialRemaining: remaining,
+            discount: discount,
+            paid: actualPaid,
+            initialPaid: actualPaid,
+            vault: vaultKey,
+            treasury: vaultKey,
+            notes: notes,
+            items: itemsSnapshot,
+            prevBalance: prevBal,
+            currentBalance: currBal,
+            _device: dName,
+            _lastModifiedBy: dName,
+            timestamp: Date.now(),
+            _lastModified: Date.now()
+        };
+
+        invoicesDB.push(lastSavedInvoice);
+        if (typeof DB !== 'undefined') DB.saveSalesInvoices(invoicesDB);
+
+        // 6. تنظيف الشاشة وإرجاع الوضع تلقائياً إلى "فاتورة بيع" للزبون التالي
+        localStorage.removeItem('seraj_draft_customer');
+        localStorage.removeItem('seraj_draft_invoice');
+        selectedCustomerId = null;
+        if (custInputEl) custInputEl.value = "";
+        invoice = [];
+        changeInvoiceType('sales', 'فاتورة بيع', '#ffffff');
+        renderTable();
+        closeModals();
+
+        let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
+        let printModalEl = document.getElementById('postSavePrintModal');
+        if (printSetting === 'ask' && printModalEl) {
+            history.pushState({ modalOpen: true }, '');
+            printModalEl.style.display = 'flex';
+        } else if (printSetting === 'print' || printSetting === 'auto') {
+            if (typeof PrintManager !== 'undefined' && typeof PrintManager.printThermalReceipt === 'function') {
+                PrintManager.printThermalReceipt(lastSavedInvoice);
+            } else if (typeof printLastInvoice === 'function') {
+                printLastInvoice();
+            }
+        }
+    } catch (err) {
+        console.error("خطأ أثناء حفظ الفاتورة:", err);
+    } finally {
+        _isConfirmingSave = false;
+    }
 }
 
 function toggleCustomSelect(e, dropdownId) {
@@ -1341,127 +1380,120 @@ function stopAiMicUI() {
 }
 
 function processLocalAI() {
-            let rawText = document.getElementById('aiInputText').value.trim();
-            if (!rawText) return SerajAlert("الرجاء التحدث أو كتابة الطلبات أولاً!");
+    let rawText = document.getElementById('aiInputText').value.trim();
+    if (!rawText) return SerajAlert("الرجاء التحدث أو كتابة الطلبات أولاً!");
 
-            let loading = document.getElementById('aiLoadingIndicator');
-            let sendBtn = document.getElementById('sendAiBtn');
-            if (loading) {
-                loading.hidden = false;
-                loading.style.display = 'block';
+    let loading = document.getElementById('aiLoadingIndicator');
+    let sendBtn = document.getElementById('sendAiBtn');
+    if (loading) {
+        loading.hidden = false;
+        loading.style.display = 'block';
+    }
+    if (sendBtn) sendBtn.disabled = true;
+
+    setTimeout(() => {
+        try {
+            let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) ? productsDB : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts(true) : []);
+            let engine = window.SmartVoice || (typeof SmartVoice !== 'undefined' ? SmartVoice : null);
+            
+            if (!engine || typeof engine.analyzeFullText !== 'function') {
+                throw new Error("المحرك الصوتي غير متصل بشكل سليم بالصفحة.");
             }
-            if (sendBtn) sendBtn.disabled = true;
+            
+            let result = engine.analyzeFullText(rawText, safeProducts, 'sales');
 
-            setTimeout(() => {
-                try {
-                    let safeProducts = (typeof productsDB !== 'undefined' && productsDB.length > 0) ? productsDB : ((typeof DB !== 'undefined' && DB.getProducts) ? DB.getProducts(true) : []);
-                    let engine = window.SmartVoice || (typeof SmartVoice !== 'undefined' ? SmartVoice : null);
-                    
-                    if (!engine || typeof engine.analyzeFullText !== 'function') {
-                        throw new Error("المحرك الصوتي غير متصل بشكل سليم بالصفحة.");
-                    }
-                    
-                    // تحديد البروفايل تلقائياً بناءً على الصفحة
-                    let isPurchasePage = window.location.pathname.includes('purchase');
-                    let activeProfile = isPurchasePage ? 'purchases' : 'sales';
-                    
-                    let result = engine.analyzeFullText(rawText, safeProducts, activeProfile);
+            if (result && Array.isArray(result.queue) && result.queue.length > 0) {
+                let insertMode = document.querySelector('input[name="voiceInsertMode"]:checked').value;
+                let addedCount = 0;
+                let leftoverQueue = [];
 
-                    if (result && Array.isArray(result.queue) && result.queue.length > 0) {
+                if (insertMode === 'direct') {
+                    result.queue.forEach(item => {
+                        let p = (item.isExactMatch && item.product)
+                            ? item.product
+                            : safeProducts.find(x => x && String(x.id) === String(item.id));
                         
-                        // ⚡ قراءة المفتاح لمعرفة الوضع المختار ⚡
-                        let insertMode = document.querySelector('input[name="voiceInsertMode"]:checked').value;
-                        
-                        let addedCount = 0;
-                        let leftoverQueue = []; // مصفوفة لتخزين الأصناف التي ستذهب للطابور
+                        if (p) {
+                            let prices = getProductPrices(p);
+                            let targetSellPrice = parseFloat(item.sellPrice ?? item.price) || prices.sellPrice || 0;
+                            let targetBuyPrice = parseFloat(item.purchasePrice) || prices.purchasePrice || 0;
+                            let existsIndex = invoice.findIndex(invItem => invItem && String(invItem.id) === String(p.id));
+                            let totalStock = (p.lots && p.lots.length > 0) ? p.lots.reduce((sum, l) => sum + (parseFloat(l.stock) || 0), 0) : (parseFloat(p.stock) || 0);
+                            let newQty = existsIndex > -1 ? (parseFloat(invoice[existsIndex].qty) || 0) + item.qty : item.qty;
 
-                        if (insertMode === 'direct') {
-                            // 🚀 الوضع المباشر الذكي (مطابق = فاتورة، غير مطابق = طابور) 🚀
-                            result.queue.forEach(item => {
-                                let p = safeProducts.find(x => String(x.name).trim() === String(item.name).trim() || String(x.cleanDisplay) === String(item.name).trim());
-                                
-                                if (p) {
-                                    // الصنف مطابق 100% -> ينزل في الفاتورة فوراً
-                                    let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
-                                    let targetPrice = isPurchasePage ? (parseFloat(p.purchasePrice) || 0) : (parseFloat(p.price) || 0);
+                            if (newQty > totalStock) showStockWarning(p.name, totalStock);
 
-                                    if (existsIndex > -1) {
-                                        invoice[existsIndex].qty += item.qty;
-                                        invoice[existsIndex].total = targetPrice * invoice[existsIndex].qty;
-                                    } else {
-                                        let newItem = { 
-                                            ...p, 
-                                            qty: item.qty, 
-                                            total: targetPrice * item.qty, 
-                                            hasImage: p.hasImage 
-                                        };
-                                        if (isPurchasePage) {
-                                            newItem.purchasePrice = targetPrice;
-                                            newItem.sellPrice = parseFloat(p.price) || 0;
-                                        } else {
-                                            newItem.price = targetPrice;
-                                            newItem.purchasePrice = parseFloat(p.purchasePrice) || 0;
-                                        }
-                                        invoice.unshift(newItem);
-                                    }
-                                    addedCount++;
-                                } else {
-                                    // الصنف غير مطابق 100% -> تحويله للطابور للمراجعة اليدوية
-                                    leftoverQueue.push(item);
-                                }
-                            });
-                        } else {
-                            // 📝 وضع الطابور العادي -> كل الأصناف تذهب للطابور 📝
-                            leftoverQueue = result.queue;
-                        }
-
-                        // --- تحديث واجهة المستخدم بناءً على النتائج ---
-                        
-                        // 1. إذا تم إضافة أي صنف للفاتورة مباشرة
-                        if (addedCount > 0) {
-                            saveDraft(); 
-                            renderTable(); 
-                        }
-
-                        // 2. إذا كانت هناك أصناف متبقية للطابور (سواء بسبب الوضع أو لعدم المطابقة)
-                        if (leftoverQueue.length > 0) {
-                            searchQueue = leftoverQueue;
-                            if (typeof updateQueueUI === 'function') updateQueueUI();
-                            
-                            // تنبيه الكاشير في حالة انقسام الطلبات (جزء في الفاتورة وجزء في الطابور)
-                            if (addedCount > 0) {
-                                SerajAlert(`تم إدراج ${addedCount} صنف مطابق للفاتورة مباشرة، وتم تحويل ${leftoverQueue.length} صنف غير مطابق للطابور للمراجعة.`);
+                            if (existsIndex > -1) {
+                                let updatedItem = invoice.splice(existsIndex, 1)[0];
+                                updatedItem.qty = newQty;
+                                updatedItem.price = targetSellPrice;
+                                updatedItem.sellPrice = targetSellPrice;
+                                updatedItem.purchasePrice = targetBuyPrice;
+                                updatedItem.total = targetSellPrice * newQty;
+                                invoice.unshift(updatedItem);
+                            } else {
+                                invoice.unshift({
+                                    id: p.id,
+                                    name: p.name,
+                                    barcode: p.barcode || '',
+                                    price: targetSellPrice,
+                                    sellPrice: targetSellPrice,
+                                    purchasePrice: targetBuyPrice,
+                                    qty: item.qty,
+                                    total: targetSellPrice * item.qty,
+                                    hasImage: p.hasImage
+                                });
                             }
+                            addedCount++;
                         } else {
-                            // كل الأصناف نزلت في الفاتورة مباشرة ولم يتبق شيء للطابور
-                            searchQueue = [];
-                            if (typeof updateQueueUI === 'function') updateQueueUI();
-                            document.getElementById('productSearch').value = '';
-                            document.getElementById('productResults').style.display = 'none';
+                            leftoverQueue.push(item);
                         }
-
-                    } else {
-                        SerajAlert("لم يتم العثور على أي أصناف قابلة للقراءة في هذه الجملة.");
-                    }
-
-                    if (loading) {
-                        loading.hidden = true;
-                        loading.style.display = 'none';
-                    }
-                    if (sendBtn) sendBtn.disabled = false;
-                    closeAiModal();
-
-                } catch (error) {
-                    if (loading) {
-                        loading.hidden = true;
-                        loading.style.display = 'none';
-                    }
-                    if (sendBtn) sendBtn.disabled = false;
-                    console.error("Voice Error:", error);
-                    SerajAlert("حدث خطأ أثناء معالجة البيانات: " + error.message, "error");
+                    });
+                } else {
+                    leftoverQueue = result.queue;
                 }
-            }, 100);
+
+                if (addedCount > 0) {
+                    saveDraft(); 
+                    renderTable(); 
+                }
+
+                if (leftoverQueue.length > 0) {
+                    searchQueue = leftoverQueue;
+                    if (typeof updateQueueUI === 'function') updateQueueUI();
+                    
+                    if (addedCount > 0) {
+                        SerajAlert(`تم إدراج ${addedCount} صنف مطابق للفاتورة مباشرة، وتم تحويل ${leftoverQueue.length} صنف غير مطابق للطابور للمراجعة.`);
+                    }
+                } else {
+                    searchQueue = [];
+                    if (typeof updateQueueUI === 'function') updateQueueUI();
+                    document.getElementById('productSearch').value = '';
+                    document.getElementById('productResults').style.display = 'none';
+                }
+
+            } else {
+                SerajAlert("لم يتم العثور على أي أصناف قابلة للقراءة في هذه الجملة.");
+            }
+
+            if (loading) {
+                loading.hidden = true;
+                loading.style.display = 'none';
+            }
+            if (sendBtn) sendBtn.disabled = false;
+            closeAiModal();
+
+        } catch (error) {
+            if (loading) {
+                loading.hidden = true;
+                loading.style.display = 'none';
+            }
+            if (sendBtn) sendBtn.disabled = false;
+            console.error("Voice Error:", error);
+            SerajAlert("حدث خطأ أثناء معالجة البيانات: " + error.message, "error");
         }
+    }, 100);
+}
 
 // ================= الطباعة والباركود =================
 function printLastInvoice() {
@@ -1524,9 +1556,9 @@ function executePostSavePrint() {
     } else {
         printLastInvoice();
     }
+    lastSavedInvoice = null;
 }
 
-// دالة بديلة لنفس الغرض لضمان الاستجابة مع أي مسمى زر
 function executePrintModalThermal() {
     executePostSavePrint();
 }
@@ -1566,7 +1598,8 @@ function exportLastInvoiceToExcel() {
     let wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "الفاتورة");
     XLSX.writeFile(wb, `Invoice_${lastSavedInvoice.id}.xlsx`);
-    document.getElementById('bottomPrintBar').style.display = 'none';
+    let bottomBarEl = document.getElementById('bottomPrintBar');
+    if (bottomBarEl) bottomBarEl.style.display = 'none';
 }
 
 let html5QrCode = null;
@@ -1598,7 +1631,7 @@ function startCamera() {
             stopBarcodeScan();
             if (isDirectSearch) {
                 loadDB();
-                let p = productsDB.find(x => String(x.barcode) === decodedText || String(x.id) === decodedText);
+                let p = productsDB.find(x => x && (String(x.barcode) === decodedText || String(x.id) === decodedText));
                 if (p) { addProduct(p); } else { SerajAlert("❌ الصنف غير موجود في المخزن!"); }
             }
         },
@@ -1625,16 +1658,6 @@ function stopBarcodeScan() {
 </script>
 
 <script>
-if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('تم تشغيل الأوفلاين بنجاح', reg))
-            .catch(err => console.log('خطأ في تشغيل الأوفلاين', err));
-    });
-}
-</script>
-
-<script>
 document.addEventListener('click', function(event) {
     if (event.target.closest('.context-menu div, .dropdown-menu-item, .print-dropdown-item, .sub-dropdown-item, .list-search-item')) {
         if (typeof closeAllMenus === 'function') {
@@ -1642,27 +1665,33 @@ document.addEventListener('click', function(event) {
         }
     }
 });
-</script>
 
-<script>
 window.addEventListener('popstate', function(event) {
-    if (typeof goBackSmart === 'function') {
-        goBackSmart();
+    let modalClosed = false;
+    document.querySelectorAll('.modal-overlay, .seraj-modal-overlay').forEach(modal => {
+        if (modal.style.display === 'flex' || modal.style.display === 'block') {
+            modal.style.display = 'none';
+            modalClosed = true;
+        }
+    });
+    if (modalClosed) {
+        if (isAiMicRecording && aiMicRecognition) {
+            try { aiMicRecognition.stop(); } catch (e) {}
+            stopAiMicUI();
+        }
+        if (html5QrCode) {
+            stopBarcodeScan();
+        }
+        return;
     }
+    if (typeof handleExit === 'function') handleExit();
+    else window.location.href = 'index.html';
 });
-</script>
 
-<script src="ai_brain.js"></script>
-
-<script>
 window.addEventListener('seraj:updated', (e) => {
     let col = e.detail && e.detail.collection ? e.detail.collection : null;
     if (!col || col === 'sales_invoices' || col === 'products' || col === 'customers') {
-        if (typeof DB !== 'undefined') {
-            productsDB = DB.getProducts(true) || [];
-            customersDB = DB.getCustomers(false) || [];
-            invoicesDB = DB.getSalesInvoices(true) || [];
-        }
+        loadDB();
         renderTable();
         
         if (document.getElementById('productResults').style.display === 'block') {

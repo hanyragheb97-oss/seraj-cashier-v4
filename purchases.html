@@ -15,7 +15,6 @@
 
     <!-- تحميل المكتبات في الخلفية لتسريع فتح الصفحة -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js" defer></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript" defer></script>
 </head>
@@ -336,20 +335,20 @@
         let purchaseInvoicesDB = [];
         
         function loadDB() {
-    try {
-        if (typeof DB !== 'undefined') {
-            productsDB = DB.getProducts(true) || [];
-            suppliersDB = DB.getSuppliers(false) || [];
-            purchaseInvoicesDB = DB.getPurchaseInvoices(true) || [];
-        } else {
-            productsDB = JSON.parse(localStorage.getItem('seraj_products')) || [];
-            suppliersDB = JSON.parse(localStorage.getItem('seraj_suppliers')) || [];
-            purchaseInvoicesDB = JSON.parse(localStorage.getItem('seraj_purchase_invoices')) || [];
+            try {
+                if (typeof DB !== 'undefined') {
+                    productsDB = DB.getProducts(true) || [];
+                    suppliersDB = DB.getSuppliers(false, false) || [];
+                    purchaseInvoicesDB = DB.getPurchaseInvoices(true) || [];
+                } else {
+                    productsDB = JSON.parse(localStorage.getItem('seraj_products')) || [];
+                    suppliersDB = JSON.parse(localStorage.getItem('seraj_suppliers')) || [];
+                    purchaseInvoicesDB = JSON.parse(localStorage.getItem('seraj_purchase_invoices')) || [];
+                }
+            } catch (e) {
+                console.error("خطأ أثناء تحميل قاعدة البيانات:", e);
+            }
         }
-    } catch (e) {
-        console.error("خطأ أثناء تحميل قاعدة البيانات:", e);
-    }
-}
 
         let invoice = JSON.parse(localStorage.getItem('seraj_draft_purchase')) || [];
         let lastSavedInvoice = null; 
@@ -358,6 +357,9 @@
 
         window.onload = () => {
             if (typeof applyFallbackTheme === 'function') applyFallbackTheme();
+            if (typeof DB !== 'undefined' && typeof DB.setActiveVoiceProfile === 'function') {
+                DB.setActiveVoiceProfile('purchases');
+            }
             if (typeof loadDB === 'function') loadDB();
             if (typeof renderTable === 'function') renderTable();
 
@@ -378,9 +380,11 @@ window.addEventListener('seraj:updated', (e) => {
 
         function searchProducts() {
             // 🚫 تم إزالة loadDB() من هنا لتسريع الكيبورد ومنع التهنيج 🚫
-            
-            const rawQuery = document.getElementById('productSearch').value.trim().toLowerCase();
-            const searchWords = rawQuery.split(' ').filter(word => word.length > 0);
+            const rawInput = document.getElementById('productSearch').value;
+            const normQuery = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                ? window.Utils.normalizeName(rawInput)
+                : rawInput.trim().toLowerCase();
+            const searchWords = normQuery.split(' ').filter(word => word.length > 0);
             const resultsDiv = document.getElementById('productResults');
             resultsDiv.innerHTML = ''; 
             
@@ -391,11 +395,20 @@ window.addEventListener('seraj:updated', (e) => {
             if (!productsDB || !Array.isArray(productsDB)) productsDB = [];
 
             let filtered = productsDB.map(p => {
-                let pName = String(p.name || '').toLowerCase();
+                if (!p) return { product: null, score: 0 };
+                let pName = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                    ? window.Utils.normalizeName(p.name || '')
+                    : String(p.name || '').toLowerCase();
+                let pBarcode = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                    ? window.Utils.normalizeName(p.barcode || '')
+                    : String(p.barcode || '').toLowerCase();
                 let score = 0;
+                let matchedAll = true;
                 searchWords.forEach(w => { 
-                    if (pName.includes(w) || String(p.barcode || '').includes(w)) score += 1; 
+                    if (pName.includes(w) || pBarcode.includes(w)) score += 1;
+                    else matchedAll = false;
                 });
+                if (!matchedAll) score = 0;
                 if (score > 0 && pName.startsWith(searchWords[0])) score += 2; 
                 return { product: p, score: score };
             }).filter(item => item.score > 0);
@@ -432,8 +445,8 @@ window.addEventListener('seraj:updated', (e) => {
                             return; 
                         }
 
-                        if (p.isDeleted) {
-                            if(await SerajConfirm("هذا الصنف محذوف. هل تريد إعادة تنشيطه وإضافته للفاتورة الحالية؟ سيتم تصفير رصيده القديم لتبدأ من جديد.")) {
+                        if (p.isDeleted || p.isArchived) {
+                            if(await SerajConfirm("هذا الصنف مؤرشف/محذوف. هل تريد إعادة تنشيطه وإضافته للفاتورة الحالية؟ سيتم تصفير رصيده القديم لتبدأ من جديد.")) {
                                 p.isDeleted = false;
                                 p.isArchived = false;
                                 p.stock = 0; 
@@ -782,13 +795,34 @@ window.addEventListener('seraj:updated', (e) => {
             let sPrice = parseFloat(document.getElementById('newProdPrice').value) || 0;
             
             if(!name) return SerajAlert("أدخل اسم المنتج!");
+
+            loadDB();
+            let normNewName = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                ? window.Utils.normalizeName(name)
+                : name.toLowerCase();
+
+            let duplicateProd = productsDB.find(p => {
+                if (!p || !p.name) return false;
+                let pNorm = (window.Utils && typeof window.Utils.normalizeName === 'function')
+                    ? window.Utils.normalizeName(p.name)
+                    : String(p.name).trim().toLowerCase();
+                return pNorm === normNewName;
+            });
+
+            if (duplicateProd) {
+                return SerajAlert(duplicateProd.isDeleted || duplicateProd.isArchived
+                    ? "هذا الصنف موجود بالفعل في الأرشيف! ابحث عنه في شريط البحث لإعادة تنشيطه."
+                    : "هذا الصنف مسجل بالفعل في المخزن بنفس الاسم!");
+            }
             
             if(barcode) {
-                let exists = productsDB.some(p => String(p.barcode) === barcode);
+                let exists = productsDB.some(p => p && String(p.barcode) === barcode);
                 if(exists) return SerajAlert("هذا الباركود مستخدم بالفعل لمنتج آخر!");
             }
 
-            let newId = Date.now().toString();
+            let newId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
+                ? window.Utils.generateUniqueId()
+                : Date.now().toString();
             let imageInput = document.getElementById('newProdImageInput');
             let hasImg = false;
             
@@ -797,7 +831,6 @@ window.addEventListener('seraj:updated', (e) => {
                 hasImg = true;
             }
 
-            loadDB();
             let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
             let newProd = { 
                 id: newId, 
@@ -805,7 +838,9 @@ window.addEventListener('seraj:updated', (e) => {
                 category: cat, 
                 barcode: barcode, 
                 purchasePrice: pPrice, 
+                buyPrice: pPrice,
                 price: sPrice, 
+                sellPrice: sPrice,
                 stock: 0, 
                 hasImage: hasImg, 
                 lots: [],
@@ -860,6 +895,7 @@ window.addEventListener('seraj:updated', (e) => {
             // 🚫 تم إزالة loadDB() من هنا لتسريع الكيبورد 🚫
             
             const rawQuery = document.getElementById('supplierSearch').value.trim();
+            localStorage.setItem('seraj_draft_supplier', rawQuery);
             const resultsDiv = document.getElementById('supplierResults');
             resultsDiv.innerHTML = ''; 
             if(rawQuery.length === 0) { 
@@ -906,6 +942,7 @@ window.addEventListener('seraj:updated', (e) => {
                     div.onmousedown = (e) => { 
                         e.preventDefault(); 
                         document.getElementById('supplierSearch').value = s.name; 
+                        localStorage.setItem('seraj_draft_supplier', s.name);
                         document.getElementById('selectedSupplierId').value = s.id;
                         resultsDiv.style.display = 'none';
                         updateLiveSupplierBalanceUI(s); 
@@ -922,7 +959,6 @@ window.addEventListener('seraj:updated', (e) => {
             if (supplier) {
                 let rawBal = parseFloat(supplier.calculatedBalance ?? supplier.balance ?? 0);
                 let net = rawBal.toFixed(2);
-                // تطبيق عكس الألوان والكلمات: الموجب أحمر (له) والسالب أخضر (عليه)
                 if (rawBal > 0) balDiv.innerHTML = `رصيد سابق: <span class="color-red-val">${net} (عليه)</span>`;
                 else if (rawBal < 0) balDiv.innerHTML = `رصيد سابق: <span class="color-green-val">${Math.abs(rawBal).toFixed(2)} (له)</span>`;
                 else balDiv.innerHTML = `رصيد سابق: <span>0.00 (صافي)</span>`;
@@ -942,17 +978,12 @@ window.addEventListener('seraj:updated', (e) => {
         }
 
         function generateSmartPurchaseId(dbArray) {
-            // 1. جلب الحرف الإجباري الخاص بالجهاز (لو مفيش ياخد X)
             let devPrefix = localStorage.getItem('seraj_device_prefix') || 'X';
-            
-            // 2. قراءة مصفوفة المشتريات
             let invoices = dbArray || purchaseInvoicesDB || [];
-            
-            let maxNum = 99; // البداية دائماً من 100
+            let maxNum = 99;
             
             invoices.forEach(inv => {
                 let invNo = String(inv.invoiceNo || inv.id || '');
-                // البحث عن الفواتير اللي بتبدأ بنفس الحرف فقط
                 if (invNo.startsWith(devPrefix + '-')) {
                     let numPart = parseInt(invNo.split('-')[1], 10);
                     if (!isNaN(numPart) && numPart > maxNum) {
@@ -961,7 +992,6 @@ window.addEventListener('seraj:updated', (e) => {
                 }
             });
             
-            // النتيجة: A-100 أو B-150
             return `${devPrefix}-${maxNum + 1}`;
         }
 
@@ -985,7 +1015,7 @@ window.addEventListener('seraj:updated', (e) => {
             let suppName = suppInputEl ? suppInputEl.value.trim() : "";
             let suppId = suppIdEl ? suppIdEl.value : "";
             let vaultKey = document.getElementById('modalVaultSelect')?.value || 'main';
-            let invDate = document.getElementById('modalDate')?.value || new Date().toISOString().split('T')[0];
+            let invDate = document.getElementById('modalDate')?.value || (window.Utils && typeof window.Utils.getLocalDateString === 'function' ? window.Utils.getLocalDateString() : new Date().toISOString().split('T')[0]);
 
             if (suppName === "null" || suppName === "مورد نقدي" || suppName === "بدون مورد") suppName = "";
             let remaining = parseFloat((finalReq - inputPaid).toFixed(2));
@@ -1002,38 +1032,31 @@ window.addEventListener('seraj:updated', (e) => {
                 name: item.name,
                 purchasePrice: parseFloat(item.purchasePrice) || 0,
                 price: parseFloat(item.sellPrice || item.price) || 0,
+                sellPrice: parseFloat(item.sellPrice || item.price) || 0,
                 qty: parseFloat(item.qty) || 0,
                 total: parseFloat(((parseFloat(item.purchasePrice) || 0) * (parseFloat(item.qty) || 0)).toFixed(2))
             }));
 
-            let newInvoiceId = typeof generateSmartPurchaseId === 'function' ? generateSmartPurchaseId(purchaseInvoicesDB) : window.Utils.generateInvoiceId();
+            loadDB();
+            let newInvoiceId = typeof generateSmartPurchaseId === 'function' ? generateSmartPurchaseId(purchaseInvoicesDB) : window.Utils.generateInvoiceId('purchases');
             let dName = localStorage.getItem('seraj_device_name') || 'غير معروف';
 
             // ⚡ 2. إغلاق النافذة وتفريغ الجدول فوراً قبل الحفظ الثقيل ⚡
             localStorage.removeItem('seraj_draft_purchase'); 
-                        localStorage.removeItem('seraj_draft_supplier');
+            localStorage.removeItem('seraj_draft_supplier');
             if (suppInputEl) suppInputEl.value = "";
             if (suppIdEl) suppIdEl.value = "";
             invoice = [];
             renderTable(); 
             closeModals();
 
-            let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
-            let printModalEl = document.getElementById('postSavePrintModal');
-            if (printSetting === 'ask' && printModalEl) {
-                history.pushState({ modalOpen: true }, '');
-                printModalEl.style.display = 'flex';
-            }
-
             // 🔄 3. تنفيذ حفظ الموردين والمخزن والخزينة والفاتورة في الخلفية (V4 Clean) 🔄
-
             setTimeout(() => {
                 try {
-                    loadDB();
                     let nowTs = Date.now();
-                    let prevBal = 0, currBal = 0;
+                    let prevDebt = 0, newDebt = 0;
 
-                    // القاعدة 3: البحث عن اسم المورد بـ normalizeName وعدم تعديل السندات أو الأرصدة يدوياً
+                    // معادلة المديونية الصافية للمورد المتوافقة مع db.js (s.balance = -netDebt)
                     if (suppName !== "") {
                         let normalizedSuppName = (window.Utils && typeof window.Utils.normalizeName === 'function') 
                             ? window.Utils.normalizeName(suppName) 
@@ -1053,11 +1076,12 @@ window.addEventListener('seraj:updated', (e) => {
                         if (s) {
                             suppId = s.id;
                             suppName = s.name;
-                            prevBal = parseFloat(s.calculatedBalance ?? s.balance ?? 0);
-                            currBal = parseFloat((prevBal + remaining).toFixed(2));
-                            // يمنع نهائياً إضافة أو تعديل أي سندات أو أرصدة يدوياً؛ المركز يتولى الحساب تلقائياً
+                            prevDebt = -(parseFloat(s.calculatedBalance ?? s.balance) || 0);
+                            newDebt = parseFloat((prevDebt + remaining).toFixed(2));
                         } else { 
-                            suppId = nowTs.toString();
+                            suppId = (window.Utils && typeof window.Utils.generateUniqueId === 'function')
+                                ? window.Utils.generateUniqueId()
+                                : nowTs.toString();
                             suppliersDB.push({ 
                                 id: suppId, 
                                 name: suppName, 
@@ -1066,33 +1090,62 @@ window.addEventListener('seraj:updated', (e) => {
                                 _lastModified: nowTs,
                                 _lastModifiedBy: dName
                             }); 
-                            prevBal = 0;
-                            currBal = remaining;
+                            prevDebt = 0;
+                            newDebt = remaining;
                             if (typeof DB !== 'undefined') DB.saveSuppliers(suppliersDB);
                         }
                     }
 
-                    // القاعدة 1: تحديث أو إنشاء دفعة داخل p.lots وإعادة حساب p.stock وتحديث p._lastModified
+                    // إضافة الباتش الجديد في نهاية المصفوفة (lots.push) مع حماية الرصيد السابق للأصناف غير المقسمة لدفعات
                     formattedItems.forEach(item => {
                         let p = productsDB.find(x => String(x.id) === String(item.id));
                         if (p) {
+                            let wasArchived = Boolean(p.isDeleted || p.isArchived);
                             p.isDeleted = false;
                             p.isArchived = false;
                             
-                            if (!Array.isArray(p.lots)) p.lots = [];
+                            if (wasArchived) {
+                                p.lots = [];
+                                p.stock = 0;
+                            } else if (!Array.isArray(p.lots)) {
+                                p.lots = [];
+                            }
+
+                            // إذا كان للصنف رصيد إجمالي سابق بدون دفعات (مستورد من إكسيل)، نحوله لدفعة أساسية حتى لا يضيع
+                            let existingDirectStock = parseFloat(p.stock) || 0;
+                            if (!wasArchived && p.lots.length === 0 && existingDirectStock > 0) {
+                                let oldBuy = parseFloat(p.purchasePrice ?? p.buyPrice) || item.purchasePrice;
+                                p.lots.push({
+                                    supplier: 'رصيد سابق بالمخزن',
+                                    stock: existingDirectStock,
+                                    purchasePrice: oldBuy,
+                                    buyPrice: oldBuy,
+                                    price: item.price,
+                                    sellPrice: item.price,
+                                    date: invDate,
+                                    _device: dName,
+                                    _lastModifiedBy: dName
+                                });
+                            }
+
                             p.lots.forEach(lot => {
                                 lot.price = item.price;
+                                lot.sellPrice = item.price;
                                 lot._lastModifiedBy = dName;
                             });
                             
                             p.price = item.price;
+                            p.sellPrice = item.price;
                             p.purchasePrice = item.purchasePrice;
+                            p.buyPrice = item.purchasePrice;
 
-                            p.lots.unshift({ 
+                            p.lots.push({ 
                                 supplier: `فاتورة شراء رقم ${newInvoiceId} - المورد: ${suppName || "نقدي"}`, 
                                 stock: item.qty, 
                                 purchasePrice: item.purchasePrice, 
+                                buyPrice: item.purchasePrice,
                                 price: item.price, 
+                                sellPrice: item.price,
                                 date: invDate,
                                 invoiceId: newInvoiceId,
                                 _device: dName,
@@ -1105,9 +1158,8 @@ window.addEventListener('seraj:updated', (e) => {
                     });
                     if (typeof DB !== 'undefined') DB.saveProducts(productsDB);
 
-
-                // القاعدة 3: حفظ الفاتورة حصرياً بـ DB.savePurchaseInvoices
-                let newInvoice = { 
+                    // حفظ الفاتورة حصرياً عبر DB.savePurchaseInvoices
+                    let newInvoice = { 
                         id: newInvoiceId, 
                         timestamp: nowTs, 
                         date: invDate, 
@@ -1116,14 +1168,14 @@ window.addEventListener('seraj:updated', (e) => {
                         total: finalReq,
                         remaining: remaining,
                         paid: inputPaid, 
-                        initialPaid: inputPaid,             // تثبيت المدفوع النقدي الأولي
-                        initialRemaining: remaining,       // تثبيت المتبقي الأولي لحماية الخصم
+                        initialPaid: inputPaid,
+                        initialRemaining: remaining,
                         discount: discount,
                         notes: notes,
                         vault: vaultKey,
                         items: formattedItems,
-                        prevBalance: prevBal,
-                        currentBalance: currBal,
+                        prevBalance: prevDebt,
+                        currentBalance: newDebt,
                         _device: dName,
                         _lastModified: nowTs,
                         _lastModifiedBy: dName 
@@ -1131,12 +1183,24 @@ window.addEventListener('seraj:updated', (e) => {
                     
                     purchaseInvoicesDB.push(newInvoice);
 
-                    // تمرير formattedItems كمعامل ثانٍ لتنظيف النواقص المشتراة من النوتة الذكية فوراً
                     if (typeof DB !== 'undefined') {
                         DB.savePurchaseInvoices(purchaseInvoicesDB, formattedItems);
                     }
 
                     lastSavedInvoice = newInvoice;
+
+                    // إظهار شريط الطباعة والتصدير السفلي وتشغيل نافذة الطباعة بعد اكتمال بناء lastSavedInvoice
+                    let bottomPrintBarEl = document.getElementById('bottomPrintBar');
+                    if (bottomPrintBarEl) bottomPrintBarEl.style.display = 'flex';
+
+                    let printSetting = localStorage.getItem('seraj_auto_print_setting') || 'ask';
+                    let printModalEl = document.getElementById('postSavePrintModal');
+                    if (printSetting === 'auto' && typeof printLastInvoice === 'function') {
+                        printLastInvoice();
+                    } else if (printSetting === 'ask' && printModalEl) {
+                        history.pushState({ modalOpen: true }, '');
+                        printModalEl.style.display = 'flex';
+                    }
                 } catch (err) {
                     console.error("خطأ أثناء حفظ فاتورة الشراء:", err);
                     SerajAlert("حدث خطأ أثناء الحفظ: " + err.message, "error");
@@ -1146,7 +1210,7 @@ window.addEventListener('seraj:updated', (e) => {
             }, 15);
         }
 
-                function executePostSavePrint() {
+        function executePostSavePrint() {
             let modalEl = document.getElementById('postSavePrintModal');
             if (modalEl) modalEl.style.display = 'none';
             
@@ -1161,25 +1225,22 @@ window.addEventListener('seraj:updated', (e) => {
         }
 
         function togglePrintMenu(e) {
-
             if (e) e.stopPropagation();
             let m = document.getElementById('printDropdownMenu');
             if(m) m.style.display = m.style.display === 'flex' ? 'none' : 'flex';
         }
 
-function closeAllMenus(e) {
+        function closeAllMenus(e) {
             let m = document.getElementById('printDropdownMenu');
             if(m) m.style.display = 'none';
             let sRes = document.getElementById('supplierResults');
             if(sRes) sRes.style.display = 'none';
             let pRes = document.getElementById('productResults');
             if(pRes) pRes.style.display = 'none';
-            // إضافة الإغلاق للقائمة المخصصة
             let vDrop = document.getElementById('customVaultDropdown');
             if (vDrop) vDrop.style.display = 'none';
         }
 
-        // دوال القائمة المخصصة للخزينة
         function toggleCustomSelect(e, dropdownId) {
             if (e) e.stopPropagation();
             if (typeof closeAllMenus === 'function') closeAllMenus();
@@ -1217,25 +1278,36 @@ function closeAllMenus(e) {
                 itemsHtml += `<tr><td>${item.name}</td><td>${item.purchasePrice}</td><td>${item.qty}</td><td>${item.total.toFixed(2)}</td></tr>`;
             });
 
+            let disc = parseFloat(inv.discount) || 0;
+            let netReq = parseFloat(inv.total) || Math.max(0, sub - disc);
+            let discountHtml = disc > 0 ? `
+                <div><span class="label">إجمالي الأصناف:</span> ${sub.toFixed(2)}</div>
+                <div><span class="label">الخصم:</span> ${disc.toFixed(2)}</div>
+                <div><span class="label">الصافي المطلوب:</span> ${netReq.toFixed(2)}</div>
+            ` : `<div><span class="label">إجمالي الفاتورة:</span> ${netReq.toFixed(2)}</div>`;
+
             let totalsHtml = '';
             if (inv.supplier) {
-                let prev = inv.prevBalance || 0;
-                let curr = inv.currentBalance || 0;
+                let prev = parseFloat(inv.prevBalance) || 0;
+                let curr = parseFloat(inv.currentBalance) || 0;
                 
-                // تصحيح الرصيد في الطباعة: الموجب (له) والسالب (عليه)
-                let prevText = prev > 0 ? `${prev.toFixed(2)} (عليه)` : (prev < 0 ? `${Math.abs(prev).toFixed(2)} (له)` : "0.00");
-                let currText = curr > 0 ? `${curr.toFixed(2)} (عليه)` : (curr < 0 ? `${Math.abs(curr).toFixed(2)} (له)` : "0.00");
+                // وفق معادلة المديونية الصافية: إذا كان الرصيد > 0 يطبع (له)، وإذا كان < 0 يطبع (عليه)
+                let prevText = prev > 0 ? `${prev.toFixed(2)} (له)` : (prev < 0 ? `${Math.abs(prev).toFixed(2)} (عليه)` : "0.00");
+                let currText = curr > 0 ? `${curr.toFixed(2)} (له)` : (curr < 0 ? `${Math.abs(curr).toFixed(2)} (عليه)` : "0.00");
 
                 totalsHtml = `
-                    <div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>
-                    <div><span class="label">المدفوع:</span> ${parseFloat(inv.paid).toFixed(2)}</div>
-                    <div><span class="label">باقي الفاتورة:</span> ${parseFloat(inv.remaining).toFixed(2)}</div>
+                    ${discountHtml}
+                    <div><span class="label">المدفوع:</span> ${(parseFloat(inv.paid) || 0).toFixed(2)}</div>
+                    <div><span class="label">باقي الفاتورة:</span> ${(parseFloat(inv.remaining) || 0).toFixed(2)}</div>
                     <hr>
                     <div><span class="label">حساب سابق:</span> ${prevText}</div>
                     <div><span class="label">إجمالي الحساب الجديد:</span> ${currText}</div>
                 `;
             } else {
-                totalsHtml = `<div><span class="label">إجمالي الفاتورة:</span> ${sub.toFixed(2)}</div>`;
+                totalsHtml = `
+                    ${discountHtml}
+                    <div><span class="label">المدفوع:</span> ${(parseFloat(inv.paid) || 0).toFixed(2)}</div>
+                `;
             }
 
             return `
@@ -1279,7 +1351,7 @@ function closeAllMenus(e) {
             document.getElementById('bottomPrintBar').style.display = 'none';
 
             if (window.Utils && typeof window.Utils.downloadRealPDF === 'function') {
-                window.Utils.downloadRealPDF(printArea, `Purchase_Invoice_${lastSavedInvoice.id}.pdf`);
+                window.Utils.downloadRealPDF(printArea.innerHTML, `Purchase_Invoice_${lastSavedInvoice.id}.pdf`);
             } else {
                 printLastInvoice();
             }
@@ -1299,8 +1371,12 @@ function closeAllMenus(e) {
                 excelData.push([item.name, item.purchasePrice, item.price, item.qty, item.total]);
                 sub += item.total;
             });
+            let disc = parseFloat(lastSavedInvoice.discount) || 0;
+            let netReq = parseFloat(lastSavedInvoice.total) || Math.max(0, sub - disc);
             excelData.push([]);
-            excelData.push(["الإجمالي", sub]);
+            excelData.push(["إجمالي الأصناف", sub]);
+            if (disc > 0) excelData.push(["الخصم", disc]);
+            excelData.push(["الصافي المطلوب", netReq]);
             excelData.push(["المدفوع", lastSavedInvoice.paid]);
             excelData.push(["المتبقي", lastSavedInvoice.remaining]);
 
@@ -1510,7 +1586,7 @@ function closeAllMenus(e) {
             try { aiMicRecognition.start(); } catch(e) { console.error("خطأ:", e); }
         }
 
-        // القاعدة 2: المايك الخفيف (SmartVoice Lite) بدون أي فلاتر محلية
+        // القاعدة 2: المايك الخفيف (SmartVoice Lite) بالاعتماد المباشر على مخرجات db.js
         function processLocalAI() {
             let rawText = document.getElementById('aiInputText').value.trim();
             if (!rawText) return SerajAlert("الرجاء التحدث أو كتابة الطلبات أولاً!");
@@ -1532,29 +1608,24 @@ function closeAllMenus(e) {
                         throw new Error("المحرك الصوتي غير متصل بشكل سليم بالصفحة.");
                     }
                     
-                    // تحديد البروفايل تلقائياً بناءً على الصفحة
                     let isPurchasePage = window.location.pathname.includes('purchase');
                     let activeProfile = isPurchasePage ? 'purchases' : 'sales';
                     
                     let result = engine.analyzeFullText(rawText, safeProducts, activeProfile);
 
                     if (result && Array.isArray(result.queue) && result.queue.length > 0) {
-                        
-                        // ⚡ قراءة المفتاح لمعرفة الوضع المختار ⚡
                         let insertMode = document.querySelector('input[name="voiceInsertMode"]:checked').value;
-                        
                         let addedCount = 0;
-                        let leftoverQueue = []; // مصفوفة لتخزين الأصناف التي ستذهب للطابور
+                        let leftoverQueue = [];
 
                         if (insertMode === 'direct') {
-                            // 🚀 الوضع المباشر الذكي (مطابق = فاتورة، غير مطابق = طابور) 🚀
                             result.queue.forEach(item => {
-                                let p = safeProducts.find(x => String(x.name).trim() === String(item.name).trim() || String(x.cleanDisplay) === String(item.name).trim());
-                                
-                                if (p) {
-                                    // الصنف مطابق 100% -> ينزل في الفاتورة فوراً
+                                if (item.isExactMatch && item.product) {
+                                    let p = item.product;
                                     let existsIndex = invoice.findIndex(invItem => String(invItem.id) === String(p.id));
-                                    let targetPrice = isPurchasePage ? (parseFloat(p.purchasePrice) || 0) : (parseFloat(p.price) || 0);
+                                    let buyP = parseFloat(item.purchasePrice ?? item.price ?? p.purchasePrice ?? 0) || 0;
+                                    let sellP = parseFloat(item.sellPrice ?? p.sellPrice ?? p.price ?? 0) || 0;
+                                    let targetPrice = isPurchasePage ? buyP : sellP;
 
                                     if (existsIndex > -1) {
                                         invoice[existsIndex].qty += item.qty;
@@ -1567,44 +1638,38 @@ function closeAllMenus(e) {
                                             hasImage: p.hasImage 
                                         };
                                         if (isPurchasePage) {
-                                            newItem.purchasePrice = targetPrice;
-                                            newItem.sellPrice = parseFloat(p.price) || 0;
+                                            newItem.purchasePrice = buyP;
+                                            newItem.sellPrice = sellP;
+                                            newItem.price = sellP;
                                         } else {
-                                            newItem.price = targetPrice;
-                                            newItem.purchasePrice = parseFloat(p.purchasePrice) || 0;
+                                            newItem.price = sellP;
+                                            newItem.sellPrice = sellP;
+                                            newItem.purchasePrice = buyP;
                                         }
                                         invoice.unshift(newItem);
                                     }
                                     addedCount++;
                                 } else {
-                                    // الصنف غير مطابق 100% -> تحويله للطابور للمراجعة اليدوية
                                     leftoverQueue.push(item);
                                 }
                             });
                         } else {
-                            // 📝 وضع الطابور العادي -> كل الأصناف تذهب للطابور 📝
                             leftoverQueue = result.queue;
                         }
 
-                        // --- تحديث واجهة المستخدم بناءً على النتائج ---
-                        
-                        // 1. إذا تم إضافة أي صنف للفاتورة مباشرة
                         if (addedCount > 0) {
                             saveDraft(); 
                             renderTable(); 
                         }
 
-                        // 2. إذا كانت هناك أصناف متبقية للطابور (سواء بسبب الوضع أو لعدم المطابقة)
                         if (leftoverQueue.length > 0) {
                             searchQueue = leftoverQueue;
                             if (typeof updateQueueUI === 'function') updateQueueUI();
                             
-                            // تنبيه الكاشير في حالة انقسام الطلبات (جزء في الفاتورة وجزء في الطابور)
                             if (addedCount > 0) {
                                 SerajAlert(`تم إدراج ${addedCount} صنف مطابق للفاتورة مباشرة، وتم تحويل ${leftoverQueue.length} صنف غير مطابق للطابور للمراجعة.`);
                             }
                         } else {
-                            // كل الأصناف نزلت في الفاتورة مباشرة ولم يتبق شيء للطابور
                             searchQueue = [];
                             if (typeof updateQueueUI === 'function') updateQueueUI();
                             document.getElementById('productSearch').value = '';
@@ -1654,16 +1719,7 @@ function closeAllMenus(e) {
                 if (typeof closeAllMenus === 'function') closeAllMenus();
             }
         });
-
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js').catch(err => console.log(err));
-            });
-        }
     </script>
 
-    <!-- استدعاء المحاسب الذكي العائم -->
-    <script src="ai_brain.js"></script>
-    
-</body> 
-</html>
+    </body> 
+    </html>
