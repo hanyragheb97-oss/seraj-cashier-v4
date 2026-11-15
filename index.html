@@ -507,8 +507,10 @@ animation: pulse-alert 2s infinite;
         </div>
     </div>
 
-    <!-- استدعاء المحرك المركزي فقط (يحتوي على SmartVoice V4 المدمج) -->
     <script src="db.js"></script>
+    <script>window._serajCoreVoice = window.SmartVoice;</script>
+    <script src="ai_brain.js?v=600"></script>
+    <script>if (window._serajCoreVoice) window.SmartVoice = Object.assign(window.SmartVoice || {}, window._serajCoreVoice);</script>
     
     <script>
         function notifyMain(msg, type = 'info', cb = null) {
