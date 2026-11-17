@@ -164,8 +164,8 @@
             menu.style.display = currentDisplay === 'block' ? 'none' : 'block';
         }
 
-        // ================= قراءة الأرصدة النهائية للعملاء مباشرة من الحسابات =================
-        function renderTable() {
+// ================= قراءة الأرصدة النهائية للعملاء مباشرة من الحسابات =================
+function renderTable() {
             if (typeof DB === 'undefined') return;
             let query = document.getElementById('searchInput').value.trim().toLowerCase();
             let allCustomers = DB.getCustomers() || [];
@@ -177,17 +177,22 @@
             allCustomers.forEach(c => {
                 if(query && !c.name.toLowerCase().includes(query)) return;
 
-                // السحر هنا: بنقرا الرصيد النهائي المحسوب أوتوماتيك من نظام العملاء
+                // قراءة الرصيد النهائي من نظام العملاء 
+                // دفترياً المديونية مسجلة كقيمة سالبة في c.balance
                 let net = parseFloat(c.balance) || 0;
                 
                 // تجاهل اللي حسابه متصفي تماماً (صفر)
                 if (Math.abs(net) < 0.05) return; 
 
-                let statusText = net > 0 ? 'عليه' : 'له';
-                let statusClass = net > 0 ? 'status-debt' : 'status-credit';
-                let valColor = net > 0 ? 'var(--neon-red)' : 'var(--neon-green)';
+                // الاعتماد الدقيق على c.isNetDebt أو قيمة net السالبة كدليل على أن العميل عليه فلوس
+                let isDebt = (c.isNetDebt !== undefined) ? c.isNetDebt : (net < 0);
 
-                if(net > 0) grandDebt += net;
+                let statusText = isDebt ? 'عليه' : 'له';
+                let statusClass = isDebt ? 'status-debt' : 'status-credit';
+                let valColor = isDebt ? 'var(--neon-red)' : 'var(--neon-green)';
+
+                // تجميع الإجماليات بشكل صحيح
+                if(isDebt) grandDebt += Math.abs(net);
                 else grandCredit += Math.abs(net);
 
                 displayList.push({
@@ -196,12 +201,16 @@
                     statusText: statusText,
                     statusClass: statusClass,
                     valColor: valColor,
-                    originalNet: net
+                    isDebt: isDebt
                 });
             });
 
-            // ترتيب القائمة (الأعلى مديونية أولاً)
-            displayList.sort((a, b) => b.originalNet - a.originalNet);
+            // ترتيب القائمة: اللي عليهم فلوس (ديون) فوق الأول مرتبين من الأكبر للأصغر، وبعدين اللي ليهم
+            displayList.sort((a, b) => {
+                if (a.isDebt && !b.isDebt) return -1;
+                if (!a.isDebt && b.isDebt) return 1;
+                return b.netVal - a.netVal;
+            });
 
             let tbody = document.getElementById('tableBody');
             let printTbody = document.getElementById('printTableBody');
@@ -226,7 +235,7 @@
                 `;
                 
                 // للطباعة الحرارية
-                let printSign = item.originalNet > 0 ? '(عليه)' : '(له)';
+                let printSign = item.isDebt ? '(عليه)' : '(له)';
                 printTbody.innerHTML += `<tr><td style="text-align: right; padding-right:5px;">${item.name}</td><td style="text-align:center;">${printSign}</td><td style="text-align:center;">${item.netVal.toFixed(2)}</td></tr>`;
             });
 
