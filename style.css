@@ -2299,3 +2299,15 @@ select option {
 .color-notes { color: #8e9eab !important; font-style: italic; font-size: 0.9em; } /* رمادي باهت للملاحظات */
 
 } /* إغلاق استعلام الوسائط (Media Query) إذا لزم الأمر */
+
+/* ضبط حجم صورة المعاينة الكبيرة في جميع الصفحات لمنع تجاوز الشاشة أو تصغيرها */
+#fullImageDisplay {
+    max-width: 100% !important;
+    max-height: 75vh !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    border-radius: 12px !important;
+    display: block !important;
+    margin: 15px auto 0 auto !important;
+}
