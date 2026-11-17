@@ -35,116 +35,32 @@
 
 
 <style>
-
-/* 🔥 الحل الجذري لفك تجميد الشاشة (السكرول) 🔥 */
-
-html, body {
-
-overflow-x: hidden !important;
-
-overflow-y: auto !important;
-
-height: 100% !important;
-
--webkit-overflow-scrolling: touch !important;
-
-}
-
-
-.view-section { display: none; }
-
-.active-view {
-
-display: block !important;
-
-animation: fadeIn 0.3s ease;
-
-overflow-y: auto !important; /* إجبار الشاشة النشطة على السكرول */
-
-height: 100vh !important;
-
--webkit-overflow-scrolling: touch !important; /* لدعم السحب بمرونة على الموبايل */
-
-}
-
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-
-
-.customers-container, .account-container {
-
-max-width: 800px;
-
-margin: auto;
-
-padding: 15px;
-
-padding-bottom: 160px !important; /* مساحة أكبر تحت عشان الشريط السفلي ما يغطيش الأسماء */
-
-} 
-
-
-
-
-.view-section { display: none; }
-
-.active-view { display: block !important; animation: fadeIn 0.3s ease; }
-
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-
-
-.customers-container, .account-container { max-width: 800px; margin: auto; padding: 15px; padding-bottom: 120px; }
-
-
-.search-box { background: rgba(19, 17, 44, 0.6); border: 2px solid var(--neon-border); border-radius: 16px; display: flex; align-items: center; padding: 5px; margin-bottom: 15px; box-shadow: 0 0 15px var(--neon-glow); }
-
-.search-box input { flex: 1; padding: 10px; font-size: 18px; border: none; background: transparent; color: var(--text-main); font-weight: bold; outline: none; }
-
-
-.customer-card { background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 16px; padding: 15px; margin-bottom: 15px; box-shadow: 0 0 15px var(--neon-glow); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-
-.customer-card:active { background-color: var(--neon-glow); }
-
-
-.cus-info { display: flex; flex-direction: column; gap: 5px; }
-
-.cus-name { font-size: 18px; font-weight: bold; color: var(--text-main); }
-
-.cus-balance { font-size: 20px; font-weight: bold; }
-
-
-/* الألوان الصحيحة للأرصدة */
-
-.balance-debtor { color: #ff1a40; text-shadow: 0 0 8px rgba(255,26,64,0.4); } /* عليه فلوس لينا - أحمر */
-
-.balance-creditor { color: #00ff66; text-shadow: 0 0 8px rgba(0,255,102,0.4); } /* له فلوس عندنا - أخضر */
-
-.balance-zero { color: var(--text-main); }
-
-
-
-table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 12px; overflow: hidden; margin-top: 15px; border: 2px solid var(--neon-border); }
-
-table th { background: var(--neon-glow); padding: 12px; color: var(--text-main); }
-
-table td { padding: 12px; text-align: center; border-bottom: 1px solid rgba(168, 85, 247, 0.2); font-weight: bold; }
-
-
-.readonly-banner { background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; text-align: center; padding: 8px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 14px; box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
-
-
-
-/* شريط القوائم المنسدلة السفلي */
-
-.dropdown-menu { position: absolute; bottom: 100%; right: 0; background: var(--card-bg); border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.7); display: none; z-index: 100; margin-bottom: 8px; overflow: hidden; width: 200px; text-align: right; }
-
-.dropdown-item { padding: 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 15px; color: var(--text-main); }
-
-.dropdown-item:active { background-color: var(--neon-glow); }
-
-.bottom-bar-dropdown { flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); border-radius: 12px; padding: 0 12px; height: 45px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; cursor: pointer; position: relative; }
-
+    html, body {
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        height: 100% !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    .customers-container, .account-container {
+        max-width: 800px;
+        margin: auto;
+        padding: 15px;
+        padding-bottom: 160px !important;
+    }
+
+    .customer-card { background: var(--card-bg-alt); border: 2px solid var(--neon-border); border-radius: 16px; padding: 15px; margin-bottom: 15px; box-shadow: 0 0 15px var(--neon-glow); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .customer-card:active { background-color: var(--row-active-bg); }
+
+    .cus-info { display: flex; flex-direction: column; gap: 5px; }
+    .cus-name { font-size: 18px; font-weight: bold; color: var(--text-main); }
+    .cus-balance { font-size: 20px; font-weight: bold; }
+
+    .balance-debtor { color: var(--accent-red); text-shadow: 0 0 8px var(--btn-cancel-glow); }
+    .balance-creditor { color: var(--accent-green); text-shadow: 0 0 8px var(--btn-save-glow); }
+    .balance-zero { color: var(--text-main); }
+
+    .readonly-banner { background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; text-align: center; padding: 8px; border-radius: 8px; margin-bottom: 15px; font-weight: bold; font-size: 14px; box-shadow: 0 0 10px rgba(56, 189, 248, 0.3); }
 </style>
 
 </head>

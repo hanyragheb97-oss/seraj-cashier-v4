@@ -6,102 +6,43 @@
     <title>كشف حساب عميل - سراج كاشير</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="stylesheet" href="style.css">
     <style>
         :root {
-            --neon-border: #a855f7;
-            --neon-glow: rgba(168, 85, 247, 0.4);
-            --bg-dark-1: #070913;
-            --bg-dark-2: #120f29;
-            --card-bg: rgba(19, 17, 44, 0.88);
-            --text-white: #ffffff;
-            --neon-red: #ff1a40;
-            --neon-green: #00ff66;
-            --neon-blue: #38bdf8;
+            --neon-red: var(--accent-red);
+            --neon-green: var(--accent-green);
         }
-        
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: linear-gradient(135deg, var(--bg-dark-1), var(--bg-dark-2)); color: var(--text-white); margin: 0; padding: 0; user-select: none; overflow-x: hidden; -webkit-tap-highlight-color: transparent; min-height: 100vh; padding-bottom: 90px;}
-        
-        .view-section { display: none; }
-        .active-view { display: block; animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-        .header { background: rgba(19, 17, 44, 0.95); backdrop-filter: blur(12px); color: #ffffff; padding: 15px 20px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: bold; position: sticky; top: 0; z-index: 50; border-bottom: 2px solid var(--neon-border); box-shadow: 0 0 25px var(--neon-glow);}
-        
-        .search-container { padding: 15px; max-width: 800px; margin: 0 auto; position: relative;}
-        .search-label { font-size: 13px; color: #9ca3af; position: absolute; right: 25px; top: -5px; background: var(--bg-dark-1); padding: 0 5px; font-weight: bold; z-index: 2;}
-        .search-input { width: 100%; padding: 14px; font-size: 16px; border: 2px solid var(--neon-border); border-radius: 14px; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px rgba(168, 85, 247, 0.25); outline: none; font-weight: bold; text-align: right; position: relative; z-index: 1;}
-        .search-input:focus { box-shadow: 0 0 25px rgba(168, 85, 247, 0.7); }
-
-        .dropdown-list { position: absolute; top: 100%; right: 15px; left: 15px; background: #13112c; border: 2px solid var(--neon-border); border-radius: 0 0 16px 16px; max-height: 250px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 15px 35px rgba(0,0,0,0.8);}
-        .list-search-item { padding: 14px 15px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 16px; color: #ffffff; display: flex; justify-content: space-between;}
-        .list-search-item:last-child { border-bottom: none; }
-        .list-search-item:active { background-color: rgba(168, 85, 247, 0.25); }
-
         .report-wrapper { max-width: 800px; margin: 0 auto; padding: 0 10px; }
-        .report-table { width: 100%; border-collapse: collapse; background: rgba(19, 17, 44, 0.7); border-radius: 12px; overflow: hidden; border: 2px solid var(--neon-border); box-shadow: 0 0 15px var(--neon-glow); }
-        .report-table th, .report-table td { padding: 16px 10px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); text-align: center; color: white; vertical-align: middle;}
-        .report-table th { background-color: rgba(168, 85, 247, 0.25); font-size: 15px; border-bottom: 2px solid var(--neon-border); position: sticky; top: 0; font-weight: bold; text-shadow: 0 0 5px rgba(255,255,255,0.5);}
+        .report-table { width: 100%; border-collapse: collapse; background: var(--card-bg-alt); border-radius: 12px; overflow: hidden; border: 2px solid var(--neon-border); box-shadow: 0 0 15px var(--neon-glow); }
+        .report-table th, .report-table td { padding: 16px 10px; border-bottom: 1px solid var(--neon-border-soft); text-align: center; color: var(--text-white); vertical-align: middle;}
+        .report-table th { background-color: var(--table-header-bg); font-size: 15px; border-bottom: 2px solid var(--neon-border); position: sticky; top: 0; font-weight: bold; text-shadow: 0 0 5px var(--text-glow);}
         
-        .item-title { font-weight: bold; font-size: 16px; color: var(--text-white); text-align: right; text-shadow: 0 0 5px rgba(255,255,255,0.5); line-height: 1.6;}
-        .item-date { font-size: 12px; color: #9ca3af; font-weight: normal; margin-top: 5px;}
+        .item-title { font-weight: bold; font-size: 16px; color: var(--text-white); text-align: right; text-shadow: 0 0 5px var(--text-glow); line-height: 1.6;}
+        .item-date { font-size: 12px; color: var(--text-muted); font-weight: normal; margin-top: 5px;}
         .val-text { font-size: 18px; font-weight: bold; }
-        .debt-val { color: var(--neon-red); text-shadow: 0 0 8px rgba(255, 26, 64, 0.5); }
-        .credit-val { color: var(--neon-green); text-shadow: 0 0 8px rgba(0, 255, 102, 0.5); }
+        .debt-val { color: var(--accent-red); text-shadow: 0 0 8px var(--btn-cancel-glow); }
+        .credit-val { color: var(--accent-green); text-shadow: 0 0 8px var(--btn-save-glow); }
         
-        .prev-balance-row { background: rgba(168, 85, 247, 0.1); font-weight: bold; font-size: 16px; border-bottom: 2px solid rgba(168, 85, 247, 0.3) !important;}
-        .total-row { background: rgba(168, 85, 247, 0.15); font-weight: bold; font-size: 17px; border-top: 2px solid var(--neon-border); }
-        .net-row { background: var(--card-bg); font-weight: bold; font-size: 18px; border-top: none; }
-
-        /* ================= الشريط السفلي الموحد ================= */
-        .unified-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background-color: rgba(19, 17, 44, 0.95); border-top: 1px solid var(--neon-border); display: flex; padding: 10px 15px; gap: 8px; z-index: 100; box-shadow: 0 -4px 25px var(--neon-glow); align-items: center;}
-        .header-back-btn { background: #1d4ed8; border: 2px solid #3b82f6; border-radius: 12px; padding: 0 15px; height: 45px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); transition: all 0.2s; flex-shrink: 0;}
-        .header-back-btn:active { transform: scale(0.95); filter: brightness(1.2); }
-        .header-back-btn .arrow { color: white; font-size: 15px; line-height: 1; }
-        .header-back-btn .text { color: white; font-size: 10px; font-weight: bold; font-family: sans-serif; letter-spacing: 0.5px; }
-        .bottom-bar-dropdown { flex: 1; background: var(--card-bg); border: 1px solid var(--neon-border); border-radius: 12px; padding: 0 12px; height: 45px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; font-weight: bold; color: var(--text-white); cursor: pointer; position: relative; box-shadow: 0 0 10px var(--neon-glow);}
-        .bottom-bar-btn { flex: 1; background-color: var(--card-bg); color: var(--text-white); border: 1px solid #3b82f6; border-radius: 12px; height: 45px; font-size: 14px; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 5px; cursor: pointer; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); position: relative;}
-        .bottom-menu-dropdown { position: absolute; bottom: 120%; background: #13112c; border: 2px solid var(--neon-border); border-radius: 14px; box-shadow: 0 15px 35px rgba(0,0,0,0.8); display: none; z-index: 101; overflow: hidden; width: 220px; text-align: right; }
-        .dropdown-menu-item { padding: 12px 14px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 14px; color: #ffffff; display: flex; justify-content: space-between; align-items: center;}
-        .dropdown-menu-item:active { background-color: rgba(168, 85, 247, 0.25); }
-        .dropdown-menu-item.disabled { color: #9ca3af; cursor: not-allowed; }
-        .sub-accordion-content { display: none; background: rgba(10, 8, 25, 0.95); padding: 0;}
-        .sub-dropdown-item { padding: 12px 25px; border-bottom: 1px solid rgba(168, 85, 247, 0.2); cursor: pointer; font-weight: bold; font-size: 13px; color: var(--text-white); text-align: right; border-right: 2px solid #ec4899;}
-
-        /* نافذة التاريخ المخصص */
-        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(5, 7, 15, 0.8); display: none; justify-content: center; align-items: center; z-index: 200; backdrop-filter: blur(8px);}
-        .modal-content { background: rgba(19, 17, 44, 0.95); padding: 25px; border-radius: 24px; width: 92%; max-width: 440px; box-shadow: 0 0 45px rgba(168, 85, 247, 0.5); border: 2px solid var(--neon-border);}
-        .modal-header { border-bottom: 2px solid rgba(168, 85, 247, 0.3); padding-bottom: 15px; margin-bottom: 20px; text-align: center;}
-        .modal-header h3 { margin: 0; font-size: 20px; color: #ffffff; }
-        .input-group { margin-bottom: 15px; }
-        .input-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 16px; color: #ffffff;}
-        .input-group input { width: 100%; padding: 12px; font-size: 18px; text-align: center; border: 2px solid var(--neon-border); border-radius: 14px; font-weight: bold; box-sizing: border-box; background: rgba(19, 17, 44, 0.6); color: #ffffff; box-shadow: 0 0 10px var(--neon-glow); outline: none;}
-        .btn-group { display: flex; gap: 15px; margin-top: 25px; border-top: 2px solid rgba(168, 85, 247, 0.3); padding-top: 20px;}
-        .btn-group button { flex: 1; padding: 14px; border: none; border-radius: 16px; cursor: pointer; font-size: 18px; font-weight: bold; }
-        .confirm-btn { background: rgba(7, 9, 19, 0.95) !important; border: 2px solid #ec4899 !important; color: var(--text-white) !important; box-shadow: 0 0 15px rgba(236, 72, 153, 0.4) !important;}
-        .cancel-btn { background: rgba(19, 17, 44, 0.8) !important; border: 2px solid var(--neon-border) !important; color: #ffffff !important;}
-
-     /* إعدادات الطباعة */
-     #thermalPrintArea { display: none; }
-        
-        /* 1. إعدادات طباعة A4 العادية أو الـ PDF */
+        .prev-balance-row { background: var(--card-bg); font-weight: bold; font-size: 16px; border-bottom: 2px solid var(--neon-border-soft) !important;}
+        .total-row { background: var(--table-header-bg); font-weight: bold; font-size: 17px; border-top: 2px solid var(--neon-border); }
+        .net-row { background: var(--bg-dark-1); font-weight: bold; font-size: 18px; border-top: none; }
+    
+        #thermalPrintArea { display: none; }
         @media print {
-            @page { margin: 10mm; size: A4 portrait; }
-            body { margin: 0; padding: 0; background: #fff; color: #000; }
-            .header, .search-container, .unified-bottom-bar, .modal-overlay { display: none !important; }
-            
-            #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
-            .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; background: white; color: black; border: 1px solid #000; box-shadow: none;}
-            .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
-            .report-table td { padding: 10px; border: 1px solid #000; color: black;}
-            .item-title { color: black !important; text-shadow: none !important; }
-            .item-date { color: #555 !important; }
-            .debt-val, .credit-val, .net-row span { text-shadow: none !important; }
-            .prev-balance-row { background-color: #f9f9f9 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact;}
-            .total-row { background-color: #eee !important; print-color-adjust: exact; -webkit-print-color-adjust: exact;}
-            .net-row { background-color: #fff !important; }
-        }
-        
-        /* 2. إعدادات الطباعة الحرارية (بكرة 80mm) */
+        @page { margin: 10mm; size: A4 portrait; }
+        body { margin: 0; padding: 0; background: #fff; color: #000; }
+        .header, .search-container, .unified-bottom-bar, .modal-overlay { display: none !important; }
+        #pdf-wrapper { display: block !important; width: 100%; direction: rtl; font-family: Arial, sans-serif;}
+        .report-table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; text-align: center; background: white; color: black; border: 1px solid #000; box-shadow: none;}
+        .report-table th { background-color: #eee; padding: 10px; border: 1px solid #000; print-color-adjust: exact; -webkit-print-color-adjust: exact; color: black; text-shadow: none;}
+        .report-table td { padding: 10px; border: 1px solid #000; color: black;}
+        .item-title { color: black !important; text-shadow: none !important; }
+        .item-date { color: #555 !important; }
+        .debt-val, .credit-val, .net-row span { text-shadow: none !important; }
+        .prev-balance-row { background-color: #f9f9f9 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact;}
+        .total-row { background-color: #eee !important; print-color-adjust: exact; -webkit-print-color-adjust: exact;}
+        .net-row { background-color: #fff !important; }
+    }
         @media print {
             body.thermal-print-mode #pdf-wrapper { display: none !important; }
             body.thermal-print-mode #thermalPrintArea { display: block !important; width: 76mm; margin: 0 auto; padding: 5px; font-family: 'Segoe UI', Tahoma, sans-serif; direction: rtl; color: #000; }
@@ -204,13 +145,13 @@
 
     <!-- نافذة التاريخ المخصص -->
     <div class="modal-overlay" id="customDateModal">
-        <div class="modal-content" onclick="event.stopPropagation()">
-            <div class="modal-header"><h3>تحديد تاريخ مخصص</h3></div>
-            <div class="input-group"><label>من تاريخ:</label><input type="date" id="dateFrom"></div>
-            <div class="input-group"><label>إلى تاريخ:</label><input type="date" id="dateTo"></div>
-            <div class="btn-group">
-                <button class="cancel-btn" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
-                <button class="confirm-btn" onclick="applyCustomDate()">تطبيق البحث</button>
+        <div class="compact-modal" onclick="event.stopPropagation()">
+            <div class="compact-header"><h3>تحديد تاريخ مخصص</h3></div>
+            <div class="compact-row"><label>من تاريخ:</label><input type="date" id="dateFrom"></div>
+            <div class="compact-row"><label>إلى تاريخ:</label><input type="date" id="dateTo"></div>
+            <div class="compact-btns">
+                <button class="cancel-btn btn-close-ai" onclick="document.getElementById('customDateModal').style.display='none'">إلغاء</button>
+                <button class="confirm-btn btn-save-ai" onclick="applyCustomDate()">تطبيق البحث</button>
             </div>
         </div>
     </div>
