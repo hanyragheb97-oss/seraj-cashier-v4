@@ -705,83 +705,230 @@ window.Utils = {
         return prefix ? `${prefix}${nextSeq}` : String(nextSeq);
     },
 
-    // دالة تصدير PDF ذكية تدعم: عنصر DOM، أو اسم ID للعنصر، أو كود HTML كامل
+    // دالة معاينة ومشاركة PDF الذكية (معاينة أولاً + مشاركة مباشرة من الرامات بدون حفظ إجباري)
     downloadRealPDF: function(htmlOrElement, fileName = 'seraj_report.pdf') {
         return new Promise((resolve) => {
-            let cleanFileName = String(fileName || 'seraj_report.pdf');
+            let cleanFileName = String(fileName || 'seraj_report.pdf').trim();
             if (!cleanFileName.toLowerCase().endsWith('.pdf')) cleanFileName += '.pdf';
 
-            const runExport = () => {
-                let container = null;
-                let targetEl = null;
-
-                if (typeof htmlOrElement === 'string') {
-                    let trimmed = htmlOrElement.trim();
-                    let byId = !trimmed.includes('<') ? document.getElementById(trimmed.replace(/^#/, '')) : null;
-                    if (byId) {
-                        container = document.createElement('div');
-                        container.style.cssText = 'position:fixed; left:-9999px; top:0; width:210mm; background:#fff; color:#000; padding:15px; direction:rtl; font-family:Cairo, Tahoma, sans-serif; z-index:-1;';
-                        container.innerHTML = byId.innerHTML;
-                        document.body.appendChild(container);
-                        targetEl = container;
-                    } else {
-                        container = document.createElement('div');
-                        container.style.cssText = 'position:fixed; left:-9999px; top:0; width:210mm; background:#fff; color:#000; padding:15px; direction:rtl; font-family:Cairo, Tahoma, sans-serif; z-index:-1;';
-                        container.innerHTML = htmlOrElement;
-                        document.body.appendChild(container);
-                        targetEl = container;
-                    }
-                } else if (htmlOrElement instanceof Element) {
-                    targetEl = htmlOrElement;
+            let rawHtmlContent = '';
+            if (typeof htmlOrElement === 'string') {
+                let trimmed = htmlOrElement.trim();
+                let byId = !trimmed.includes('<') ? document.getElementById(trimmed.replace(/^#/, '')) : null;
+                if (byId) {
+                    rawHtmlContent = (byId.tagName === 'TABLE') ? byId.outerHTML : byId.innerHTML;
                 } else {
-                    targetEl = document.body;
+                    rawHtmlContent = htmlOrElement;
                 }
+            } else if (htmlOrElement instanceof Element) {
+                rawHtmlContent = (htmlOrElement.tagName === 'TABLE') ? htmlOrElement.outerHTML : htmlOrElement.innerHTML;
+            } else {
+                rawHtmlContent = document.body.innerHTML;
+            }
 
-                if (typeof window.html2pdf === 'function') {
-                    let opt = {
-                        margin: [8, 8, 8, 8],
-                        filename: cleanFileName,
-                        image: { type: 'jpeg', quality: 0.98 },
-                        html2canvas: { scale: 2, useCORS: true, logging: false },
-                        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-                    };
-                    window.html2pdf().set(opt).from(targetEl).save().then(() => {
-                        if (container && container.parentNode) container.parentNode.removeChild(container);
-                        resolve(true);
-                    }).catch(err => {
-                        console.error("PDF Export Error:", err);
-                        if (container && container.parentNode) container.parentNode.removeChild(container);
-                        resolve(false);
-                    });
-                } else {
-                    try {
-                        let printWin = window.open('', '_blank', 'width=900,height=700');
-                        if (printWin) {
-                            let contentHtml = container ? container.innerHTML : (typeof htmlOrElement === 'string' ? htmlOrElement : targetEl.outerHTML);
-                            printWin.document.open();
-                            printWin.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${cleanFileName}</title><style>body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:20px;color:#000;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:10px;}th,td{border:1px solid #333;padding:8px;text-align:center;}</style></head><body>${contentHtml}</body></html>`);
-                            printWin.document.close();
-                            setTimeout(() => {
-                                printWin.focus();
-                                printWin.print();
-                                printWin.close();
-                            }, 350);
-                        }
-                    } catch (e) {
-                        console.error("Print Fallback Error:", e);
+            // إزالة أي نافذة معاينة سابقة إن وجدت
+            let oldModal = document.getElementById('seraj-pdf-preview-modal');
+            if (oldModal && oldModal.parentNode) oldModal.parentNode.removeChild(oldModal);
+
+            // حقن تنسيقات صارمة لعزل ورقة الـ PDF البيضاء عن ألوان الوضع الليلي
+            if (!document.getElementById('seraj-pdf-paper-styles')) {
+                let styleTag = document.createElement('style');
+                styleTag.id = 'seraj-pdf-paper-styles';
+                styleTag.innerHTML = `
+                    .seraj-pdf-paper-sheet, .seraj-pdf-paper-sheet * {
+                        box-sizing: border-box !important;
+                        font-family: 'Cairo', 'Segoe UI', Tahoma, Arial, sans-serif !important;
+                        text-shadow: none !important;
                     }
-                    if (container && container.parentNode) container.parentNode.removeChild(container);
-                    resolve(true);
+                    .seraj-pdf-paper-sheet {
+                        background-color: #ffffff !important;
+                        color: #000000 !important;
+                        direction: rtl !important;
+                    }
+                    .seraj-pdf-paper-sheet table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        background-color: #ffffff !important;
+                        border: 2px solid #000000 !important;
+                        box-shadow: none !important;
+                        border-radius: 0 !important;
+                        margin: 12px 0 !important;
+                    }
+                    .seraj-pdf-paper-sheet th {
+                        background-color: #e2e8f0 !important;
+                        color: #000000 !important;
+                        border: 1px solid #000000 !important;
+                        padding: 8px 6px !important;
+                        font-size: 14px !important;
+                        font-weight: bold !important;
+                        text-align: center !important;
+                    }
+                    .seraj-pdf-paper-sheet td {
+                        background-color: #ffffff !important;
+                        color: #000000 !important;
+                        border: 1px solid #333333 !important;
+                        padding: 8px 6px !important;
+                        font-size: 14px !important;
+                        font-weight: bold !important;
+                        text-align: center !important;
+                    }
+                `;
+                document.head.appendChild(styleTag);
+            }
+
+            // إنشاء شاشة المعاينة الكاملة
+            let modal = document.createElement('div');
+            modal.id = 'seraj-pdf-preview-modal';
+            modal.style.cssText = 'position:fixed; inset:0; width:100%; height:100%; background:rgba(7,9,19,0.96); z-index:999999; display:flex; flex-direction:column; direction:rtl;';
+
+            modal.innerHTML = `
+                <div style="background:#0b0d1e; border-bottom:2px solid var(--neon-border, #0ea5e9); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; color:#fff; flex-shrink:0;">
+                    <span style="font-size:17px; font-weight:bold;">📄 معاينة الملف قبل المشاركة</span>
+                    <button type="button" id="seraj-pdf-close-top" style="background:#ef4444; color:#fff; border:none; border-radius:8px; padding:6px 14px; font-weight:bold; font-size:15px; cursor:pointer;">✖ إغلاق</button>
+                </div>
+                <div id="seraj-pdf-scroll-area" style="flex:1; overflow-y:auto; padding:15px 10px; display:flex; justify-content:center; align-items:flex-start;">
+                    <div id="seraj-pdf-preview-sheet" class="seraj-pdf-paper-sheet" style="width:100%; max-width:760px; background:#ffffff; color:#000000; padding:20px; border-radius:8px; box-shadow:0 8px 30px rgba(0,0,0,0.7);">
+                        ${rawHtmlContent}
+                    </div>
+                </div>
+                <div style="background:#0b0d1e; border-top:2px solid var(--neon-border, #0ea5e9); padding:12px 15px; display:flex; gap:10px; justify-content:center; align-items:center; flex-shrink:0;">
+                    <button type="button" id="seraj-pdf-share-btn" style="flex:2; background:#10b981; color:#000; border:none; border-radius:12px; padding:12px; font-size:16px; font-weight:bold; cursor:pointer; display:flex; justify-content:center; align-items:center; gap:6px;">
+                        ⏳ جاري تجهيز الـ PDF...
+                    </button>
+                    <button type="button" id="seraj-pdf-print-btn" style="flex:1; background:#0ea5e9; color:#fff; border:none; border-radius:12px; padding:12px; font-size:15px; font-weight:bold; cursor:pointer;">
+                        🖨️ طباعة
+                    </button>
+                    <button type="button" id="seraj-pdf-close-bottom" style="flex:1; background:#334155; color:#fff; border:none; border-radius:12px; padding:12px; font-size:15px; font-weight:bold; cursor:pointer;">
+                        رجوع
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+
+            let readyPdfBlob = null;
+            let readyPdfFile = null;
+            let isGenerating = false;
+
+            const closeModal = () => {
+                if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+                resolve(true);
+            };
+
+            modal.querySelector('#seraj-pdf-close-top').onclick = closeModal;
+            modal.querySelector('#seraj-pdf-close-bottom').onclick = closeModal;
+
+            modal.querySelector('#seraj-pdf-print-btn').onclick = () => {
+                try {
+                    let printWin = window.open('', '_blank', 'width=900,height=700');
+                    if (printWin) {
+                        printWin.document.open();
+                        printWin.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>${cleanFileName}</title><style>body{font-family:Tahoma,Arial,sans-serif;direction:rtl;padding:20px;color:#000;background:#fff;}table{width:100%;border-collapse:collapse;margin-top:10px;}th{background:#e2e8f0;color:#000;border:1px solid #000;padding:8px;text-align:center;}td{border:1px solid #333;padding:8px;text-align:center;color:#000;}</style></head><body>${rawHtmlContent}</body></html>`);
+                        printWin.document.close();
+                        setTimeout(() => { printWin.focus(); printWin.print(); printWin.close(); }, 300);
+                    }
+                } catch (e) {
+                    console.error("Print Error:", e);
+                }
+            };
+
+            const buildPdfInMemory = () => {
+                if (isGenerating || typeof window.html2pdf !== 'function') return;
+                isGenerating = true;
+                let shareBtn = modal.querySelector('#seraj-pdf-share-btn');
+
+                // إنشاء منصة تصوير خفية في الإحداثيات الموجبة (0,0) خلف نافذة المعاينة لمنع الصفحة البيضاء
+                let savedScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+                let captureStage = document.createElement('div');
+                captureStage.className = 'seraj-pdf-paper-sheet';
+                captureStage.style.cssText = 'position:absolute; top:0; left:0; width:760px; background:#ffffff; color:#000000; padding:24px; direction:rtl; z-index:999990;';
+                captureStage.innerHTML = rawHtmlContent;
+                document.body.appendChild(captureStage);
+                window.scrollTo(0, 0);
+
+                let opt = {
+                    margin: [8, 8, 8, 8],
+                    filename: cleanFileName,
+                    image: { type: 'jpeg', quality: 0.98 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff',
+                        scrollX: 0,
+                        scrollY: 0,
+                        x: 0,
+                        y: 0,
+                        width: 760,
+                        windowWidth: 800
+                    },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+                };
+
+                setTimeout(() => {
+                    window.html2pdf().set(opt).from(captureStage).toPdf().get('pdf').then((pdf) => {
+                        if (captureStage && captureStage.parentNode) captureStage.parentNode.removeChild(captureStage);
+                        window.scrollTo(0, savedScrollY);
+                        readyPdfBlob = pdf.output('blob');
+                        try {
+                            readyPdfFile = new File([readyPdfBlob], cleanFileName, { type: 'application/pdf' });
+                        } catch (e) {}
+                        isGenerating = false;
+                        if (shareBtn) {
+                            shareBtn.innerHTML = '📤 مشاركة PDF (بدون حفظ)';
+                            shareBtn.style.background = '#10b981';
+                        }
+                    }).catch((err) => {
+                        console.error("PDF Memory Build Error:", err);
+                        if (captureStage && captureStage.parentNode) captureStage.parentNode.removeChild(captureStage);
+                        window.scrollTo(0, savedScrollY);
+                        isGenerating = false;
+                        if (shareBtn) {
+                            shareBtn.innerHTML = '📤 مشاركة / فتح';
+                        }
+                    });
+                }, 120);
+            };
+
+            modal.querySelector('#seraj-pdf-share-btn').onclick = async () => {
+                if (isGenerating) {
+                    if (typeof window.SerajAlert === 'function') window.SerajAlert('جاري تجهيز الملف، انتظر لحظة واحدة ثم اضغط مشاركة...');
+                    return;
+                }
+                if (readyPdfFile && navigator.share) {
+                    try {
+                        if (!navigator.canShare || navigator.canShare({ files: [readyPdfFile] })) {
+                            await navigator.share({
+                                files: [readyPdfFile],
+                                title: cleanFileName,
+                                text: 'محلات سراج LED - ' + cleanFileName.replace(/\.pdf$/i, '')
+                            });
+                            return;
+                        }
+                    } catch (shareErr) {
+                        if (shareErr && shareErr.name === 'AbortError') return;
+                        console.warn("Web Share Fallback:", shareErr);
+                    }
+                }
+                // بديل للكمبيوتر أو المتصفحات التي لا تدعم مشاركة الملفات: فتح المعاينة في تبويب أو طباعة
+                if (readyPdfBlob) {
+                    let blobUrl = URL.createObjectURL(readyPdfBlob);
+                    window.open(blobUrl, '_blank');
+                } else {
+                    modal.querySelector('#seraj-pdf-print-btn').click();
                 }
             };
 
             if (typeof window.html2pdf === 'function' || !navigator.onLine) {
-                runExport();
+                buildPdfInMemory();
             } else {
                 let script = document.createElement('script');
                 script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-                script.onload = runExport;
-                script.onerror = runExport;
+                script.onload = buildPdfInMemory;
+                script.onerror = () => {
+                    let shareBtn = modal.querySelector('#seraj-pdf-share-btn');
+                    if (shareBtn) shareBtn.innerHTML = '🖨️ طباعة / مشاركة';
+                };
                 document.head.appendChild(script);
             }
         });
