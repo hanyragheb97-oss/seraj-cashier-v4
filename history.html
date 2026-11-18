@@ -1779,7 +1779,7 @@
         }
     }
 
-    // 4. تصدير فاتورة مفردة إلى ملف PDF حقيقي بتصميم A4 عبر window.Utils.downloadRealPDF
+    // 4. معاينة ومشاركة فاتورة مفردة بتصميم A4 احترافي عبر window.Utils.downloadRealPDF
     function exportSingleInvoicePDF() {
         closeAllMenus();
         let inv = invoicesDB.find(i => String(i.id) === String(selectedInvoiceId));
@@ -1794,13 +1794,14 @@
             let qty = parseFloat(item.qty) || 0;
             let itemTot = item.total !== undefined ? parseFloat(item.total) : (price * qty);
             sub += itemTot;
+            let bgRow = idx % 2 === 1 ? 'background:#f8fafc !important;' : 'background:#ffffff !important;';
             itemsRows += `
-                <tr>
-                    <td>${idx + 1}</td>
-                    <td>${item.name || ''}</td>
-                    <td>${qty}</td>
-                    <td>${price.toFixed(2)}</td>
-                    <td>${itemTot.toFixed(2)}</td>
+                <tr style="${bgRow}">
+                    <td style="border:1px solid #333; padding:8px; text-align:center; color:#000; font-weight:bold;">${idx + 1}</td>
+                    <td style="border:1px solid #333; padding:8px 10px; text-align:right; color:#000; font-weight:bold;">${item.name || ''}</td>
+                    <td style="border:1px solid #333; padding:8px; text-align:center; color:#000; font-weight:bold;">${qty}</td>
+                    <td style="border:1px solid #333; padding:8px; text-align:center; color:#000; font-weight:bold;">${price.toFixed(2)}</td>
+                    <td style="border:1px solid #333; padding:8px; text-align:center; color:#000; font-weight:bold;">${itemTot.toFixed(2)}</td>
                 </tr>
             `;
         });
@@ -1817,39 +1818,72 @@
             if (c) {
                 let currentBal = parseFloat(c.balance) || 0;
                 let isDebt = (currentBal < 0 || c.isNetDebt === true);
+                let balColor = (isDebt && currentBal !== 0) ? '#cc0000' : (currentBal > 0 ? '#008000' : '#000000');
                 let balText = (isDebt && currentBal !== 0) ? `${Math.abs(currentBal).toFixed(2)} ج (عليه)` : (currentBal > 0 ? `${Math.abs(currentBal).toFixed(2)} ج (له)` : "0.00 ج (خالص)");
-                custBalanceHtml = `<div><span>إجمالي الرصيد الحالي للعميل: </span><strong>${balText}</strong></div>`;
+                custBalanceHtml = `
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-top:2px solid #000; background:#f1f5f9; font-size:15px;">
+                        <span style="color:#000; font-weight:bold;">إجمالي الرصيد الحالي للعميل:</span>
+                        <strong style="color:${balColor} !important;">${balText}</strong>
+                    </div>
+                `;
             }
         }
 
         let a4Html = `
-            <div dir="rtl">
-                <div>
-                    <h1>سراج LED - ${typeTitle}</h1>
-                    <div><strong>رقم الفاتورة:</strong> ${formatIdDisplay(inv.id)} | <strong>التاريخ:</strong> ${inv.date || ''}</div>
-                    <div><strong>السيد / العميل:</strong> ${inv.customer || 'مبيعات نقدية'}</div>
-                    ${inv.notes ? `<div><strong>ملاحظات:</strong> ${inv.notes}</div>` : ''}
+            <div dir="rtl" style="background:#ffffff; color:#000000; padding:10px; font-family:'Cairo', Tahoma, Arial, sans-serif;">
+                <div style="text-align:center; border-bottom:3px solid #000; padding-bottom:12px; margin-bottom:15px;">
+                    <h1 style="margin:0; font-size:26px; color:#000;">محلات سراج LED</h1>
+                    <div style="font-size:17px; font-weight:bold; color:#333; margin-top:4px;">${typeTitle}</div>
                 </div>
-                <table class="list-print-table">
+
+                <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#f8fafc; border:1px solid #000; border-radius:6px; padding:12px; margin-bottom:15px; font-size:15px; color:#000;">
+                    <div>
+                        <div style="margin-bottom:4px;"><strong>السيد / العميل:</strong> ${inv.customer || 'مبيعات نقدية'}</div>
+                        ${inv.notes ? `<div><strong>ملاحظات:</strong> ${inv.notes}</div>` : ''}
+                    </div>
+                    <div style="text-align:left;">
+                        <div style="margin-bottom:4px;"><strong>رقم الفاتورة:</strong> ${formatIdDisplay(inv.id)}</div>
+                        <div><strong>التاريخ:</strong> ${inv.date || ''}</div>
+                    </div>
+                </div>
+
+                <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:2px solid #000;">
                     <thead>
-                        <tr>
-                            <th>م</th>
-                            <th>الصنف</th>
-                            <th>الكمية</th>
-                            <th>السعر</th>
-                            <th>الإجمالي</th>
+                        <tr style="background:#e2e8f0 !important;">
+                            <th style="border:1px solid #000; padding:10px 6px; width:10%; color:#000;">م</th>
+                            <th style="border:1px solid #000; padding:10px; width:45%; text-align:right; color:#000;">الصنف</th>
+                            <th style="border:1px solid #000; padding:10px 6px; width:15%; color:#000;">الكمية</th>
+                            <th style="border:1px solid #000; padding:10px 6px; width:15%; color:#000;">السعر</th>
+                            <th style="border:1px solid #000; padding:10px 6px; width:15%; color:#000;">الإجمالي</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${itemsRows}
                     </tbody>
                 </table>
-                <div>
-                    <div><span>إجمالي الأصناف: </span><strong>${sub.toFixed(2)} ج</strong></div>
-                    ${discount > 0 ? `<div><span>الخصم: </span><strong>${discount.toFixed(2)} ج</strong></div>` : ''}
-                    <div><span>الصافي المطلوب: </span><strong>${finalReq.toFixed(2)} ج</strong></div>
-                    <div><span>المدفوع: </span><strong>${paid.toFixed(2)} ج</strong></div>
-                    <div><span>المتبقي بالفاتورة: </span><strong>${rem.toFixed(2)} ج</strong></div>
+
+                <div style="width:100%; max-width:340px; margin-right:auto; border:2px solid #000; border-radius:6px; overflow:hidden; background:#ffffff; color:#000;">
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #ccc; font-size:15px;">
+                        <span>إجمالي الأصناف:</span>
+                        <strong>${sub.toFixed(2)} ج</strong>
+                    </div>
+                    ${discount > 0 ? `
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #ccc; font-size:15px;">
+                        <span>الخصم:</span>
+                        <strong style="color:#cc0000 !important;">${discount.toFixed(2)} ج</strong>
+                    </div>` : ''}
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #ccc; background:#f8fafc; font-size:16px;">
+                        <span>الصافي المطلوب:</span>
+                        <strong>${finalReq.toFixed(2)} ج</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; border-bottom:1px solid #ccc; font-size:15px;">
+                        <span>المدفوع:</span>
+                        <strong style="color:#008000 !important;">${paid.toFixed(2)} ج</strong>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; padding:8px 12px; font-size:15px;">
+                        <span>المتبقي بالفاتورة:</span>
+                        <strong style="color:${rem > 0 ? '#cc0000' : '#000000'} !important;">${rem.toFixed(2)} ج</strong>
+                    </div>
                     ${custBalanceHtml}
                 </div>
             </div>
@@ -1874,7 +1908,7 @@
         closeAllMenus(); 
     }
 
-    // 5. تصدير التقرير العام للسجل إلى ملف PDF حقيقي بتصميم A4 عبر window.Utils.downloadRealPDF
+    // 5. معاينة ومشاركة التقرير العام للسجل بتصميم A4 احترافي عبر window.Utils.downloadRealPDF
     function exportListPDF() {
         closeAllMenus();
         let list = getFilteredInvoices();
@@ -1900,14 +1934,14 @@
             let tType = inv.isCanceled ? 'ملغية' : (inv.type === 'return' ? 'مرتجع' : (inv.type === 'quotation' || inv.type === 'quote') ? 'عرض سعر' : (rem > 0) ? 'آجل' : 'مسدد');
             rows += `
                 <tr>
-                    <td>${idx + 1}</td>
-                    <td>${formatIdDisplay(inv.id)}</td>
-                    <td>${inv.customer || 'نقدي'}</td>
-                    <td>${inv.date || ''}</td>
-                    <td>${tType}</td>
-                    <td>${fin.toFixed(2)}</td>
-                    <td>${paid.toFixed(2)}</td>
-                    <td>${rem.toFixed(2)}</td>
+                    <td style="border:1px solid #333; padding:7px; color:#000;">${idx + 1}</td>
+                    <td style="border:1px solid #333; padding:7px; color:#000;">${formatIdDisplay(inv.id)}</td>
+                    <td style="border:1px solid #333; padding:7px; text-align:right; color:#000;">${inv.customer || 'نقدي'}</td>
+                    <td style="border:1px solid #333; padding:7px; color:#000;">${inv.date || ''}</td>
+                    <td style="border:1px solid #333; padding:7px; color:#000;">${tType}</td>
+                    <td style="border:1px solid #333; padding:7px; color:#000;">${fin.toFixed(2)}</td>
+                    <td style="border:1px solid #333; padding:7px; color:#008000;">${paid.toFixed(2)}</td>
+                    <td style="border:1px solid #333; padding:7px; color:${rem > 0 ? '#cc0000' : '#000'};">${rem.toFixed(2)}</td>
                 </tr>
             `;
         });
@@ -1917,32 +1951,32 @@
 
         let localReportDate = (window.Utils && typeof window.Utils.getLocalDateString === 'function') ? window.Utils.getLocalDateString() : new Date().toISOString().slice(0,10);
         let a4ListHtml = `
-            <div dir="rtl">
-                <div>
-                    <h1>سراج LED - ${filterLabel}</h1>
-                    <div>الفترة: ${durationLabel} | تاريخ التقرير: ${localReportDate}</div>
+            <div dir="rtl" style="background:#ffffff; color:#000000; padding:10px; font-family:'Cairo', Tahoma, Arial, sans-serif;">
+                <div style="text-align:center; border-bottom:3px solid #000; padding-bottom:10px; margin-bottom:15px;">
+                    <h1 style="margin:0; font-size:24px; color:#000;">محلات سراج LED - ${filterLabel}</h1>
+                    <div style="font-size:14px; font-weight:bold; color:#333; margin-top:5px;">الفترة: ${durationLabel} | تاريخ التقرير: ${localReportDate}</div>
                 </div>
-                <table class="list-print-table">
+                <table style="width:100%; border-collapse:collapse; margin-bottom:15px; border:2px solid #000;">
                     <thead>
-                        <tr>
-                            <th>م</th>
-                            <th>رقم الفاتورة</th>
-                            <th>العميل</th>
-                            <th>التاريخ</th>
-                            <th>الحالة</th>
-                            <th>الصافي</th>
-                            <th>المدفوع</th>
-                            <th>المتبقي</th>
+                        <tr style="background:#e2e8f0 !important;">
+                            <th style="border:1px solid #000; padding:8px; color:#000;">م</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">رقم الفاتورة</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">العميل</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">التاريخ</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">الحالة</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">الصافي</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">المدفوع</th>
+                            <th style="border:1px solid #000; padding:8px; color:#000;">المتبقي</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${rows}
                     </tbody>
                 </table>
-                <div>
-                    <div><span>عدد الفواتير: </span><strong>${list.length}</strong></div>
-                    <div><span>إجمالي الفواتير المحددة: </span><strong>${total.toFixed(2)} ج</strong></div>
-                    <div><span>إجمالي المديونيات المتبقية: </span><strong>${totalRem.toFixed(2)} ج</strong></div>
+                <div style="width:100%; max-width:340px; margin-right:auto; border:2px solid #000; border-radius:6px; padding:10px; background:#f8fafc; color:#000;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>عدد الفواتير:</span><strong>${list.length}</strong></div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>إجمالي الفواتير المحددة:</span><strong>${total.toFixed(2)} ج</strong></div>
+                    <div style="display:flex; justify-content:space-between;"><span>إجمالي المديونيات المتبقية:</span><strong style="color:#cc0000 !important;">${totalRem.toFixed(2)} ج</strong></div>
                 </div>
             </div>
         `;
